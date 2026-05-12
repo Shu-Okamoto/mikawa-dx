@@ -37,7 +37,7 @@ export default function HomePage() {
         <div style={{ fontSize:'48px', marginBottom:'16px' }}>🥬</div>
         <h1 style={{ fontSize:'22px', fontWeight:500, color:'#2C2C2A',
           marginBottom:'8px' }}>
-          みかわ佐藤農産
+          里の味みかわ
         </h1>
         <p style={{ fontSize:'14px', color:'#888780', marginBottom:'40px' }}>
           業務管理システム
@@ -60,7 +60,7 @@ export default function HomePage() {
         </div>
 
         <p style={{ fontSize:'11px', color:'#A8A69E', marginTop:'32px' }}>
-          © 2026 みかわ佐藤農産
+          © 2026 里の味みかわ
         </p>
       </div>
     </div>

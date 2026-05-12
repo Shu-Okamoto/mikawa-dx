@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       )
     }
-
+    
     // JWTトークン発行
     const token = jwt.sign(
       {
