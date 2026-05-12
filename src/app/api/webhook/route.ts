@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient } from '@prisma/client/edge'
-import pg from 'pg'
-
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
-const adapter = new PrismaPg(pool)
-const prisma = new PrismaClient({ adapter })
+import prisma from '@/lib/prisma'
 
 // LINE署名検証
 function verifySignature(body: string, signature: string): boolean {
@@ -36,7 +30,6 @@ export async function POST(req: NextRequest) {
   const body = await req.text()
   const signature = req.headers.get('x-line-signature') || ''
 
-  // 署名検証
   if (!verifySignature(body, signature)) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
@@ -51,9 +44,8 @@ export async function POST(req: NextRequest) {
     const replyToken  = event.replyToken
     const messageText = event.message.text.trim()
 
-    // ユーザー検索
     const user = await prisma.user.findUnique({
-      where: { lineUserId },
+      where  : { lineUserId },
       include: { store: true },
     })
 
@@ -62,7 +54,6 @@ export async function POST(req: NextRequest) {
         await replyMessage(replyToken,
           `${user.name}さん、登録済みです。\nロール: ${user.role}\n店舗: ${user.store?.storeName || '本部'}`)
       } else {
-        // 未登録ユーザーを仮登録
         await prisma.user.create({
           data: {
             name      : '未登録ユーザー',
@@ -78,7 +69,6 @@ export async function POST(req: NextRequest) {
         await replyMessage(replyToken, '未登録です。「登録」と送信してください。')
         continue
       }
-      // ログインURL発行
       const baseUrl = process.env.NEXT_PUBLIC_API_URL
       const token   = Buffer.from(lineUserId + ':' + Date.now()).toString('base64')
       const url     = `${baseUrl}/auth/line?token=${token}&uid=${lineUserId}`
