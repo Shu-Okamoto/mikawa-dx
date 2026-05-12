@@ -1,65 +1,68 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+export default function HomePage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    // 既にログイン済みの場合は該当画面へ
+    const token = localStorage.getItem('token')
+    const user  = localStorage.getItem('user')
+
+    if (token && user) {
+      const parsedUser = JSON.parse(user)
+      const role = parsedUser.role
+      if (role === 'store')         router.push('/store')
+      else if (role === 'hq')       router.push('/hq')
+      else if (role === 'boss')     router.push('/boss')
+      else if (role === 'order')    router.push('/order')
+      else if (role === 'calendar') router.push('/calendar')
+    }
+  }, [router])
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div style={{
+      minHeight      : '100vh',
+      display        : 'flex',
+      alignItems     : 'center',
+      justifyContent : 'center',
+      background     : '#F5F1EA',
+      fontFamily     : '-apple-system,sans-serif',
+    }}>
+      <div style={{ textAlign:'center', padding:'40px 20px' }}>
+
+        {/* ロゴ */}
+        <div style={{ fontSize:'48px', marginBottom:'16px' }}>🥬</div>
+        <h1 style={{ fontSize:'22px', fontWeight:500, color:'#2C2C2A',
+          marginBottom:'8px' }}>
+          みかわ佐藤農産
+        </h1>
+        <p style={{ fontSize:'14px', color:'#888780', marginBottom:'40px' }}>
+          業務管理システム
+        </p>
+
+        {/* 案内 */}
+        <div style={{ background:'white', borderRadius:'16px', padding:'24px',
+          maxWidth:'320px', margin:'0 auto',
+          boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+          <div style={{ fontSize:'32px', marginBottom:'12px' }}>💬</div>
+          <p style={{ fontSize:'14px', color:'#2C2C2A', fontWeight:500,
+            marginBottom:'8px' }}>
+            LINEからアクセスしてください
+          </p>
+          <p style={{ fontSize:'12px', color:'#888780', lineHeight:1.6 }}>
+            公式LINEアカウントで<br />
+            「ログイン」と送信すると<br />
+            専用URLが届きます
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+        <p style={{ fontSize:'11px', color:'#A8A69E', marginTop:'32px' }}>
+          © 2026 みかわ佐藤農産
+        </p>
+      </div>
     </div>
-  );
+  )
 }
