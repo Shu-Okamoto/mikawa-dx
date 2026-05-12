@@ -67,7 +67,7 @@ function LineAuthContent() {
       }}>
         {status === 'loading' ? (
           <>
-            <div style={{ fontSize: '32px', marginBottom: '16px' }}>���</div>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>⏳</div>
             <p style={{ color: '#2C2C2A', fontSize: '16px' }}>{message}</p>
             <p style={{ color: '#888780', fontSize: '13px', marginTop: '8px' }}>
               しばらくお待ちください
