@@ -45,7 +45,7 @@ model Product {
   vendorId        Int?
   isActive        Boolean          @default(true)
   createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  updatedAt       DateTime         @default(now()) @updatedAt
   dailyOrders     DailyOrder[]
   confirmedOrders ConfirmedOrder[]
 }
@@ -60,13 +60,13 @@ model OrderProduct {
   isActive      Boolean        @default(true)
   memo          String?
   createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  updatedAt     DateTime       @default(now()) @updatedAt
   instoreOrders InstoreOrder[]
 }
 
 model User {
   id          Int      @id @default(autoincrement())
-  email       String?  @unique
+  email       String?  @unique  // ★ String? にする（nullable）
   name        String
   role        String
   store       Store?   @relation(fields: [storeId], references: [id])
@@ -77,9 +77,8 @@ model User {
   pictureUrl  String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 }
-
 model DailyOrder {
   id          Int       @id @default(autoincrement())
   orderDate   DateTime  @db.Date
@@ -92,7 +91,7 @@ model DailyOrder {
   inputUser   String?
   submittedAt DateTime?
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  updatedAt   DateTime  @default(now()) @updatedAt
 
   @@unique([orderDate, storeId, productId])
 }
@@ -112,7 +111,7 @@ model ConfirmedOrder {
   vendorId    Int?
   isSent      Boolean  @default(false)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 model InstoreOrder {
@@ -138,7 +137,7 @@ model InstoreOrder {
   inputUser       String?
   status          String        @default("active")
   createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  updatedAt       DateTime      @default(now()) @updatedAt
 }
 
 model Sale {
@@ -155,7 +154,7 @@ model Sale {
   staffAfternoon Int      @default(0)
   inputUser      String?
   createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime @default(now()) @updatedAt
 
   @@unique([saleDate, storeId])
 }

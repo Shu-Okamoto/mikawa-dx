@@ -26,7 +26,7 @@ async function main() {
     create: { storeCode: 'honbu', storeName: '本部' },
   })
   console.log('店舗マスタ投入完了:', { nishi, minami, honbu })
-}
+
   // 業者マスタ
   const vendor1 = await prisma.vendor.upsert({
     where: { vendorCode: 'V001' },
@@ -42,17 +42,17 @@ async function main() {
 
   // ユーザーマスタ
   const users = [
-    { email: 'nishi@satonoaji-mikawa.net',   name: '西店スタッフ',   role: 'store', storeId: nishi.id,  category: null,       pinCode: '0001' },
-    { email: 'minami@satonoaji-mikawa.net',  name: '南店スタッフ',   role: 'store', storeId: minami.id, category: null,       pinCode: '0002' },
-    { email: 'hq-veg@satonoaji-mikawa.net',  name: '野菜担当',       role: 'hq',    storeId: honbu.id,  category: '野菜',     pinCode: '1111' },
-    { email: 'hq-fruit@satonoaji-mikawa.net',name: '果物担当',       role: 'hq',    storeId: honbu.id,  category: '果物',     pinCode: '2222' },
-    { email: 'hq-mochi@satonoaji-mikawa.net',name: '餅・乾物担当',   role: 'hq',    storeId: honbu.id,  category: '餅・乾物菓子類', pinCode: '3333' },
-    { email: 'boss@satonoaji-mikawa.net',    name: '社長',           role: 'boss',  storeId: honbu.id,  category: null,       pinCode: '9999' },
-    { email: 'order-nishi@satonoaji-mikawa.net', name: '西店スタッフ', role: 'order', storeId: nishi.id, category: null,      pinCode: '4444' },
-    { email: 'order-minami@satonoaji-mikawa.net',name: '南店スタッフ', role: 'order', storeId: minami.id,category: null,      pinCode: '5555' },
-    { email: 'order-honbu@satonoaji-mikawa.net', name: '本部スタッフ', role: 'order', storeId: honbu.id, category: null,      pinCode: '7777' },
-    { email: 'calendar@satonoaji-mikawa.net',name: '弁当担当',       role: 'calendar', storeId: honbu.id, category: '弁当',  pinCode: '6666' },
-    { email: 'mochi-cal@satonoaji-mikawa.net',name: '餅担当',        role: 'calendar', storeId: honbu.id, category: '餅',    pinCode: '8888' },
+    { email: 'nishi@satonoaji-mikawa.net',       name: '西店スタッフ', role: 'store',    storeId: nishi.id,  category: null },
+    { email: 'minami@satonoaji-mikawa.net',      name: '南店スタッフ', role: 'store',    storeId: minami.id, category: null },
+    { email: 'hq-veg@satonoaji-mikawa.net',      name: '野菜担当',     role: 'hq',       storeId: honbu.id,  category: '野菜' },
+    { email: 'hq-fruit@satonoaji-mikawa.net',    name: '果物担当',     role: 'hq',       storeId: honbu.id,  category: '果物' },
+    { email: 'hq-mochi@satonoaji-mikawa.net',    name: '餅・乾物担当', role: 'hq',       storeId: honbu.id,  category: '餅・乾物菓子類' },
+    { email: 'boss@satonoaji-mikawa.net',        name: '社長',         role: 'boss',     storeId: honbu.id,  category: null },
+    { email: 'order-nishi@satonoaji-mikawa.net', name: '西店スタッフ', role: 'order',    storeId: nishi.id,  category: null },
+    { email: 'order-minami@satonoaji-mikawa.net',name: '南店スタッフ', role: 'order',    storeId: minami.id, category: null },
+    { email: 'order-honbu@satonoaji-mikawa.net', name: '本部スタッフ', role: 'order',    storeId: honbu.id,  category: null },
+    { email: 'calendar@satonoaji-mikawa.net',    name: '弁当担当',     role: 'calendar', storeId: honbu.id,  category: '弁当' },
+    { email: 'mochi-cal@satonoaji-mikawa.net',   name: '餅担当',       role: 'calendar', storeId: honbu.id,  category: '餅' },
   ]
 
   for (const u of users) {
