@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
@@ -15,7 +15,7 @@ interface DashboardData {
   logs: { who: string; time: string }[]
 }
 
-export default function BossPage() {
+function BossPageContent() {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth('boss')
   const [data, setData]       = useState<DashboardData | null>(null)
@@ -319,5 +319,18 @@ export default function BossPage() {
 
       </div>
     </div>
+  )
+}
+
+export default function BossPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        読み込み中...
+      </div>
+    }>
+      <BossPageContent />
+    </Suspense>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
@@ -21,7 +21,7 @@ interface OrderState {
 
 const CATEGORIES = ['野菜', '果物', '餅・乾物菓子類']
 
-export default function StorePage() {
+function StorePageContent() {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth('store')
   const [products, setProducts]     = useState<Product[]>([])
@@ -331,6 +331,19 @@ export default function StorePage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function StorePage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        読み込み中...
+      </div>
+    }>
+      <StorePageContent />
+    </Suspense>
   )
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
@@ -31,7 +31,7 @@ interface ProductSummary {
   adjustedQty: number
 }
 
-export default function HqPage() {
+function HqPageContent() {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth('hq')
   const [items, setItems]       = useState<ProductSummary[]>([])
@@ -300,5 +300,18 @@ export default function HqPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function HqPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        読み込み中...
+      </div>
+    }>
+      <HqPageContent />
+    </Suspense>
   )
 }

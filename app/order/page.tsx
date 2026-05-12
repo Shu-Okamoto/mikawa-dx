@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
@@ -40,7 +40,7 @@ const DELIVERY_TIMES = [
   '15:00','15:30','16:00','16:30','17:00','17:30',
 ]
 
-export default function OrderPage() {
+function OrderPageContent() {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth('order')
   const [screen, setScreen]         = useState<Screen>('list')
@@ -713,5 +713,18 @@ export default function OrderPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function OrderPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        読み込み中...
+      </div>
+    }>
+      <OrderPageContent />
+    </Suspense>
   )
 }
