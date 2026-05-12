@@ -1,0 +1,161 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Store {
+  id            Int            @id @default(autoincrement())
+  storeCode     String         @unique
+  storeName     String
+  createdAt     DateTime       @default(now())
+  dailyOrders   DailyOrder[]
+  instoreOrders InstoreOrder[]
+  sales         Sale[]
+  users         User[]
+}
+
+model Vendor {
+  id              Int              @id @default(autoincrement())
+  vendorCode      String           @unique
+  vendorName      String
+  category        String?
+  contactName     String?
+  phone           String?
+  memo            String?
+  createdAt       DateTime         @default(now())
+  products        Product[]
+  confirmedOrders ConfirmedOrder[]
+}
+
+model Product {
+  id              Int              @id @default(autoincrement())
+  productCode     String           @unique
+  productName     String
+  category        String
+  unit            String
+  weeklyAvg       Decimal          @default(0)
+  vendor          Vendor?          @relation(fields: [vendorId], references: [id])
+  vendorId        Int?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  dailyOrders     DailyOrder[]
+  confirmedOrders ConfirmedOrder[]
+}
+
+model OrderProduct {
+  id            Int            @id @default(autoincrement())
+  productCode   String         @unique
+  productName   String
+  category      String
+  price         Decimal        @default(0)
+  availableDays String
+  isActive      Boolean        @default(true)
+  memo          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  instoreOrders InstoreOrder[]
+}
+
+model User {
+  id          Int      @id @default(autoincrement())
+  email       String?  @unique
+  name        String
+  role        String
+  store       Store?   @relation(fields: [storeId], references: [id])
+  storeId     Int?
+  category    String?
+  lineUserId  String?  @unique
+  displayName String?
+  pictureUrl  String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DailyOrder {
+  id          Int       @id @default(autoincrement())
+  orderDate   DateTime  @db.Date
+  store       Store     @relation(fields: [storeId], references: [id])
+  storeId     Int
+  product     Product   @relation(fields: [productId], references: [id])
+  productId   Int
+  status      String?
+  requestQty  Decimal   @default(0)
+  inputUser   String?
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([orderDate, storeId, productId])
+}
+
+model ConfirmedOrder {
+  id          Int      @id @default(autoincrement())
+  confirmDate DateTime @db.Date
+  product     Product  @relation(fields: [productId], references: [id])
+  productId   Int
+  category    String?
+  storeAQty   Decimal  @default(0)
+  storeBQty   Decimal  @default(0)
+  storeCQty   Decimal  @default(0)
+  totalQty    Decimal  @default(0)
+  adjustedQty Decimal  @default(0)
+  vendor      Vendor?  @relation(fields: [vendorId], references: [id])
+  vendorId    Int?
+  isSent      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model InstoreOrder {
+  id              Int           @id @default(autoincrement())
+  orderCode       String        @unique
+  orderDate       DateTime      @db.Date
+  deliveryDate    DateTime      @db.Date
+  store           Store         @relation(fields: [storeId], references: [id])
+  storeId         Int
+  product         OrderProduct? @relation(fields: [productId], references: [id])
+  productId       Int?
+  productName     String
+  quantity        Decimal
+  customerName    String
+  phone           String
+  deliveryAddress String
+  deliveryTime    String?
+  receipt         String        @default("no")
+  receiptName     String?
+  purpose         String?
+  okazu           String?
+  notes           String?
+  inputUser       String?
+  status          String        @default("active")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Sale {
+  id             Int      @id @default(autoincrement())
+  saleDate       DateTime @db.Date
+  store          Store    @relation(fields: [storeId], references: [id])
+  storeId        Int
+  amount         Decimal  @default(0)
+  souzaiAmount   Decimal  @default(0)
+  mochiAmount    Decimal  @default(0)
+  hanaAmount     Decimal  @default(0)
+  customerCount  Int      @default(0)
+  staffMorning   Int      @default(0)
+  staffAfternoon Int      @default(0)
+  inputUser      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([saleDate, storeId])
+}
