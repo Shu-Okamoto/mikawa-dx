@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma'
 // 数量修正
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = verifyToken(req)
   if (!user) {
@@ -14,7 +14,7 @@ export async function PATCH(
 
   try {
     const { quantity } = await req.json()
-    const id = parseInt(params.id)
+    const id = parseInt((await params).id)
 
     const order = await prisma.instoreOrder.findUnique({ where: { id } })
     if (!order) {
@@ -36,7 +36,7 @@ export async function PATCH(
 // キャンセル
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = verifyToken(req)
   if (!user) {
@@ -44,7 +44,7 @@ export async function DELETE(
   }
 
   try {
-    const id = parseInt(params.id)
+    const id = parseInt((await params).id)
 
     const order = await prisma.instoreOrder.findUnique({ where: { id } })
     if (!order) {
