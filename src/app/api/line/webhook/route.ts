@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import prisma from '@/lib/prisma'
 
-// LINE署名検証
 function verifySignature(body: string, signature: string): boolean {
   const hash = crypto
     .createHmac('sha256', process.env.LINE_CHANNEL_SECRET!)
@@ -11,7 +10,6 @@ function verifySignature(body: string, signature: string): boolean {
   return hash === signature
 }
 
-// LINEにメッセージ返信
 async function replyMessage(replyToken: string, text: string) {
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
