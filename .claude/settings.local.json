@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git ls-remote *)",
+      "mcp__claude_ai_Vercel__list_teams"
+    ]
+  }
+}
