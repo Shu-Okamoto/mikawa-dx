@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
 interface DailyOrder {
@@ -31,7 +32,8 @@ interface ProductSummary {
 }
 
 export default function HqPage() {
-  const { user, loading, authFetch, logout } = useAuth('hq')
+  const router = useRouter()
+  const { user, loading, error, authFetch, logout } = useAuth('hq')
   const [items, setItems]       = useState<ProductSummary[]>([])
   const [adjusted, setAdjusted] = useState<Record<number, number>>({})
   const [saving, setSaving]     = useState(false)
@@ -113,6 +115,27 @@ export default function HqPage() {
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
       minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
       読み込み中...
+    </div>
+  )
+
+  if (error) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+      minHeight:'100vh', fontFamily:'-apple-system,sans-serif', background:'#F5F1EA' }}>
+      <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+        textAlign:'center', maxWidth:'320px' }}>
+        <div style={{ fontSize:'48px', marginBottom:'16px' }}>🚫</div>
+        <p style={{ fontSize:'16px', fontWeight:500, color:'#E24B4A',
+          marginBottom:'8px' }}>{error}</p>
+        <p style={{ fontSize:'13px', color:'#888780', marginBottom:'24px' }}>
+          LINEで「ログイン」と送信して<br />正しいURLからアクセスしてください
+        </p>
+        <button onClick={() => router.push('/')}
+          style={{ padding:'12px 24px', background:'#3B6D11', color:'white',
+            border:'none', borderRadius:'10px', fontSize:'14px',
+            cursor:'pointer', fontFamily:'inherit' }}>
+          トップに戻る
+        </button>
+      </div>
     </div>
   )
 
