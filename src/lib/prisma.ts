@@ -1,12 +1,10 @@
-import { PrismaPg } from '@prisma/adapter-pg'
-import pg from 'pg'
+const { PrismaClient } = require('@prisma/client')
+const { PrismaPg } = require('@prisma/adapter-pg')
+const pg = require('pg')
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: any
-}
+const globalForPrisma = globalThis as unknown as { prisma: any }
 
 function createPrismaClient() {
-  const { PrismaClient } = require('@prisma/client')
   const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
   })
