@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import prisma from '@/lib/prisma'
+import { replyMessage, fetchLineProfile } from '@/lib/line'
 
-const CHANNEL_SECRET       = process.env.LINE_CHANNEL_SECRET || ''
-const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
+const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
 
 interface RoleRoute {
   label: string
@@ -73,31 +73,6 @@ const COMMAND_LABELS: Record<string, string> = {
 }
 
 const SESSION_COMMANDS = new Set(['ログイン', 'メニュー'])
-
-async function replyMessage(replyToken: string, text: string) {
-  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
-    method : 'POST',
-    headers: {
-      'Content-Type' : 'application/json',
-      'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({
-      replyToken,
-      messages: [{ type: 'text', text }],
-    }),
-  })
-  if (!res.ok) {
-    console.error('LINE replyMessage failed:', res.status, await res.text())
-  }
-}
-
-async function fetchLineProfile(lineUserId: string) {
-  const res = await fetch(`https://api.line.me/v2/bot/profile/${lineUserId}`, {
-    headers: { 'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}` },
-  })
-  if (!res.ok) return null
-  return res.json() as Promise<{ displayName?: string; pictureUrl?: string }>
-}
 
 function verifySignature(body: string, signature: string | null): boolean {
   if (!signature || !CHANNEL_SECRET) return false

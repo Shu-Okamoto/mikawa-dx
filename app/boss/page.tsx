@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { BossNav } from './_shared'
 
 interface DashboardData {
   date       : string
@@ -163,6 +164,8 @@ function BossPageContent() {
           </button>
         </div>
       </div>
+
+      <BossNav active="/boss" />
 
       <div style={{ padding:'12px' }}>
 
