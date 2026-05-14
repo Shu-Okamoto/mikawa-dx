@@ -230,6 +230,11 @@ function StorePageContent({ branch }: { branch: string }) {
                 fontWeight:500, fontSize:'14px' }}>
                 ✅ 送信完了（{submittedOrders.length}件）
               </div>
+              <div style={{ padding:'8px 16px', borderBottom:'1px solid #F0ECE3',
+                fontSize:'11px', color:'#888780', display:'flex', gap:'16px' }}>
+                <span><span style={{ color:'#E24B4A', fontWeight:500 }}>〇</span> 在庫なし</span>
+                <span><span style={{ color:'#3B6D11', fontWeight:500 }}>×</span> 在庫あり</span>
+              </div>
               {submittedOrders.map((p) => {
                 const st = orderState[p.id]
                 return (
@@ -383,6 +388,7 @@ function SalesInput({
   const [sales, setSales] = useState({
     amount:'', souzai:'', mochi:'', hana:'',
     customerCount:'', staffMorning:'', staffAfternoon:'',
+    notes: '',
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
@@ -401,6 +407,7 @@ function SalesInput({
             customerCount : s.customerCount  ? String(s.customerCount)  : '',
             staffMorning  : s.staffMorning   ? String(s.staffMorning)   : '',
             staffAfternoon: s.staffAfternoon ? String(s.staffAfternoon) : '',
+            notes         : s.notes          ?? '',
           })
           setSaved(true)
         }
@@ -437,6 +444,16 @@ function SalesInput({
         💰 本日の実績入力
       </div>
       <div style={{ padding:'16px' }}>
+        <div style={{ fontSize:'12px', color:'#888780', marginBottom:'4px' }}>本日の注文メモ</div>
+        <textarea value={sales.notes}
+          onChange={(e) => setSales({ ...sales, notes: e.target.value })}
+          style={{ width:'100%', padding:'8px 10px',
+            border:'1.5px solid #E5E1D8', borderRadius:'8px',
+            fontSize:'14px', fontFamily:'inherit',
+            boxSizing:'border-box', resize:'vertical', minHeight:'80px',
+            marginBottom:'12px' }}
+          placeholder="売上で気になったこと、特記事項など" />
+
         <div style={{ fontSize:'12px', color:'#888780', marginBottom:'8px' }}>売上</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
           gap:'8px', marginBottom:'12px' }}>
@@ -465,8 +482,14 @@ function SalesInput({
         <div style={{ fontSize:'12px', color:'#888780', marginBottom:'8px' }}>人数</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr',
           gap:'8px', marginBottom:'16px' }}>
+          <div>
+            <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>客数</div>
+            <input type="number" inputMode="numeric"
+              value={sales.customerCount}
+              onChange={(e) => setSales({ ...sales, customerCount: e.target.value })}
+              style={inputStyle} placeholder="0" />
+          </div>
           {[
-            { key:'customerCount',  label:'客数'    },
             { key:'staffMorning',   label:'出勤前半' },
             { key:'staffAfternoon', label:'出勤後半' },
           ].map(({ key, label }) => (
@@ -474,10 +497,14 @@ function SalesInput({
               <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>
                 {label}
               </div>
-              <input type="number" inputMode="numeric"
-                value={(sales as any)[key]}
+              <select value={(sales as any)[key]}
                 onChange={(e) => setSales({ ...sales, [key]: e.target.value })}
-                style={inputStyle} placeholder="0" />
+                style={{ ...inputStyle, textAlign:'left' }}>
+                <option value="">-</option>
+                {['2','2.5','3','3.5','4','4.5'].map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
             </div>
           ))}
         </div>

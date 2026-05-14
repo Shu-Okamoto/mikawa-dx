@@ -37,8 +37,9 @@ export async function GET(req: NextRequest) {
         mochi         : Number(s.mochiAmount),
         hana          : Number(s.hanaAmount),
         customerCount : s.customerCount,
-        staffMorning  : s.staffMorning,
-        staffAfternoon: s.staffAfternoon,
+        staffMorning  : Number(s.staffMorning),
+        staffAfternoon: Number(s.staffAfternoon),
+        notes         : s.notes ?? '',
       }
     })
 
@@ -76,30 +77,22 @@ export async function POST(req: NextRequest) {
 
     const saleDate = today()
 
+    const payload = {
+      amount        : Number(data.amount)         || 0,
+      souzaiAmount  : Number(data.souzai)         || 0,
+      mochiAmount   : Number(data.mochi)          || 0,
+      hanaAmount    : Number(data.hana)           || 0,
+      customerCount : Number(data.customerCount)  || 0,
+      staffMorning  : Number(data.staffMorning)   || 0,
+      staffAfternoon: Number(data.staffAfternoon) || 0,
+      notes         : data.notes ?? null,
+      inputUser     : user.name,
+    }
+
     await prisma.sale.upsert({
       where : { saleDate_storeId: { saleDate, storeId: store.id } },
-      update: {
-        amount        : Number(data.amount)         || 0,
-        souzaiAmount  : Number(data.souzai)         || 0,
-        mochiAmount   : Number(data.mochi)          || 0,
-        hanaAmount    : Number(data.hana)           || 0,
-        customerCount : Number(data.customerCount)  || 0,
-        staffMorning  : Number(data.staffMorning)   || 0,
-        staffAfternoon: Number(data.staffAfternoon) || 0,
-        inputUser     : user.name,
-      },
-      create: {
-        saleDate,
-        storeId       : store.id,
-        amount        : Number(data.amount)         || 0,
-        souzaiAmount  : Number(data.souzai)         || 0,
-        mochiAmount   : Number(data.mochi)          || 0,
-        hanaAmount    : Number(data.hana)           || 0,
-        customerCount : Number(data.customerCount)  || 0,
-        staffMorning  : Number(data.staffMorning)   || 0,
-        staffAfternoon: Number(data.staffAfternoon) || 0,
-        inputUser     : user.name,
-      },
+      update: payload,
+      create: { saleDate, storeId: store.id, ...payload },
     })
 
     return NextResponse.json({ success: true })

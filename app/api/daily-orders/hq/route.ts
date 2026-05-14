@@ -73,25 +73,20 @@ export async function GET(req: NextRequest) {
       item.totalQty += qty
     })
 
-    // 〇・△のみ表示・在庫なし順にソート
+    // 全件返却（注文/在庫の振り分けはクライアント側で行う）
     const statusOrder: Record<string, number> = { '〇': 0, '△': 1, '×': 2 }
-    const items = Object.values(summary)
-      .filter((item) =>
-        item.storeA?.status === '〇' || item.storeA?.status === '△' ||
-        item.storeB?.status === '〇' || item.storeB?.status === '△'
+    const items = Object.values(summary).sort((a, b) => {
+      if (a.category !== b.category) return a.category.localeCompare(b.category)
+      const wa = Math.min(
+        statusOrder[a.storeA?.status] ?? 3,
+        statusOrder[a.storeB?.status] ?? 3,
       )
-      .sort((a, b) => {
-        if (a.category !== b.category) return a.category.localeCompare(b.category)
-        const wa = Math.min(
-          statusOrder[a.storeA?.status] ?? 3,
-          statusOrder[a.storeB?.status] ?? 3,
-        )
-        const wb = Math.min(
-          statusOrder[b.storeA?.status] ?? 3,
-          statusOrder[b.storeB?.status] ?? 3,
-        )
-        return wa - wb
-      })
+      const wb = Math.min(
+        statusOrder[b.storeA?.status] ?? 3,
+        statusOrder[b.storeB?.status] ?? 3,
+      )
+      return wa - wb
+    })
 
     return NextResponse.json({ items })
   } catch (e) {

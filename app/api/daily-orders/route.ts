@@ -75,8 +75,10 @@ export async function POST(req: NextRequest) {
       where: { orderDate, storeId: store.id },
     })
 
+    // × も保存（HQ で「在庫あり」として参照する）
     const filtered = (orders as any[]).filter((o) =>
-      o.status === '〇' || o.status === '△' || Number(o.qty) > 0,
+      o.status === '〇' || o.status === '△' || o.status === '×' ||
+      Number(o.qty) > 0,
     )
 
     await prisma.dailyOrder.createMany({

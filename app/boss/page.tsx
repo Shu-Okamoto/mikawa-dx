@@ -188,31 +188,61 @@ function BossPageContent() {
           </div>
         </div>
 
-        {/* 売上KPI */}
+        {/* 売上実績 全項目 */}
         <div style={{ background:'white', borderRadius:'16px', padding:'16px',
           marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
           <div style={{ fontWeight:500, fontSize:'14px', marginBottom:'12px' }}>
-            💰 本日の売上
+            💰 本日の売上実績
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px',
-            marginBottom:'16px' }}>
-            {stores.map((s) => {
-              const d = data?.sales[s]
-              return kpiCard(
-                s,
-                d ? '¥' + d.amount.toLocaleString() : '未入力',
-                d ? '客数:' + d.customerCount + '人' : '',
-                !!d?.amount
-              )
-            })}
-            {kpiCard(
-              '2店合計',
-              '¥' + totalAmount.toLocaleString(),
-              '客数:' + totalCust + '人',
-              totalAmount > 0
-            )}
+          {stores.map((s) => {
+            const d = data?.sales[s] as any
+            return (
+              <div key={s} style={{ marginBottom:'12px', paddingBottom:'12px',
+                borderBottom:'1px solid #F5F1EA' }}>
+                <div style={{ fontSize:'13px', fontWeight:500, color:'#2C2C2A',
+                  marginBottom:'6px' }}>{s}</div>
+                {d ? (
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
+                    gap:'4px', fontSize:'12px' }}>
+                    <FullStat label="売上金額" value={'¥' + d.amount.toLocaleString()} />
+                    <FullStat label="客数"     value={d.customerCount + '人'} />
+                    <FullStat label="惣菜売上" value={'¥' + d.souzai.toLocaleString()} />
+                    <FullStat label="餅売上"   value={'¥' + d.mochi.toLocaleString()} />
+                    <FullStat label="花売上"   value={'¥' + d.hana.toLocaleString()} />
+                    <FullStat label="客単価"   value={d.customerCount > 0
+                      ? '¥' + Math.round(d.amount / d.customerCount).toLocaleString()
+                      : '—'} />
+                    <FullStat label="出勤前半" value={String(d.staffMorning)} />
+                    <FullStat label="出勤後半" value={String(d.staffAfternoon)} />
+                    {d.notes && (
+                      <div style={{ gridColumn:'1 / -1', padding:'6px 8px',
+                        background:'#FAFAFA', borderRadius:'6px',
+                        fontSize:'11px', color:'#555' }}>
+                        📝 {d.notes}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:'12px', color:'#888780' }}>未入力</div>
+                )}
+              </div>
+            )
+          })}
+          <div style={{ marginBottom:'8px' }}>
+            <div style={{ fontSize:'13px', fontWeight:500, color:'#2C2C2A',
+              marginBottom:'6px' }}>🧮 2店合計</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
+              gap:'4px', fontSize:'12px' }}>
+              <FullStat label="売上金額" value={'¥' + totalAmount.toLocaleString()} />
+              <FullStat label="客数"     value={totalCust + '人'} />
+              <FullStat label="惣菜売上" value={'¥' + totalSouzai.toLocaleString()} />
+              <FullStat label="餅売上"   value={'¥' + totalMochi.toLocaleString()} />
+              <FullStat label="花売上"   value={'¥' + totalHana.toLocaleString()} />
+              <FullStat label="客単価"   value={totalCust > 0
+                ? '¥' + Math.round(totalAmount / totalCust).toLocaleString()
+                : '—'} />
+            </div>
           </div>
-
           {/* 円グラフ */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px' }}>
             {[...stores, '合計'].map((name) => {
@@ -321,6 +351,16 @@ function BossPageContent() {
         </div>
 
       </div>
+    </div>
+  )
+}
+
+function FullStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between',
+      padding:'5px 8px', background:'#FAFAFA', borderRadius:'6px' }}>
+      <span style={{ color:'#888780' }}>{label}</span>
+      <span style={{ fontWeight:500, color:'#2C2C2A' }}>{value}</span>
     </div>
   )
 }

@@ -150,8 +150,9 @@ model Sale {
   mochiAmount    Decimal  @default(0)
   hanaAmount     Decimal  @default(0)
   customerCount  Int      @default(0)
-  staffMorning   Int      @default(0)
-  staffAfternoon Int      @default(0)
+  staffMorning   Decimal  @default(0)
+  staffAfternoon Decimal  @default(0)
+  notes          String?
   inputUser      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now()) @updatedAt
