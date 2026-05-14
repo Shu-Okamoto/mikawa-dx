@@ -162,6 +162,33 @@ npx prisma studio
 
 dev サーバー起動後、別端末（スマホ等）から LAN 経由でアクセスする場合は [next.config.ts](next.config.ts) の `allowedDevOrigins` にその端末の IP を追加する。
 
+## テスト用 URL
+
+`<UID>` を Prisma Studio で確認した自分の `User.lineUserId` に置換して開く。`useAuth` が初回アクセスで JWT を取得 → localStorage に保存 → URL から `lineUserId=` を除去するので、2 回目以降は `?lineUserId=` 無しでも遷移可能。
+
+ローカル開発: `http://localhost:3000` をベース URL に。LAN 経由: `http://192.168.x.x:3000`。本番: `https://<vercel-domain>` に置換。
+
+| URL | 必要 role |
+|---|---|
+| `/store/nishi?lineUserId=<UID>` | `nishi` / `all` |
+| `/store/minami?lineUserId=<UID>` | `minami` / `all` |
+| `/order/nishi?lineUserId=<UID>` | `nishi` / `all` |
+| `/order/minami?lineUserId=<UID>` | `minami` / `all` |
+| `/hq?lineUserId=<UID>` | `hq1` / `hq2` / `hq3` / `all`（`all` は全カテゴリ、hq1〜3 は自カテゴリ） |
+| `/hq?category=hq1&lineUserId=<UID>` | `all`（hq1 カテゴリ＝野菜を表示） |
+| `/hq?category=hq2&lineUserId=<UID>` | `all`（hq2 カテゴリ＝果物を表示） |
+| `/hq?category=hq3&lineUserId=<UID>` | `all`（hq3 カテゴリ＝餅・乾物菓子類を表示） |
+| `/calendar?lineUserId=<UID>` | 全 6 role |
+| `/boss?lineUserId=<UID>` | `all` |
+| `/boss/users?lineUserId=<UID>` | `all` |
+| `/boss/products?lineUserId=<UID>` | `all` |
+| `/boss/order-products?lineUserId=<UID>` | `all` |
+| `/boss/vendors?lineUserId=<UID>` | `all` |
+
+- 初回認証後は `localStorage.token` / `localStorage.user` に JWT とユーザー情報が保存される。手動で再認証したい場合はブラウザのコンソールで `localStorage.clear()` を実行。
+- 別 role を試す場合: Prisma Studio で `User.role` を書き換えてから `localStorage.clear()` → 再アクセス。
+- ローカルと本番は同一ブラウザでも origin が違うため localStorage は独立（影響しない）。
+
 ## デプロイ
 
 `master` への push で Vercel が自動デプロイ。
