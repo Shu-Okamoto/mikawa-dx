@@ -2,22 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
+const ROLE_TO_CATEGORY: Record<string, string> = {
+  hq1: '野菜',
+  hq2: '果物',
+  hq3: '餅・乾物菓子類',
+}
+
+const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3', 'all'])
+
+function categoryFromQuery(role: string, queryCategory: string | null): string | null {
+  if (role === 'all') {
+    if (!queryCategory) return null
+    return ROLE_TO_CATEGORY[queryCategory] ?? null
+  }
+  return ROLE_TO_CATEGORY[role] ?? null
+}
+
+function today() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+  if (!user || !HQ_ROLES.has(user.role)) {
+    return NextResponse.json({ error: '権限がありません' }, { status: 403 })
   }
 
   try {
-    const { searchParams } = new URL(req.url)
-    const category = searchParams.get('category') || ''
-    const today    = new Date()
-    today.setHours(0, 0, 0, 0)
+    const queryCategory = req.nextUrl.searchParams.get('category')
+    const category      = categoryFromQuery(user.role, queryCategory)
 
     const orders = await prisma.dailyOrder.findMany({
       where: {
-        orderDate: today,
-        product  : { category },
+        orderDate: today(),
+        ...(category ? { product: { category } } : {}),
       },
       include: {
         store  : true,
@@ -61,13 +81,14 @@ export async function GET(req: NextRequest) {
         item.storeB?.status === '〇' || item.storeB?.status === '△'
       )
       .sort((a, b) => {
+        if (a.category !== b.category) return a.category.localeCompare(b.category)
         const wa = Math.min(
           statusOrder[a.storeA?.status] ?? 3,
-          statusOrder[a.storeB?.status] ?? 3
+          statusOrder[a.storeB?.status] ?? 3,
         )
         const wb = Math.min(
           statusOrder[b.storeA?.status] ?? 3,
-          statusOrder[b.storeB?.status] ?? 3
+          statusOrder[b.storeB?.status] ?? 3,
         )
         return wa - wb
       })

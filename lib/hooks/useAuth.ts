@@ -12,7 +12,7 @@ export interface AuthUser {
   category : string
 }
 
-export function useAuth(requiredRole?: string) {
+export function useAuth(requiredRole?: string | string[]) {
   const router                = useRouter()
   const searchParams          = useSearchParams()
   const [user, setUser]       = useState<AuthUser | null>(null)
@@ -20,38 +20,49 @@ export function useAuth(requiredRole?: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
 
+  const allowedKey = Array.isArray(requiredRole)
+    ? requiredRole.join(',')
+    : (requiredRole ?? '')
+
   useEffect(() => {
     const lineUserId  = searchParams.get('lineUserId')
     const storedToken = localStorage.getItem('token')
     const storedUser  = localStorage.getItem('user')
 
-    // LINE IDがURLにある場合はAPI認証
+    const checkRole = (role: string): boolean => {
+      if (!requiredRole) return true
+      const allowed = Array.isArray(requiredRole) ? requiredRole : [requiredRole]
+      return allowed.includes(role)
+    }
+
     if (lineUserId) {
-      fetch('/api/auth/line', {
+      fetch('/api/line', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({ lineUserId }),
       })
         .then((res) => res.json())
         .then((data) => {
-          if (data.token) {
-            // role確認
-            if (requiredRole && data.user.role !== requiredRole) {
-              setError('この画面へのアクセス権限がありません')
-              setLoading(false)
-              return
-            }
-            localStorage.setItem('token', data.token)
-            localStorage.setItem('user', JSON.stringify(data.user))
-            setToken(data.token)
-            setUser(data.user)
-            setLoading(false)
-            // URLからlineUserIdを除去
-            router.replace(window.location.pathname)
-          } else {
+          if (!data.token) {
             setError(data.error || '認証に失敗しました')
             setLoading(false)
+            return
           }
+          if (!checkRole(data.user.role)) {
+            setError('この画面へのアクセス権限がありません')
+            setLoading(false)
+            return
+          }
+          localStorage.setItem('token', data.token)
+          localStorage.setItem('user', JSON.stringify(data.user))
+          setToken(data.token)
+          setUser(data.user)
+          setLoading(false)
+          // URL から lineUserId を取り除く（他のクエリは保持）
+          const params = new URLSearchParams(window.location.search)
+          params.delete('lineUserId')
+          const qs = params.toString()
+          router.replace(window.location.pathname + (qs ? `?${qs}` : ''))
         })
         .catch(() => {
           setError('サーバーエラーが発生しました')
@@ -60,10 +71,9 @@ export function useAuth(requiredRole?: string) {
       return
     }
 
-    // 既存のJWTがある場合
     if (storedToken && storedUser) {
       const parsedUser = JSON.parse(storedUser) as AuthUser
-      if (requiredRole && parsedUser.role !== requiredRole) {
+      if (!checkRole(parsedUser.role)) {
         setError('この画面へのアクセス権限がありません')
         setLoading(false)
         return
@@ -74,9 +84,9 @@ export function useAuth(requiredRole?: string) {
       return
     }
 
-    // 未認証
     router.push('/')
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedKey])
 
   const authFetch = async (url: string, options: RequestInit = {}) => {
     const storedToken = localStorage.getItem('token')

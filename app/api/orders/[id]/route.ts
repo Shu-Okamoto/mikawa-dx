@@ -2,10 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
+function canAccessBranch(role: string, branch: string): boolean {
+  if (role === 'all') return true
+  return role === branch
+}
+
+async function authorizeOrderAccess(orderId: number, role: string) {
+  const order = await prisma.instoreOrder.findUnique({
+    where  : { id: orderId },
+    include: { store: true },
+  })
+  if (!order) return { ok: false as const, status: 404, error: '注文が見つかりません' }
+  if (!canAccessBranch(role, order.store.storeCode)) {
+    return { ok: false as const, status: 403, error: '権限がありません' }
+  }
+  return { ok: true as const, order }
+}
+
 // 数量修正
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const user = verifyToken(req)
   if (!user) {
@@ -16,9 +33,9 @@ export async function PATCH(
     const { quantity } = await req.json()
     const id = parseInt((await params).id)
 
-    const order = await prisma.instoreOrder.findUnique({ where: { id } })
-    if (!order) {
-      return NextResponse.json({ error: '注文が見つかりません' }, { status: 404 })
+    const auth = await authorizeOrderAccess(id, user.role)
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
     await prisma.instoreOrder.update({
@@ -36,7 +53,7 @@ export async function PATCH(
 // キャンセル
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const user = verifyToken(req)
   if (!user) {
@@ -46,9 +63,9 @@ export async function DELETE(
   try {
     const id = parseInt((await params).id)
 
-    const order = await prisma.instoreOrder.findUnique({ where: { id } })
-    if (!order) {
-      return NextResponse.json({ error: '注文が見つかりません' }, { status: 404 })
+    const auth = await authorizeOrderAccess(id, user.role)
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
     await prisma.instoreOrder.update({

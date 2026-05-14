@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
-// 売上取得
+const STORE_BRANCHES = new Set(['nishi', 'minami'])
+
+function canAccessBranch(role: string, branch: string): boolean {
+  if (role === 'all') return true
+  return role === branch
+}
+
+function today() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+// 売上取得（全店舗ぶん。キー: storeCode）
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
   if (!user) {
@@ -10,18 +23,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
     const sales = await prisma.sale.findMany({
-      where   : { saleDate: today },
-      include : { store: true },
+      where  : { saleDate: today() },
+      include: { store: true },
     })
 
-    // 店舗別に整形
     const result: Record<string, any> = {}
     sales.forEach((s) => {
-      result[s.store.storeName] = {
+      result[s.store.storeCode] = {
+        storeName     : s.store.storeName,
         amount        : Number(s.amount),
         souzai        : Number(s.souzaiAmount),
         mochi         : Number(s.mochiAmount),
@@ -48,38 +58,46 @@ export async function POST(req: NextRequest) {
 
   try {
     const data = await req.json()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const branch = data.branch
+
+    if (!branch || !STORE_BRANCHES.has(branch)) {
+      return NextResponse.json({ error: 'branch が不正です' }, { status: 400 })
+    }
+    if (!canAccessBranch(user.role, branch)) {
+      return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+    }
 
     const store = await prisma.store.findUnique({
-      where: { storeCode: user.store },
+      where: { storeCode: branch },
     })
     if (!store) {
       return NextResponse.json({ error: '店舗が見つかりません' }, { status: 404 })
     }
 
+    const saleDate = today()
+
     await prisma.sale.upsert({
-      where : { saleDate_storeId: { saleDate: today, storeId: store.id } },
+      where : { saleDate_storeId: { saleDate, storeId: store.id } },
       update: {
-        amount        : data.amount         || 0,
-        souzaiAmount  : data.souzai         || 0,
-        mochiAmount   : data.mochi          || 0,
-        hanaAmount    : data.hana           || 0,
-        customerCount : data.customerCount  || 0,
-        staffMorning  : data.staffMorning   || 0,
-        staffAfternoon: data.staffAfternoon || 0,
+        amount        : Number(data.amount)         || 0,
+        souzaiAmount  : Number(data.souzai)         || 0,
+        mochiAmount   : Number(data.mochi)          || 0,
+        hanaAmount    : Number(data.hana)           || 0,
+        customerCount : Number(data.customerCount)  || 0,
+        staffMorning  : Number(data.staffMorning)   || 0,
+        staffAfternoon: Number(data.staffAfternoon) || 0,
         inputUser     : user.name,
       },
       create: {
-        saleDate      : today,
+        saleDate,
         storeId       : store.id,
-        amount        : data.amount         || 0,
-        souzaiAmount  : data.souzai         || 0,
-        mochiAmount   : data.mochi          || 0,
-        hanaAmount    : data.hana           || 0,
-        customerCount : data.customerCount  || 0,
-        staffMorning  : data.staffMorning   || 0,
-        staffAfternoon: data.staffAfternoon || 0,
+        amount        : Number(data.amount)         || 0,
+        souzaiAmount  : Number(data.souzai)         || 0,
+        mochiAmount   : Number(data.mochi)          || 0,
+        hanaAmount    : Number(data.hana)           || 0,
+        customerCount : Number(data.customerCount)  || 0,
+        staffMorning  : Number(data.staffMorning)   || 0,
+        staffAfternoon: Number(data.staffAfternoon) || 0,
         inputUser     : user.name,
       },
     })

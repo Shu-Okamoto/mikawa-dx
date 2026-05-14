@@ -17,7 +17,7 @@ interface DashboardData {
 
 function BossPageContent() {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth('boss')
+  const { user, loading, error, authFetch, logout } = useAuth('all')
   const [data, setData]       = useState<DashboardData | null>(null)
   const [fetching, setFetching] = useState(true)
 

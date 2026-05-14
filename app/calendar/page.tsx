@@ -28,7 +28,7 @@ interface CalendarDay {
 
 function CalendarPageContent() {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth('calendar')
+  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'])
   const [calData, setCalData]   = useState<CalendarDay[]>([])
   const [fetching, setFetching] = useState(true)
   const [printModal, setPrintModal] = useState<CalendarDay | null>(null)
@@ -42,10 +42,7 @@ function CalendarPageContent() {
   const fetchCalendar = useCallback(async () => {
     if (!user) return
     setFetching(true)
-    const category = user.category || '弁当'
-    const res  = await authFetch(
-      `/api/calendar?category=${encodeURIComponent(category)}`
-    )
+    const res  = await authFetch('/api/calendar')
     const data = await res.json()
     setCalData(Array.isArray(data) ? data : [])
     setFetching(false)

@@ -2,16 +2,46 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
+const ROLE_TO_CATEGORY: Record<string, string> = {
+  hq1: '野菜',
+  hq2: '果物',
+  hq3: '餅・乾物菓子類',
+}
+
+const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3', 'all'])
+
+function today() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 export async function POST(req: NextRequest) {
   const user = verifyToken(req)
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+  if (!user || !HQ_ROLES.has(user.role)) {
+    return NextResponse.json({ error: '権限がありません' }, { status: 403 })
   }
 
   try {
     const { confirmed } = await req.json()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    if (!Array.isArray(confirmed)) {
+      return NextResponse.json({ error: 'confirmed が不正です' }, { status: 400 })
+    }
+
+    // hq1/hq2/hq3 は自カテゴリ以外への書き込みを拒否
+    if (user.role !== 'all') {
+      const myCategory = ROLE_TO_CATEGORY[user.role]
+      for (const d of confirmed) {
+        if (d.category !== myCategory) {
+          return NextResponse.json(
+            { error: 'カテゴリ権限エラー' },
+            { status: 403 },
+          )
+        }
+      }
+    }
+
+    const orderDate = today()
 
     // 〇・△のみ保存
     const filtered = confirmed.filter((d: any) =>
@@ -19,17 +49,17 @@ export async function POST(req: NextRequest) {
       d.storeBStatus === '〇' || d.storeBStatus === '△'
     )
 
-    // 今日の同カテゴリデータを削除
-    if (filtered.length > 0) {
+    // カテゴリ単位で当日データを削除
+    const categories = Array.from(new Set(filtered.map((d: any) => d.category)))
+    for (const cat of categories) {
       await prisma.confirmedOrder.deleteMany({
         where: {
-          confirmDate: today,
-          product    : { category: filtered[0].category },
+          confirmDate: orderDate,
+          category   : cat as string,
         },
       })
     }
 
-    // 保存
     for (const d of filtered) {
       const product = await prisma.product.findUnique({
         where: { id: d.productId },
@@ -38,12 +68,12 @@ export async function POST(req: NextRequest) {
 
       await prisma.confirmedOrder.create({
         data: {
-          confirmDate: today,
+          confirmDate: orderDate,
           productId  : d.productId,
           category   : d.category,
-          storeAQty  : d.storeAQty || 0,
-          storeBQty  : d.storeBQty || 0,
-          totalQty   : d.totalQty  || 0,
+          storeAQty  : d.storeAQty   || 0,
+          storeBQty  : d.storeBQty   || 0,
+          totalQty   : d.totalQty    || 0,
           adjustedQty: d.adjustedQty || 0,
           vendorId   : product.vendorId,
           isSent     : false,
@@ -51,7 +81,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, count: filtered.length })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })

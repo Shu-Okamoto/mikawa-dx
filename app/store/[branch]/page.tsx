@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, Suspense, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
@@ -20,16 +20,35 @@ interface OrderState {
 }
 
 const CATEGORIES = ['野菜', '果物', '餅・乾物菓子類']
+const VALID_BRANCHES = new Set(['nishi', 'minami'])
+const BRANCH_LABELS: Record<string, string> = {
+  nishi : '西店',
+  minami: '南店',
+}
 
-function StorePageContent() {
+function StorePageContent({ branch }: { branch: string }) {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth('store')
+  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'all'])
   const [products, setProducts]     = useState<Product[]>([])
   const [orderState, setOrderState] = useState<Record<number, OrderState>>({})
   const [currentCat, setCurrentCat] = useState('野菜')
   const [screen, setScreen]         = useState<'input' | 'submitted'>('input')
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast]           = useState('')
+
+  // 不正な branch / 権限なし branch を弾く
+  useEffect(() => {
+    if (loading || error || !user) return
+    if (!VALID_BRANCHES.has(branch)) {
+      router.replace('/')
+      return
+    }
+    if (user.role !== 'all' && user.role !== branch) {
+      router.replace('/')
+    }
+  }, [branch, user, loading, error, router])
+
+  const branchLabel = BRANCH_LABELS[branch] ?? branch
 
   const fetchProducts = useCallback(async () => {
     if (!user) return
@@ -95,7 +114,7 @@ function StorePageContent() {
     setSubmitting(true)
     const res  = await authFetch('/api/daily-orders', {
       method: 'POST',
-      body  : JSON.stringify({ orders }),
+      body  : JSON.stringify({ branch, orders }),
     })
     const data = await res.json()
     setSubmitting(false)
@@ -161,7 +180,7 @@ function StorePageContent() {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div>
               <div style={{ fontSize:'11px', opacity:.8 }}>発注入力</div>
-              <div style={{ fontSize:'20px', fontWeight:500 }}>{user?.storeName}</div>
+              <div style={{ fontSize:'20px', fontWeight:500 }}>{branchLabel}</div>
             </div>
             <button onClick={logout}
               style={{ padding:'8px 14px', background:'rgba(255,255,255,.2)',
@@ -193,7 +212,7 @@ function StorePageContent() {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>送信済み</div>
-                <div style={{ fontSize:'20px', fontWeight:500 }}>{user?.storeName}</div>
+                <div style={{ fontSize:'20px', fontWeight:500 }}>{branchLabel}</div>
               </div>
               <button onClick={logout}
                 style={{ padding:'8px 14px', background:'rgba(255,255,255,.2)',
@@ -239,7 +258,7 @@ function StorePageContent() {
               修正する
             </button>
 
-            <SalesInput user={user} authFetch={authFetch} showToast={showToast} />
+            <SalesInput branch={branch} authFetch={authFetch} showToast={showToast} />
           </div>
         </div>
       )}
@@ -334,7 +353,12 @@ function StorePageContent() {
   )
 }
 
-export default function StorePage() {
+export default function StoreBranchPage({
+  params,
+}: {
+  params: Promise<{ branch: string }>
+}) {
+  const { branch } = use(params)
   return (
     <Suspense fallback={
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -342,12 +366,20 @@ export default function StorePage() {
         読み込み中...
       </div>
     }>
-      <StorePageContent />
+      <StorePageContent branch={branch} />
     </Suspense>
   )
 }
 
-function SalesInput({ user, authFetch, showToast }: any) {
+function SalesInput({
+  branch,
+  authFetch,
+  showToast,
+}: {
+  branch   : string
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  showToast: (msg: string) => void
+}) {
   const [sales, setSales] = useState({
     amount:'', souzai:'', mochi:'', hana:'',
     customerCount:'', staffMorning:'', staffAfternoon:'',
@@ -357,29 +389,29 @@ function SalesInput({ user, authFetch, showToast }: any) {
 
   useEffect(() => {
     authFetch('/api/sales')
-      .then((res: any) => res.json())
-      .then((data: any) => {
-        if (data && user?.storeName && data[user.storeName]) {
-          const s = data[user.storeName]
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data[branch]) {
+          const s = data[branch]
           setSales({
-            amount        : s.amount         || '',
-            souzai        : s.souzai         || '',
-            mochi         : s.mochi          || '',
-            hana          : s.hana           || '',
-            customerCount : s.customerCount  || '',
-            staffMorning  : s.staffMorning   || '',
-            staffAfternoon: s.staffAfternoon || '',
+            amount        : s.amount         ? String(s.amount)         : '',
+            souzai        : s.souzai         ? String(s.souzai)         : '',
+            mochi         : s.mochi          ? String(s.mochi)          : '',
+            hana          : s.hana           ? String(s.hana)           : '',
+            customerCount : s.customerCount  ? String(s.customerCount)  : '',
+            staffMorning  : s.staffMorning   ? String(s.staffMorning)   : '',
+            staffAfternoon: s.staffAfternoon ? String(s.staffAfternoon) : '',
           })
           setSaved(true)
         }
       })
-  }, [user])
+  }, [branch, authFetch])
 
   const handleSave = async () => {
     setSaving(true)
     const res  = await authFetch('/api/sales', {
       method: 'POST',
-      body  : JSON.stringify(sales),
+      body  : JSON.stringify({ branch, ...sales }),
     })
     const data = await res.json()
     setSaving(false)

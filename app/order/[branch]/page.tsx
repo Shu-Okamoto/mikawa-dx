@@ -1,15 +1,15 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, Suspense, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
 interface OrderProduct {
-  id          : number
-  productCode : string
-  productName : string
-  category    : string
-  price       : number
+  id           : number
+  productCode  : string
+  productName  : string
+  category     : string
+  price        : number
   availableDays: string
 }
 
@@ -40,34 +40,51 @@ const DELIVERY_TIMES = [
   '15:00','15:30','16:00','16:30','17:00','17:30',
 ]
 
-function OrderPageContent() {
+const VALID_BRANCHES = new Set(['nishi', 'minami'])
+const BRANCH_LABELS: Record<string, string> = {
+  nishi : '西店',
+  minami: '南店',
+}
+
+function OrderPageContent({ branch }: { branch: string }) {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth('order')
+  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'all'])
   const [screen, setScreen]         = useState<Screen>('list')
   const [orders, setOrders]         = useState<InstoreOrder[]>([])
   const [products, setProducts]     = useState<OrderProduct[]>([])
-  const [availDates, setAvailDates] = useState<string[]>([])
+  const [availDates, setAvailDates] = useState<{ value: string; label: string }[]>([])
   const [toast, setToast]           = useState('')
   const [confirm, setConfirm]       = useState<{ msg: string; onOk: () => void } | null>(null)
 
-  // フォーム状態
   const [selectedDate, setSelectedDate]       = useState('')
-  const [selectedProduct, setSelectedProduct] = useState<OrderProduct | null>(null)
   const [quantities, setQuantities]           = useState<Record<number, number>>({})
   const [form, setForm] = useState({
-    customerName   : '',
-    phone          : '',
-    deliveryMode   : '',
-    address        : '',
-    timeStart      : '',
-    timeEnd        : '',
-    receipt        : 'no',
-    receiptName    : '',
-    purposes       : [] as string[],
-    okazu          : '',
-    notes          : '',
+    customerName: '',
+    phone       : '',
+    deliveryMode: '',
+    address     : '',
+    timeStart   : '',
+    timeEnd     : '',
+    receipt     : 'no',
+    receiptName : '',
+    purposes    : [] as string[],
+    okazu       : '',
+    notes       : '',
   })
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (loading || error || !user) return
+    if (!VALID_BRANCHES.has(branch)) {
+      router.replace('/')
+      return
+    }
+    if (user.role !== 'all' && user.role !== branch) {
+      router.replace('/')
+    }
+  }, [branch, user, loading, error, router])
+
+  const branchLabel = BRANCH_LABELS[branch] ?? branch
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -78,17 +95,15 @@ function OrderPageContent() {
     setConfirm({ msg, onOk })
   }
 
-  // 注文一覧取得
   const fetchOrders = useCallback(async () => {
     if (!user) return
-    const res  = await authFetch('/api/orders')
+    const res  = await authFetch(`/api/orders?branch=${branch}`)
     const data = await res.json()
     setOrders(Array.isArray(data) ? data : [])
-  }, [user])
+  }, [user, branch])
 
-  // 利用可能日付取得（今日から30日）
   const buildAvailDates = useCallback(() => {
-    const dates = []
+    const dates: { value: string; label: string }[] = []
     const days  = ['日','月','火','水','木','金','土']
     for (let i = 1; i <= 30; i++) {
       const d = new Date()
@@ -100,21 +115,20 @@ function OrderPageContent() {
         '日(' + days[d.getDay()] + ')'
       dates.push({ value: str, label })
     }
-    setAvailDates(dates as any)
+    setAvailDates(dates)
   }, [])
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !error) {
       fetchOrders()
       buildAvailDates()
     }
-  }, [loading, fetchOrders, buildAvailDates])
+  }, [loading, error, fetchOrders, buildAvailDates])
 
-  // 日付選択後に商品取得
   const handleDateSelect = async (date: string) => {
     setSelectedDate(date)
     const res  = await authFetch(
-      `/api/order-products?deliveryDate=${encodeURIComponent(date)}`
+      `/api/order-products?deliveryDate=${encodeURIComponent(date)}`,
     )
     const data = await res.json()
     setProducts(Array.isArray(data) ? data : [])
@@ -122,7 +136,6 @@ function OrderPageContent() {
     setScreen('product')
   }
 
-  // 注文送信
   const handleSubmit = async () => {
     const { customerName, phone, deliveryMode,
             address, timeStart, timeEnd,
@@ -159,6 +172,7 @@ function OrderPageContent() {
       const res = await authFetch('/api/orders', {
         method: 'POST',
         body  : JSON.stringify({
+          branch,
           deliveryDate   : selectedDate,
           productId      : p.id,
           productName    : p.productName,
@@ -188,7 +202,6 @@ function OrderPageContent() {
     }
   }
 
-  // キャンセル
   const handleCancel = (orderId: number) => {
     showConfirm('この注文をキャンセルしますか？', async () => {
       const res  = await authFetch(`/api/orders/${orderId}`, { method: 'DELETE' })
@@ -247,7 +260,7 @@ function OrderPageContent() {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>惣菜注文受付</div>
-                <div style={{ fontSize:'20px', fontWeight:500 }}>{user?.storeName}</div>
+                <div style={{ fontSize:'20px', fontWeight:500 }}>{branchLabel}</div>
               </div>
               <div style={{ display:'flex', gap:'8px' }}>
                 <button onClick={() => setScreen('date')}
@@ -330,7 +343,7 @@ function OrderPageContent() {
           <div style={{ padding:'12px' }}>
             <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
               boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-              {(availDates as any[]).map((d: any, idx) => (
+              {availDates.map((d, idx) => (
                 <button key={d.value} onClick={() => handleDateSelect(d.value)}
                   style={{ width:'100%', padding:'14px 16px', textAlign:'left',
                     background:'white', border:'none',
@@ -460,7 +473,6 @@ function OrderPageContent() {
             <div style={{ background:'white', borderRadius:'16px', padding:'16px',
               marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
 
-              {/* お名前 */}
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'4px' }}>お名前 *</label>
@@ -472,7 +484,6 @@ function OrderPageContent() {
                   placeholder="山田 太郎" />
               </div>
 
-              {/* 電話番号 */}
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'4px' }}>電話番号（ハイフンなし）*</label>
@@ -484,7 +495,6 @@ function OrderPageContent() {
                   placeholder="09012345678" />
               </div>
 
-              {/* 受け取り方法 */}
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'8px' }}>お受け取り方法 *</label>
@@ -505,7 +515,6 @@ function OrderPageContent() {
                 </div>
               </div>
 
-              {/* 配達の場合 */}
               {form.deliveryMode === 'delivery' && (
                 <>
                   <div style={{ marginBottom:'12px' }}>
@@ -547,7 +556,6 @@ function OrderPageContent() {
                 </>
               )}
 
-              {/* 用途 */}
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'8px' }}>用途</label>
@@ -573,7 +581,6 @@ function OrderPageContent() {
                 </div>
               </div>
 
-              {/* おかず */}
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'4px' }}>おかず・オプション</label>
@@ -585,7 +592,6 @@ function OrderPageContent() {
                   placeholder="例: 唐揚げ追加" />
               </div>
 
-              {/* 領収書 */}
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'8px' }}>領収書</label>
@@ -614,7 +620,6 @@ function OrderPageContent() {
                 )}
               </div>
 
-              {/* 備考 */}
               <div style={{ marginBottom:'16px' }}>
                 <label style={{ fontSize:'12px', color:'#888780', display:'block',
                   marginBottom:'4px' }}>備考</label>
@@ -716,7 +721,12 @@ function OrderPageContent() {
   )
 }
 
-export default function OrderPage() {
+export default function OrderBranchPage({
+  params,
+}: {
+  params: Promise<{ branch: string }>
+}) {
+  const { branch } = use(params)
   return (
     <Suspense fallback={
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -724,7 +734,7 @@ export default function OrderPage() {
         読み込み中...
       </div>
     }>
-      <OrderPageContent />
+      <OrderPageContent branch={branch} />
     </Suspense>
   )
 }
