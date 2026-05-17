@@ -41,6 +41,7 @@ const NAV_ITEMS = [
   { href: '/boss/products',        label: '🥬 商品' },
   { href: '/boss/order-products',  label: '🍱 店内商品' },
   { href: '/boss/vendors',         label: '🏢 仕入先' },
+  { href: '/boss/import',          label: '📥 インポート' },
 ]
 
 export function BossNav({ active }: { active: string }) {
