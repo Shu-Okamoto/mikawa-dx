@@ -5,6 +5,13 @@ import { useRouter } from 'next/navigation'
 
 type RoleKey = 'nishi' | 'minami' | 'hq1' | 'hq2' | 'hq3' | 'all'
 
+type Entry = {
+  role : RoleKey
+  path : string
+  label: string
+}
+
+// 既ログイン時のデフォルト遷移先（role ごとに 1 つ）
 const roleHome: Record<RoleKey, string> = {
   nishi : '/store/nishi',
   minami: '/store/minami',
@@ -14,33 +21,46 @@ const roleHome: Record<RoleKey, string> = {
   all   : '/boss',
 }
 
-const roleGroups: { title: string; options: { role: RoleKey; label: string }[] }[] = [
+const entryGroups: { title: string; entries: Entry[] }[] = [
   {
-    title: '店舗',
-    options: [
-      { role: 'nishi',  label: '西店' },
-      { role: 'minami', label: '南店' },
+    title: '西店',
+    entries: [
+      { role: 'nishi', path: '/store/nishi', label: '発注' },
+      { role: 'nishi', path: '/order/nishi', label: '注文' },
+    ],
+  },
+  {
+    title: '南店',
+    entries: [
+      { role: 'minami', path: '/store/minami', label: '発注' },
+      { role: 'minami', path: '/order/minami', label: '注文' },
     ],
   },
   {
     title: '本部',
-    options: [
-      { role: 'hq1', label: '野菜担当' },
-      { role: 'hq2', label: '果物担当' },
-      { role: 'hq3', label: '餅・乾物担当' },
+    entries: [
+      { role: 'hq1', path: '/hq', label: '野菜担当' },
+      { role: 'hq2', path: '/hq', label: '果物担当' },
+      { role: 'hq3', path: '/hq', label: '餅・乾物担当' },
+    ],
+  },
+  {
+    title: '共通',
+    entries: [
+      { role: 'all', path: '/calendar', label: 'カレンダー' },
     ],
   },
   {
     title: 'オーナー',
-    options: [
-      { role: 'all', label: '全権限' },
+    entries: [
+      { role: 'all', path: '/boss', label: '全権限' },
     ],
   },
 ]
 
 export default function HomePage() {
   const router = useRouter()
-  const [busy, setBusy]   = useState<RoleKey | null>(null)
+  const [busy, setBusy]   = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -56,14 +76,15 @@ export default function HomePage() {
     }
   }, [router])
 
-  const login = async (role: RoleKey) => {
-    setBusy(role)
+  const login = async (entry: Entry) => {
+    const key = `${entry.role}:${entry.path}`
+    setBusy(key)
     setError(null)
     try {
       const res = await fetch('/api/auth/role', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ role }),
+        body   : JSON.stringify({ role: entry.role }),
       })
       const data = await res.json()
       if (!res.ok || !data.token) {
@@ -73,7 +94,7 @@ export default function HomePage() {
       }
       localStorage.setItem('token', data.token)
       localStorage.setItem('user',  JSON.stringify(data.user))
-      router.push(roleHome[role])
+      router.push(entry.path)
     } catch {
       setError('サーバーエラーが発生しました')
       setBusy(null)
@@ -110,20 +131,21 @@ export default function HomePage() {
         }}>
           <p style={{ fontSize: '13px', color: '#888780', marginBottom: '16px',
             textAlign: 'center' }}>
-            ログインする役割を選んでください
+            入りたい画面を選んでください
           </p>
 
-          {roleGroups.map((group) => (
+          {entryGroups.map((group) => (
             <div key={group.title} style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '12px', color: '#888780',
                 marginBottom: '6px' }}>{group.title}</div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {group.options.map((opt) => {
-                  const isBusy = busy === opt.role
+                {group.entries.map((entry) => {
+                  const key = `${entry.role}:${entry.path}`
+                  const isBusy = busy === key
                   return (
                     <button
-                      key={opt.role}
-                      onClick={() => login(opt.role)}
+                      key={key}
+                      onClick={() => login(entry)}
                       disabled={!!busy}
                       style={{
                         flex        : '1 1 auto',
@@ -138,7 +160,7 @@ export default function HomePage() {
                         opacity     : busy && !isBusy ? 0.5 : 1,
                       }}
                     >
-                      {isBusy ? '...' : opt.label}
+                      {isBusy ? '...' : entry.label}
                     </button>
                   )
                 })}
