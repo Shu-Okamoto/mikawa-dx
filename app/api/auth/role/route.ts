@@ -12,15 +12,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid role' }, { status: 400 })
     }
 
-    const user = await prisma.user.findFirst({
+    let user = await prisma.user.findFirst({
       where  : { role, isActive: true },
       include: { store: true },
       orderBy: { id: 'asc' },
     })
 
+    // 該当 role が未登録なら all で代行（all は全ページ閲覧可）
+    if (!user && role !== 'all') {
+      user = await prisma.user.findFirst({
+        where  : { role: 'all', isActive: true },
+        include: { store: true },
+        orderBy: { id: 'asc' },
+      })
+    }
+
     if (!user) {
       return NextResponse.json(
-        { error: '該当ロールのユーザーが見つかりません' },
+        { error: '該当ロールのユーザーが見つかりません (all も未登録)' },
         { status: 404 }
       )
     }
