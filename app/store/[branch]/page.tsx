@@ -576,7 +576,19 @@ function InputScreen({
           )
         })}
 
-        <div style={{ padding: '12px 16px', borderTop: '2px solid #F0ECE3' }}>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid #F5F1EA' }}>
+          <button onClick={addTempItem} style={{
+            width: '100%', padding: '10px',
+            border: '1.5px dashed #E5E1D8', borderRadius: '10px',
+            background: 'white', color: '#888780', fontSize: '14px',
+            fontFamily: 'inherit', cursor: 'pointer',
+          }}>＋ 商品を追加する</button>
+        </div>
+
+        <div style={{
+          padding: '12px 16px', borderTop: '2px solid #F0ECE3',
+          marginBottom: '100px',
+        }}>
           <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '6px' }}>
             📝 注文欄（メモ）
           </div>
@@ -593,18 +605,6 @@ function InputScreen({
               boxSizing: 'border-box',
             }}
           />
-        </div>
-
-        <div style={{
-          padding: '12px 16px', borderTop: '1px solid #F5F1EA',
-          marginBottom: '100px',
-        }}>
-          <button onClick={addTempItem} style={{
-            width: '100%', padding: '10px',
-            border: '1.5px dashed #E5E1D8', borderRadius: '10px',
-            background: 'white', color: '#888780', fontSize: '14px',
-            fontFamily: 'inherit', cursor: 'pointer',
-          }}>＋ 商品を追加する</button>
         </div>
       </div>
 
