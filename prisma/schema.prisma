@@ -11,14 +11,15 @@ datasource db {
 }
 
 model Store {
-  id            Int            @id @default(autoincrement())
-  storeCode     String         @unique
-  storeName     String
-  createdAt     DateTime       @default(now())
-  dailyOrders   DailyOrder[]
-  instoreOrders InstoreOrder[]
-  sales         Sale[]
-  users         User[]
+  id                 Int                  @id @default(autoincrement())
+  storeCode          String               @unique
+  storeName          String
+  createdAt          DateTime             @default(now())
+  dailyOrders        DailyOrder[]
+  instoreOrders      InstoreOrder[]
+  sales              Sale[]
+  users              User[]
+  orderCategoryMemos OrderCategoryMemo[]
 }
 
 model Vendor {
@@ -138,6 +139,19 @@ model InstoreOrder {
   status          String        @default("active")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @default(now()) @updatedAt
+}
+
+model OrderCategoryMemo {
+  id        Int      @id @default(autoincrement())
+  orderDate DateTime @db.Date
+  store     Store    @relation(fields: [storeId], references: [id])
+  storeId   Int
+  category  String
+  memo      String
+  inputUser String?
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([orderDate, storeId, category])
 }
 
 model Sale {
