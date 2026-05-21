@@ -7,6 +7,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: env("DATABASE_URL"),
+    // Prisma CLI（migrate / db push / introspect）は pgbouncer 経由だと
+    // prepared statement で失敗するため direct connection を使う。
+    // ランタイム（lib/prisma.ts の Pool）は DATABASE_URL = pooler を使う。
+    url: env("DIRECT_URL"),
   },
 });

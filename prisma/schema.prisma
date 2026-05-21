@@ -8,18 +8,21 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["dx"]
 }
 
 model Store {
-  id                 Int                  @id @default(autoincrement())
-  storeCode          String               @unique
+  id                 Int                 @id @default(autoincrement())
+  storeCode          String              @unique
   storeName          String
-  createdAt          DateTime             @default(now())
+  createdAt          DateTime            @default(now())
   dailyOrders        DailyOrder[]
   instoreOrders      InstoreOrder[]
   sales              Sale[]
   users              User[]
   orderCategoryMemos OrderCategoryMemo[]
+
+  @@schema("dx")
 }
 
 model Vendor {
@@ -33,6 +36,8 @@ model Vendor {
   createdAt       DateTime         @default(now())
   products        Product[]
   confirmedOrders ConfirmedOrder[]
+
+  @@schema("dx")
 }
 
 model Product {
@@ -49,6 +54,8 @@ model Product {
   updatedAt       DateTime         @default(now()) @updatedAt
   dailyOrders     DailyOrder[]
   confirmedOrders ConfirmedOrder[]
+
+  @@schema("dx")
 }
 
 model OrderProduct {
@@ -63,11 +70,13 @@ model OrderProduct {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @default(now()) @updatedAt
   instoreOrders InstoreOrder[]
+
+  @@schema("dx")
 }
 
 model User {
   id          Int      @id @default(autoincrement())
-  email       String?  @unique  // ★ String? にする（nullable）
+  email       String?  @unique // ★ String? にする（nullable）
   name        String
   role        String
   store       Store?   @relation(fields: [storeId], references: [id])
@@ -79,7 +88,10 @@ model User {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
+
+  @@schema("dx")
 }
+
 model DailyOrder {
   id          Int       @id @default(autoincrement())
   orderDate   DateTime  @db.Date
@@ -95,6 +107,7 @@ model DailyOrder {
   updatedAt   DateTime  @default(now()) @updatedAt
 
   @@unique([orderDate, storeId, productId])
+  @@schema("dx")
 }
 
 model ConfirmedOrder {
@@ -113,6 +126,8 @@ model ConfirmedOrder {
   isSent      Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
+
+  @@schema("dx")
 }
 
 model InstoreOrder {
@@ -139,6 +154,8 @@ model InstoreOrder {
   status          String        @default("active")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @default(now()) @updatedAt
+
+  @@schema("dx")
 }
 
 model OrderCategoryMemo {
@@ -152,6 +169,7 @@ model OrderCategoryMemo {
   updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([orderDate, storeId, category])
+  @@schema("dx")
 }
 
 model Sale {
@@ -172,4 +190,5 @@ model Sale {
   updatedAt      DateTime @default(now()) @updatedAt
 
   @@unique([saleDate, storeId])
+  @@schema("dx")
 }
