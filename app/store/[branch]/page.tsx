@@ -45,7 +45,18 @@ interface SalesData {
   staffAfternoon: string
 }
 
-type Screen = 'catselect' | 'input' | 'sales' | 'submitted'
+type Screen = 'catselect' | 'input' | 'sales' | 'submitted' | 'history' | 'history-detail'
+
+interface HistoryOrder {
+  productId  : number | string
+  productName: string
+  category   : string
+  unit       : string
+  status     : string
+  qty        : number | string
+}
+
+const FONT_STACK = "-apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif"
 
 const VALID_BRANCHES = new Set(['nishi', 'minami'])
 const BRANCH_LABELS: Record<string, string> = {
@@ -73,6 +84,24 @@ function todayJpLabel(d: Date) {
   return `${d.getMonth() + 1}月${d.getDate()}日(${DAY_NAMES[d.getDay()]})`
 }
 
+function past7Days(): { dateStr: string; label: string }[] {
+  const out: { dateStr: string; label: string }[] = []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    const yyyy = d.getFullYear()
+    const mm   = String(d.getMonth() + 1).padStart(2, '0')
+    const dd   = String(d.getDate()).padStart(2, '0')
+    out.push({
+      dateStr: `${yyyy}-${mm}-${dd}`,
+      label  : `${d.getMonth() + 1}月${d.getDate()}日(${DAY_NAMES[d.getDay()]})`,
+    })
+  }
+  return out
+}
+
 function StorePageContent({ branch }: { branch: string }) {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'all'])
@@ -89,6 +118,10 @@ function StorePageContent({ branch }: { branch: string }) {
   const [currentCat, setCurrentCat] = useState<string>('')
   const [busy, setBusy]             = useState(false)
   const [toast, setToast]           = useState('')
+  const [historyDate, setHistoryDate]       = useState<{ dateStr: string; label: string } | null>(null)
+  const [historyOrders, setHistoryOrders]   = useState<HistoryOrder[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError]     = useState<string | null>(null)
 
   // 不正な branch / 権限なし branch を弾く
   useEffect(() => {
@@ -222,6 +255,49 @@ function StorePageContent({ branch }: { branch: string }) {
   }
 
   const backToCatSelect = () => { setScreen('catselect'); setCurrentCat('') }
+
+  const showHistoryList = () => {
+    setHistoryDate(null)
+    setHistoryOrders(null)
+    setHistoryError(null)
+    setScreen('history')
+  }
+
+  const showHistoryDetail = async (entry: { dateStr: string; label: string }) => {
+    setHistoryDate(entry)
+    setHistoryOrders(null)
+    setHistoryError(null)
+    setHistoryLoading(true)
+    setScreen('history-detail')
+    try {
+      const res = await authFetch(`/api/daily-orders?branch=${branch}&date=${entry.dateStr}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setHistoryError(data.error || '読み込みエラー')
+        setHistoryLoading(false)
+        return
+      }
+      const orders: HistoryOrder[] = (data.orders || []).map((o: any) => ({
+        productId  : o.productId,
+        productName: o.product?.productName ?? '(不明)',
+        category   : o.product?.category ?? '',
+        unit       : o.product?.unit ?? '',
+        status     : o.status || '―',
+        qty        : Number(o.requestQty) || 0,
+      }))
+      ;(data.memos || []).forEach((m: { category: string; memo: string }) => {
+        orders.push({
+          productId: `MEMO_${m.category}`, productName: m.memo, category: m.category,
+          unit: '', status: 'MEMO', qty: 0,
+        })
+      })
+      setHistoryOrders(orders)
+    } catch (e: any) {
+      setHistoryError(e?.message || '読み込みエラー')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   const setStatus = (id: number | string, status: string) => {
     setOrderState((prev) => ({
@@ -359,8 +435,8 @@ function StorePageContent({ branch }: { branch: string }) {
 
   return (
     <div style={{
-      fontFamily: '-apple-system,sans-serif', background: '#F5F1EA',
-      minHeight: '100vh', paddingBottom: '40px',
+      fontFamily: FONT_STACK, background: '#F5F1EA',
+      minHeight: '100vh', paddingBottom: '40px', color: '#2C2C2A',
     }}>
       <Header dateLabel={dateLabel} nameLabel={`${branchLabel} · ${user?.name ?? ''}`} onLogout={logout} />
 
@@ -370,6 +446,25 @@ function StorePageContent({ branch }: { branch: string }) {
           sentByCat={sentByCat}
           salesSent={salesSent}
           onSelect={onCatSelected}
+          onShowHistory={showHistoryList}
+        />
+      )}
+
+      {screen === 'history' && (
+        <HistoryScreen
+          dates={past7Days()}
+          onBack={backToCatSelect}
+          onSelectDate={showHistoryDetail}
+        />
+      )}
+
+      {screen === 'history-detail' && historyDate && (
+        <HistoryDetailScreen
+          label={historyDate.label}
+          orders={historyOrders}
+          loading={historyLoading}
+          error={historyError}
+          onBack={showHistoryList}
         />
       )}
 
@@ -440,8 +535,8 @@ function Header({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontSize: '11px', opacity: .8, marginBottom: '3px' }}>本日の発注入力</div>
-          <div style={{ fontSize: '20px', fontWeight: 500, marginBottom: '2px' }}>{dateLabel}</div>
+          <div style={{ fontSize: '13px', opacity: .8, marginBottom: '3px' }}>本日の発注入力</div>
+          <div style={{ fontSize: '24px', fontWeight: 500, marginBottom: '2px' }}>{dateLabel}</div>
           <div style={{ fontSize: '13px', opacity: .9 }}>{nameLabel}</div>
         </div>
         <button onClick={onLogout} style={{
@@ -456,12 +551,13 @@ function Header({
 }
 
 function CatSelectScreen({
-  requiredCats, sentByCat, salesSent, onSelect,
+  requiredCats, sentByCat, salesSent, onSelect, onShowHistory,
 }: {
-  requiredCats: string[]
-  sentByCat   : Record<string, SentCategory>
-  salesSent   : SentCategory | null
-  onSelect    : (cat: string) => void
+  requiredCats : string[]
+  sentByCat    : Record<string, SentCategory>
+  salesSent    : SentCategory | null
+  onSelect     : (cat: string) => void
+  onShowHistory: () => void
 }) {
   const all = [...requiredCats, '実績']
   return (
@@ -486,7 +582,7 @@ function CatSelectScreen({
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <span style={{ fontSize: '32px' }}>{CAT_ICONS[cat] || '📦'}</span>
               <div>
-                <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '2px' }}>{cat}</div>
+                <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>{cat}</div>
                 <div style={{
                   fontSize: '12px',
                   color: isSent ? '#3B6D11' : '#888780',
@@ -497,7 +593,7 @@ function CatSelectScreen({
               </div>
             </div>
             <button style={{
-              padding: '10px 18px', borderRadius: '10px', fontSize: '13px',
+              padding: '10px 18px', borderRadius: '10px', fontSize: '18px',
               fontWeight: 500, border: isSent ? '1.5px solid #639922' : 'none',
               background: isSent ? '#EAF3DE' : '#2C2C2A',
               color    : isSent ? '#3B6D11' : 'white',
@@ -508,6 +604,31 @@ function CatSelectScreen({
           </div>
         )
       })}
+
+      {/* 過去の発注カード */}
+      <div onClick={onShowHistory} style={{
+        background  : '#FAFAFA',
+        borderRadius: '16px', padding: '18px 20px',
+        marginBottom: '12px',
+        boxShadow   : '0 2px 8px rgba(0,0,0,.04)',
+        display     : 'flex', alignItems: 'center', justifyContent: 'space-between',
+        border      : '2px solid #E5E1D8',
+        cursor      : 'pointer',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span style={{ fontSize: '32px' }}>📂</span>
+          <div>
+            <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>過去の発注</div>
+            <div style={{ fontSize: '12px', color: '#888780' }}>過去7日間を閲覧</div>
+          </div>
+        </div>
+        <button style={{
+          padding: '10px 18px', borderRadius: '10px', fontSize: '18px',
+          fontWeight: 500, border: '1.5px solid #E5E1D8',
+          background: '#F5F1EA', color: '#888780',
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>閲覧する</button>
+      </div>
     </div>
   )
 }
@@ -579,7 +700,7 @@ function InputScreen({
           <button onClick={addTempItem} style={{
             width: '100%', padding: '10px',
             border: '1.5px dashed #E5E1D8', borderRadius: '10px',
-            background: 'white', color: '#888780', fontSize: '14px',
+            background: 'white', color: '#2C2C2A', fontSize: '20px',
             fontFamily: 'inherit', cursor: 'pointer',
           }}>＋ 商品を追加する</button>
         </div>
@@ -588,7 +709,7 @@ function InputScreen({
           padding: '12px 16px', borderTop: '2px solid #F0ECE3',
           marginBottom: '100px',
         }}>
-          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '6px' }}>
+          <div style={{ fontSize: '16px', color: '#2C2C2A', fontWeight: 500, marginBottom: '6px' }}>
             📝 注文欄（メモ）
           </div>
           <textarea
@@ -599,7 +720,7 @@ function InputScreen({
             style={{
               width: '100%', padding: '10px',
               border: '1.5px solid #E5E1D8', borderRadius: '10px',
-              fontSize: '14px', fontFamily: 'inherit',
+              fontSize: '16px', fontFamily: 'inherit',
               resize: 'none', background: 'white', color: '#2C2C2A',
               boxSizing: 'border-box',
             }}
@@ -655,10 +776,10 @@ function ItemRow({
             style={{
               width: '100%', padding: '6px 8px',
               border: '1.5px solid #E5E1D8', borderRadius: '8px',
-              fontSize: '14px', fontFamily: 'inherit',
+              fontSize: '20px', fontFamily: 'inherit',
             }} />
         ) : (
-          <div style={{ fontSize: '15px', fontWeight: 500, marginBottom: '2px' }}>{name}</div>
+          <div style={{ fontSize: '20px', fontWeight: 500, marginBottom: '2px' }}>{name}</div>
         )}
         {hint && (
           <div style={{ fontSize: '11px', color: '#A8A69E', marginTop: '2px' }}>{hint}</div>
@@ -712,7 +833,9 @@ function ItemRow({
   )
 }
 
-function BackBar({ onBack, title }: { onBack: () => void; title: string }) {
+function BackBar({ onBack, title, backLabel = '← カテゴリ一覧' }: {
+  onBack: () => void; title: string; backLabel?: string
+}) {
   return (
     <div style={{
       background: 'white', borderBottom: '1px solid #F0ECE3',
@@ -721,10 +844,134 @@ function BackBar({ onBack, title }: { onBack: () => void; title: string }) {
     }}>
       <button onClick={onBack} style={{
         padding: '6px 12px', border: '1.5px solid #E5E1D8',
-        borderRadius: '8px', background: 'white', fontSize: '13px',
+        borderRadius: '8px', background: 'white', fontSize: '16px',
         fontFamily: 'inherit', cursor: 'pointer', color: '#2C2C2A',
-      }}>← カテゴリ一覧</button>
-      <span style={{ fontSize: '15px', fontWeight: 500 }}>{title}</span>
+      }}>{backLabel}</button>
+      <span style={{ fontSize: '18px', fontWeight: 500 }}>{title}</span>
+    </div>
+  )
+}
+
+function HistoryScreen({
+  dates, onBack, onSelectDate,
+}: {
+  dates       : { dateStr: string; label: string }[]
+  onBack      : () => void
+  onSelectDate: (d: { dateStr: string; label: string }) => void
+}) {
+  return (
+    <div>
+      <BackBar onBack={onBack} title="📂 過去の発注" />
+      <div style={{ padding: '16px' }}>
+        <div style={{ fontSize: '12px', color: '#888780', marginBottom: '12px' }}>
+          閲覧する日付を選んでください（過去7日間）
+        </div>
+        {dates.map((d) => (
+          <button key={d.dateStr}
+            onClick={() => onSelectDate(d)}
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              width: '100%', padding: '14px 16px',
+              background: 'white', border: '1.5px solid #E5E1D8',
+              borderRadius: '12px', marginBottom: '8px',
+              fontSize: '14px', fontFamily: 'inherit', cursor: 'pointer',
+              textAlign: 'left', color: '#2C2C2A',
+            }}>
+            <span style={{ fontWeight: 500 }}>{d.label}</span>
+            <span style={{ color: '#888780', fontSize: '18px' }}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function HistoryDetailScreen({
+  label, orders, loading, error, onBack,
+}: {
+  label  : string
+  orders : HistoryOrder[] | null
+  loading: boolean
+  error  : string | null
+  onBack : () => void
+}) {
+  const statusColors: Record<string, string> = {
+    '〇': '#EAF3DE', '△': '#FAEEDA', '×': '#FCEBEB', '―': '#F5F1EA',
+  }
+  const statusText: Record<string, string> = {
+    '〇': '在庫なし', '△': '残り少ない', '×': '在庫あり', '―': '未入力',
+  }
+  const catIcons: Record<string, string> = {
+    '野菜': '🥬', '果物': '🍎', '餅・乾物菓子類': '🍘',
+  }
+
+  // カテゴリ毎に整理
+  const byCat = new Map<string, { items: HistoryOrder[]; memo: string | null }>()
+  ;(orders || []).forEach((o) => {
+    if (!byCat.has(o.category)) byCat.set(o.category, { items: [], memo: null })
+    const bucket = byCat.get(o.category)!
+    if (o.status === 'MEMO') bucket.memo = String(o.productName)
+    else bucket.items.push(o)
+  })
+
+  return (
+    <div>
+      <BackBar onBack={onBack} title={label} backLabel="← 日付一覧" />
+      <div style={{ padding: '16px', paddingBottom: '40px' }}>
+        {loading && <div style={{ padding: '20px', textAlign: 'center', color: '#888780' }}>読み込み中...</div>}
+        {error && (
+          <div style={{ padding: '20px', color: '#E24B4A', fontSize: '13px' }}>
+            読み込みエラー: {error}
+          </div>
+        )}
+        {!loading && !error && byCat.size === 0 && (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#888780', fontSize: '14px' }}>
+            この日の発注データはありません
+          </div>
+        )}
+        {!loading && !error && Array.from(byCat.entries()).map(([cat, bucket]) => (
+          <div key={cat} style={{
+            background: 'white', borderRadius: '14px', overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,.04)', marginBottom: '12px',
+          }}>
+            <div style={{
+              padding: '12px 16px', borderBottom: '1px solid #F0ECE3',
+              fontWeight: 500, fontSize: '14px',
+            }}>{(catIcons[cat] || '📦') + ' ' + cat}</div>
+            {bucket.items.map((o, i) => {
+              const s = o.status || '―'
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 16px', borderBottom: '1px solid #F5F1EA',
+                }}>
+                  <span style={{ fontSize: '14px', fontWeight: 500 }}>{o.productName}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      padding: '4px 10px', borderRadius: '20px', fontSize: '12px',
+                      fontWeight: 500, background: statusColors[s] ?? '#F5F1EA',
+                    }}>{s} {statusText[s] || ''}</span>
+                    {Number(o.qty) > 0 && (
+                      <span style={{ fontSize: '13px', color: '#3B6D11', fontWeight: 500 }}>
+                        {o.qty}{o.unit}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            {bucket.memo && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: '8px',
+                padding: '10px 16px', background: '#FFFBF0', whiteSpace: 'pre-wrap',
+              }}>
+                <span style={{ fontSize: '12px', color: '#888780' }}>📝</span>
+                <span style={{ fontSize: '13px', color: '#2C2C2A', flex: 1 }}>{bucket.memo}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -748,7 +995,7 @@ function FooterBar({
       <button onClick={onClick} disabled={disabled} style={{
         width: '100%', padding: '15px',
         border: 'none', background: disabled ? '#888780' : '#2C2C2A',
-        color: 'white', fontSize: '16px', fontWeight: 500,
+        color: 'white', fontSize: '20px', fontWeight: 500,
         borderRadius: '13px', cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: 'inherit',
       }}>{buttonLabel}</button>
@@ -769,12 +1016,12 @@ function SalesScreen({
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '10px',
     border: '1.5px solid #E5E1D8', borderRadius: '8px',
-    fontSize: '14px', fontFamily: 'inherit',
+    fontSize: '20px', fontFamily: 'inherit',
     background: 'white', color: '#2C2C2A', textAlign: 'right',
     boxSizing: 'border-box',
   }
   const labelStyle: React.CSSProperties = {
-    fontSize: '11px', color: '#888780', marginBottom: '4px',
+    fontSize: '14px', color: '#2C2C2A', marginBottom: '4px',
   }
   return (
     <div>
@@ -966,7 +1213,7 @@ function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      minHeight: '100vh', fontFamily: '-apple-system,sans-serif',
+      minHeight: '100vh', fontFamily: FONT_STACK,
     }}>{children}</div>
   )
 }
@@ -975,7 +1222,7 @@ function ErrorBox({ msg, onBack }: { msg: string; onBack: () => void }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      minHeight: '100vh', fontFamily: '-apple-system,sans-serif', background: '#F5F1EA',
+      minHeight: '100vh', fontFamily: FONT_STACK, background: '#F5F1EA',
     }}>
       <div style={{
         background: 'white', borderRadius: '16px', padding: '40px',

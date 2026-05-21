@@ -16,7 +16,18 @@ function today() {
   return d
 }
 
-// 発注データ取得（category 指定なら絞り込み、memo も返す）
+// "YYYY-MM-DD" を UTC 00:00 の Date に変換。書式不正なら null。
+function parseDateParam(s: string | null): Date | null {
+  if (!s) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return null
+  const d = new Date(s + 'T00:00:00Z')
+  return isNaN(d.getTime()) ? null : d
+}
+
+// 発注データ取得
+// - ?date=YYYY-MM-DD: その日付の発注（過去閲覧用）。未指定なら今日。
+// - ?category=...   : カテゴリ絞り込み
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
   if (!user) {
@@ -25,6 +36,7 @@ export async function GET(req: NextRequest) {
 
   const branch   = req.nextUrl.searchParams.get('branch')
   const category = req.nextUrl.searchParams.get('category') || undefined
+  const dateParam = req.nextUrl.searchParams.get('date')
   if (!branch || !STORE_BRANCHES.has(branch)) {
     return NextResponse.json({ error: 'branch が不正です' }, { status: 400 })
   }
@@ -34,11 +46,15 @@ export async function GET(req: NextRequest) {
   if (category && !VALID_CATEGORIES.has(category)) {
     return NextResponse.json({ error: 'category が不正です' }, { status: 400 })
   }
+  const targetDate = dateParam ? parseDateParam(dateParam) : today()
+  if (!targetDate) {
+    return NextResponse.json({ error: 'date が不正です (YYYY-MM-DD)' }, { status: 400 })
+  }
 
   try {
     const orders = await prisma.dailyOrder.findMany({
       where: {
-        orderDate: today(),
+        orderDate: targetDate,
         store    : { storeCode: branch },
         ...(category ? { product: { category } } : {}),
       },
@@ -48,12 +64,12 @@ export async function GET(req: NextRequest) {
     let memos: { category: string; memo: string }[] = []
     if (category) {
       const m = await prisma.orderCategoryMemo.findFirst({
-        where : { orderDate: today(), store: { storeCode: branch }, category },
+        where : { orderDate: targetDate, store: { storeCode: branch }, category },
       })
       memos = m ? [{ category: m.category, memo: m.memo }] : []
     } else {
       const all = await prisma.orderCategoryMemo.findMany({
-        where: { orderDate: today(), store: { storeCode: branch } },
+        where: { orderDate: targetDate, store: { storeCode: branch } },
       })
       memos = all.map((m: { category: string; memo: string }) => ({
         category: m.category, memo: m.memo,
