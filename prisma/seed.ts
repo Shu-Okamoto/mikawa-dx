@@ -40,28 +40,30 @@ async function main() {
   })
   console.log('業者マスタ投入完了:', { vendor1, vendor2 })
 
-  // ユーザーマスタ
+  // ユーザーマスタ（6 ロール体系: nishi / minami / hq1 / hq2 / hq3 / all）
   const users = [
-    { email: 'nishi@satonoaji-mikawa.net',       name: '西店スタッフ', role: 'store',    storeId: nishi.id,  category: null },
-    { email: 'minami@satonoaji-mikawa.net',      name: '南店スタッフ', role: 'store',    storeId: minami.id, category: null },
-    { email: 'hq-veg@satonoaji-mikawa.net',      name: '野菜担当',     role: 'hq',       storeId: honbu.id,  category: '野菜' },
-    { email: 'hq-fruit@satonoaji-mikawa.net',    name: '果物担当',     role: 'hq',       storeId: honbu.id,  category: '果物' },
-    { email: 'hq-mochi@satonoaji-mikawa.net',    name: '餅・乾物担当', role: 'hq',       storeId: honbu.id,  category: '餅・乾物菓子類' },
-    { email: 'boss@satonoaji-mikawa.net',        name: '社長',         role: 'boss',     storeId: honbu.id,  category: null },
-    { email: 'order-nishi@satonoaji-mikawa.net', name: '西店スタッフ', role: 'order',    storeId: nishi.id,  category: null },
-    { email: 'order-minami@satonoaji-mikawa.net',name: '南店スタッフ', role: 'order',    storeId: minami.id, category: null },
-    { email: 'order-honbu@satonoaji-mikawa.net', name: '本部スタッフ', role: 'order',    storeId: honbu.id,  category: null },
-    { email: 'calendar@satonoaji-mikawa.net',    name: '弁当担当',     role: 'calendar', storeId: honbu.id,  category: '弁当' },
-    { email: 'mochi-cal@satonoaji-mikawa.net',   name: '餅担当',       role: 'calendar', storeId: honbu.id,  category: '餅' },
+    { email: 'nishi@satonoaji-mikawa.net',    name: '西店スタッフ', role: 'nishi',  storeId: nishi.id,  category: null },
+    { email: 'minami@satonoaji-mikawa.net',   name: '南店スタッフ', role: 'minami', storeId: minami.id, category: null },
+    { email: 'hq-veg@satonoaji-mikawa.net',   name: '野菜担当',     role: 'hq1',    storeId: honbu.id,  category: '野菜' },
+    { email: 'hq-fruit@satonoaji-mikawa.net', name: '果物担当',     role: 'hq2',    storeId: honbu.id,  category: '果物' },
+    { email: 'hq-mochi@satonoaji-mikawa.net', name: '餅・乾物担当', role: 'hq3',    storeId: honbu.id,  category: '餅・乾物菓子類' },
+    { email: 'boss@satonoaji-mikawa.net',     name: '社長',         role: 'all',    storeId: honbu.id,  category: null },
   ]
 
   for (const u of users) {
     await prisma.user.upsert({
       where : { email: u.email },
-      update: {},
+      update: { role: u.role, name: u.name, storeId: u.storeId, category: u.category, isActive: true },
       create: u,
     })
   }
+
+  // 旧ロール体系で残っていたユーザーは非アクティブ化（ログイン候補から外す）
+  await prisma.user.updateMany({
+    where: { role: { in: ['store', 'hq', 'boss', 'order', 'calendar'] } },
+    data : { isActive: false },
+  })
+
   console.log('ユーザーマスタ投入完了')
 }
 
