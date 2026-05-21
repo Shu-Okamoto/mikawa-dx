@@ -17,8 +17,10 @@ interface InstoreOrder {
   id             : number
   orderCode      : string
   deliveryDate   : string
+  productId      : number | null
   productName    : string
   quantity       : number
+  price          : number
   customerName   : string
   phone          : string
   deliveryAddress: string
@@ -29,6 +31,20 @@ interface InstoreOrder {
   okazu          : string
   notes          : string
   status         : string
+}
+
+type EditDraft = {
+  quantity       : number
+  customerName   : string
+  phone          : string
+  deliveryAddress: string
+  timeStart      : string
+  timeEnd        : string
+  receipt        : string
+  receiptName    : string
+  purposes       : string[]
+  okazu          : string
+  notes          : string
 }
 
 type Screen = 'list' | 'date' | 'product' | 'form' | 'complete'
@@ -72,6 +88,9 @@ function OrderPageContent({ branch }: { branch: string }) {
     notes       : '',
   })
   const [submitting, setSubmitting] = useState(false)
+  const [editing, setEditing]       = useState<InstoreOrder | null>(null)
+  const [editDraft, setEditDraft]   = useState<EditDraft | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
     if (loading || error || !user) return
@@ -202,6 +221,81 @@ function OrderPageContent({ branch }: { branch: string }) {
     }
   }
 
+  const openEdit = (order: InstoreOrder) => {
+    const [s, e] = (order.deliveryTime || '').split('〜')
+    setEditing(order)
+    setEditDraft({
+      quantity       : Number(order.quantity) || 1,
+      customerName   : order.customerName || '',
+      phone          : order.phone || '',
+      deliveryAddress: order.deliveryAddress || '',
+      timeStart      : order.deliveryAddress === '来店' ? '' : (s || ''),
+      timeEnd        : order.deliveryAddress === '来店' ? '' : (e || ''),
+      receipt        : order.receipt || 'no',
+      receiptName    : order.receiptName || '',
+      purposes       : order.purpose ? order.purpose.split('・').filter(Boolean) : [],
+      okazu          : order.okazu || '',
+      notes          : order.notes || '',
+    })
+  }
+
+  const closeEdit = () => {
+    setEditing(null)
+    setEditDraft(null)
+  }
+
+  const submitEdit = async () => {
+    if (!editing || !editDraft) return
+    if (!editDraft.customerName) { showToast('お名前を入力してください'); return }
+    if (!editDraft.phone)        { showToast('電話番号を入力してください'); return }
+    if (!/^[0-9]{10,11}$/.test(editDraft.phone)) {
+      showToast('電話番号はハイフンなし10〜11桁で入力してください'); return
+    }
+    const isVisit = editDraft.deliveryAddress === '来店'
+    let deliveryTime: string
+    if (isVisit) {
+      deliveryTime = '来店'
+    } else {
+      if (!editDraft.timeStart || !editDraft.timeEnd) {
+        showToast('配達時間を選択してください'); return
+      }
+      const toNum = (t: string) => {
+        const [h, m] = t.split(':').map(Number)
+        return h + m / 60
+      }
+      if (toNum(editDraft.timeEnd) <= toNum(editDraft.timeStart)) {
+        showToast('終了時間は開始時間より後にしてください'); return
+      }
+      deliveryTime = editDraft.timeStart + '〜' + editDraft.timeEnd
+    }
+
+    setEditSaving(true)
+    const res = await authFetch(`/api/orders/${editing.id}`, {
+      method: 'PATCH',
+      body  : JSON.stringify({
+        quantity       : editDraft.quantity,
+        customerName   : editDraft.customerName,
+        phone          : editDraft.phone,
+        deliveryAddress: editDraft.deliveryAddress,
+        deliveryTime,
+        receipt        : editDraft.receipt,
+        receiptName    : editDraft.receipt === 'yes' ? editDraft.receiptName : '',
+        purpose        : editDraft.purposes.join('・'),
+        okazu          : editDraft.okazu,
+        notes          : editDraft.notes,
+      }),
+    })
+    const data = await res.json()
+    setEditSaving(false)
+    if (data.success) {
+      showToast('更新しました')
+      closeEdit()
+      fetchOrders()
+    } else {
+      showToast('エラー: ' + (data.error ?? '不明'))
+    }
+  }
+
   const handleCancel = (orderId: number) => {
     showConfirm('この注文をキャンセルしますか？', async () => {
       const res  = await authFetch(`/api/orders/${orderId}`, { method: 'DELETE' })
@@ -264,16 +358,16 @@ function OrderPageContent({ branch }: { branch: string }) {
               </div>
               <div style={{ display:'flex', gap:'8px' }}>
                 <button onClick={() => setScreen('date')}
-                  style={{ padding:'8px 14px', background:'white',
+                  style={{ padding:'10px 16px', background:'white',
                     color:'#72243E', border:'none', borderRadius:'10px',
-                    fontSize:'13px', fontWeight:500, cursor:'pointer',
+                    fontSize:'16px', fontWeight:500, cursor:'pointer',
                     fontFamily:'inherit' }}>
                   ＋ 新規注文
                 </button>
                 <button onClick={logout}
-                  style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+                  style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
                     border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                    color:'white', fontSize:'13px', cursor:'pointer',
+                    color:'white', fontSize:'16px', cursor:'pointer',
                     fontFamily:'inherit' }}>
                   終了
                 </button>
@@ -293,28 +387,44 @@ function OrderPageContent({ branch }: { branch: string }) {
                   padding:'16px', marginBottom:'12px',
                   boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
                   <div style={{ display:'flex', justifyContent:'space-between',
-                    marginBottom:'8px' }}>
-                    <div style={{ fontSize:'13px', fontWeight:500, color:'#2C2C2A' }}>
+                    alignItems:'center', marginBottom:'10px' }}>
+                    <div style={{ fontSize:'18px', fontWeight:500, color:'#2C2C2A' }}>
                       {new Date(o.deliveryDate).toLocaleDateString('ja-JP')} {o.productName}
                     </div>
-                    <span style={{ fontSize:'12px', background:'#EAF3DE',
-                      color:'#3B6D11', padding:'2px 8px', borderRadius:'10px' }}>
+                    <span style={{ fontSize:'16px', background:'#EAF3DE',
+                      color:'#3B6D11', padding:'3px 10px', borderRadius:'12px',
+                      fontWeight:500 }}>
                       ×{o.quantity}
                     </span>
                   </div>
-                  <div style={{ fontSize:'12px', color:'#888780', marginBottom:'4px' }}>
+                  <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'4px' }}>
                     {o.customerName} 様 / {o.phone}
                   </div>
-                  <div style={{ fontSize:'12px', color:'#888780', marginBottom:'8px' }}>
+                  <div style={{ fontSize:'15px', color:'#888780', marginBottom:'4px' }}>
                     {o.deliveryAddress} {o.deliveryTime}
                   </div>
-                  <button onClick={() => handleCancel(o.id)}
-                    style={{ padding:'6px 12px', background:'white',
-                      border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                      fontSize:'12px', color:'#888780', cursor:'pointer',
-                      fontFamily:'inherit' }}>
-                    キャンセル
-                  </button>
+                  <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'10px' }}>
+                    単価 ¥{Number(o.price || 0).toLocaleString()}
+                    <span style={{ color:'#888780', marginLeft:'8px' }}>
+                      / 小計 ¥{(Number(o.price || 0) * Number(o.quantity || 0)).toLocaleString()}
+                    </span>
+                  </div>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <button onClick={() => openEdit(o)}
+                      style={{ flex:1, padding:'10px', background:'#72243E',
+                        color:'white', border:'none', borderRadius:'10px',
+                        fontSize:'16px', fontWeight:500, cursor:'pointer',
+                        fontFamily:'inherit' }}>
+                      ✏️ 編集
+                    </button>
+                    <button onClick={() => handleCancel(o.id)}
+                      style={{ flex:1, padding:'10px', background:'white',
+                        border:'1.5px solid #E24B4A', borderRadius:'10px',
+                        fontSize:'16px', color:'#E24B4A', fontWeight:500,
+                        cursor:'pointer', fontFamily:'inherit' }}>
+                      キャンセル
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -332,9 +442,9 @@ function OrderPageContent({ branch }: { branch: string }) {
                 <div style={{ fontSize:'20px', fontWeight:500 }}>日付選択</div>
               </div>
               <button onClick={() => setScreen('list')}
-                style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+                style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
                   border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                  color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+                  color:'white', fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
                 戻る
               </button>
             </div>
@@ -345,11 +455,11 @@ function OrderPageContent({ branch }: { branch: string }) {
               boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
               {availDates.map((d, idx) => (
                 <button key={d.value} onClick={() => handleDateSelect(d.value)}
-                  style={{ width:'100%', padding:'14px 16px', textAlign:'left',
+                  style={{ width:'100%', padding:'18px 16px', textAlign:'left',
                     background:'white', border:'none',
                     borderBottom: idx < availDates.length-1
                       ? '1px solid #F5F1EA' : 'none',
-                    fontSize:'14px', cursor:'pointer', fontFamily:'inherit',
+                    fontSize:'20px', cursor:'pointer', fontFamily:'inherit',
                     color:'#2C2C2A', display:'flex', justifyContent:'space-between' }}>
                   <span>{d.label}</span>
                   <span style={{ color:'#888780' }}>›</span>
@@ -370,9 +480,9 @@ function OrderPageContent({ branch }: { branch: string }) {
                 <div style={{ fontSize:'20px', fontWeight:500 }}>{selectedDate}</div>
               </div>
               <button onClick={() => setScreen('date')}
-                style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+                style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
                   border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                  color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+                  color:'white', fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
                 戻る
               </button>
             </div>
@@ -389,46 +499,50 @@ function OrderPageContent({ branch }: { branch: string }) {
                 <div style={{ background:'white', borderRadius:'16px',
                   overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)',
                   marginBottom:'12px' }}>
-                  {products.map((p, idx) => (
-                    <div key={p.id} style={{ padding:'12px 16px',
+                  {products.map((p, idx) => {
+                    const qty = quantities[p.id] || 0
+                    return (
+                    <div key={p.id} style={{ padding:'14px 16px',
                       borderBottom: idx < products.length-1
                         ? '1px solid #F5F1EA' : 'none',
                       display:'flex', justifyContent:'space-between',
                       alignItems:'center' }}>
                       <div>
-                        <div style={{ fontSize:'14px', fontWeight:500 }}>
+                        <div style={{ fontSize:'20px', fontWeight:500 }}>
                           {p.productName}
                         </div>
-                        <div style={{ fontSize:'12px', color:'#888780' }}>
+                        <div style={{ fontSize:'15px', color:'#888780' }}>
                           ¥{Number(p.price).toLocaleString()}
                         </div>
                       </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                         <button onClick={() => setQuantities({
                           ...quantities,
-                          [p.id]: Math.max(0, (quantities[p.id]||0) - 1)
+                          [p.id]: Math.max(0, qty - 1)
                         })}
-                          style={{ width:'32px', height:'32px', borderRadius:'50%',
+                          style={{ width:'36px', height:'36px', borderRadius:'50%',
                             border:'1.5px solid #E5E1D8', background:'white',
-                            fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
+                            fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
                           -
                         </button>
-                        <span style={{ minWidth:'24px', textAlign:'center',
-                          fontSize:'16px', fontWeight:500 }}>
-                          {quantities[p.id] || 0}
+                        <span style={{ minWidth:'28px', textAlign:'center',
+                          fontSize:'20px', fontWeight:500 }}>
+                          {qty}
                         </span>
                         <button onClick={() => setQuantities({
                           ...quantities,
-                          [p.id]: (quantities[p.id]||0) + 1
+                          [p.id]: qty + 1
                         })}
-                          style={{ width:'32px', height:'32px', borderRadius:'50%',
-                            border:'1.5px solid #E5E1D8', background:'white',
-                            fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
+                          style={{ width:'36px', height:'36px', borderRadius:'50%',
+                            border: qty > 0 ? '1.5px solid #72243E' : '1.5px solid #E5E1D8',
+                            background: qty > 0 ? '#72243E' : 'white',
+                            color: qty > 0 ? 'white' : '#2C2C2A',
+                            fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
                           +
                         </button>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
 
                 <button
@@ -439,9 +553,9 @@ function OrderPageContent({ branch }: { branch: string }) {
                     }
                     setScreen('form')
                   }}
-                  style={{ width:'100%', padding:'14px', background:'#72243E',
+                  style={{ width:'100%', padding:'16px', background:'#72243E',
                     color:'white', border:'none', borderRadius:'12px',
-                    fontSize:'15px', fontWeight:500, cursor:'pointer',
+                    fontSize:'20px', fontWeight:500, cursor:'pointer',
                     fontFamily:'inherit' }}>
                   お客様情報を入力する
                 </button>
@@ -461,9 +575,9 @@ function OrderPageContent({ branch }: { branch: string }) {
                 <div style={{ fontSize:'20px', fontWeight:500 }}>{selectedDate}</div>
               </div>
               <button onClick={() => setScreen('product')}
-                style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+                style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
                   border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                  color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+                  color:'white', fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
                 戻る
               </button>
             </div>
@@ -474,42 +588,42 @@ function OrderPageContent({ branch }: { branch: string }) {
               marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
 
               <div style={{ marginBottom:'12px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'4px' }}>お名前 *</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'6px' }}>お名前 *</label>
                 <input type="text" value={form.customerName}
                   onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-                  style={{ width:'100%', padding:'10px 12px',
-                    border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                    fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box' }}
+                  style={{ width:'100%', padding:'12px 14px',
+                    border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                    fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }}
                   placeholder="山田 太郎" />
               </div>
 
               <div style={{ marginBottom:'12px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'4px' }}>電話番号（ハイフンなし）*</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'6px' }}>電話番号（ハイフンなし）*</label>
                 <input type="tel" value={form.phone} inputMode="numeric"
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  style={{ width:'100%', padding:'10px 12px',
-                    border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                    fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box' }}
+                  style={{ width:'100%', padding:'12px 14px',
+                    border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                    fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }}
                   placeholder="09012345678" />
               </div>
 
               <div style={{ marginBottom:'12px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'8px' }}>お受け取り方法 *</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'8px' }}>お受け取り方法 *</label>
                 <div style={{ display:'flex', gap:'8px' }}>
                   {['visit','delivery'].map((mode) => (
                     <button key={mode}
                       onClick={() => setForm({ ...form, deliveryMode: mode })}
-                      style={{ flex:1, padding:'10px',
+                      style={{ flex:1, padding:'14px',
                         background: form.deliveryMode === mode ? '#72243E' : 'white',
                         color: form.deliveryMode === mode ? 'white' : '#2C2C2A',
                         border: '1.5px solid',
                         borderColor: form.deliveryMode === mode ? '#72243E' : '#E5E1D8',
-                        borderRadius:'8px', fontSize:'14px', cursor:'pointer',
-                        fontFamily:'inherit' }}>
-                      {mode === 'visit' ? '来店' : '配達'}
+                        borderRadius:'10px', fontSize:'20px', fontWeight:500,
+                        cursor:'pointer', fontFamily:'inherit' }}>
+                      {mode === 'visit' ? '🏪 来店' : '🚗 配達'}
                     </button>
                   ))}
                 </div>
@@ -518,24 +632,24 @@ function OrderPageContent({ branch }: { branch: string }) {
               {form.deliveryMode === 'delivery' && (
                 <>
                   <div style={{ marginBottom:'12px' }}>
-                    <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                      marginBottom:'4px' }}>配達先住所 *</label>
+                    <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                      display:'block', marginBottom:'6px' }}>配達先住所 *</label>
                     <input type="text" value={form.address}
                       onChange={(e) => setForm({ ...form, address: e.target.value })}
-                      style={{ width:'100%', padding:'10px 12px',
-                        border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                        fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box' }}
+                      style={{ width:'100%', padding:'12px 14px',
+                        border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                        fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }}
                       placeholder="住所を入力" />
                   </div>
 
                   <div style={{ marginBottom:'12px' }}>
-                    <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                      marginBottom:'4px' }}>配達時間 *</label>
+                    <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                      display:'block', marginBottom:'6px' }}>配達時間 *</label>
                     <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
                       <select value={form.timeStart}
                         onChange={(e) => setForm({ ...form, timeStart: e.target.value })}
-                        style={{ flex:1, padding:'10px', border:'1.5px solid #E5E1D8',
-                          borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}>
+                        style={{ flex:1, padding:'12px', border:'1.5px solid #E5E1D8',
+                          borderRadius:'10px', fontSize:'20px', fontFamily:'inherit' }}>
                         <option value="">開始</option>
                         {DELIVERY_TIMES.map((t) => (
                           <option key={t} value={t}>{t}</option>
@@ -544,8 +658,8 @@ function OrderPageContent({ branch }: { branch: string }) {
                       <span style={{ color:'#888780' }}>〜</span>
                       <select value={form.timeEnd}
                         onChange={(e) => setForm({ ...form, timeEnd: e.target.value })}
-                        style={{ flex:1, padding:'10px', border:'1.5px solid #E5E1D8',
-                          borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}>
+                        style={{ flex:1, padding:'12px', border:'1.5px solid #E5E1D8',
+                          borderRadius:'10px', fontSize:'20px', fontFamily:'inherit' }}>
                         <option value="">終了</option>
                         {DELIVERY_TIMES.map((t) => (
                           <option key={t} value={t}>{t}</option>
@@ -557,8 +671,8 @@ function OrderPageContent({ branch }: { branch: string }) {
               )}
 
               <div style={{ marginBottom:'12px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'8px' }}>用途</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'8px' }}>用途</label>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
                   {PURPOSES.map((p) => (
                     <button key={p}
@@ -568,12 +682,12 @@ function OrderPageContent({ branch }: { branch: string }) {
                           : [...form.purposes, p]
                         setForm({ ...form, purposes: ps })
                       }}
-                      style={{ padding:'6px 12px',
+                      style={{ padding:'10px 16px',
                         background: form.purposes.includes(p) ? '#72243E' : 'white',
                         color: form.purposes.includes(p) ? 'white' : '#2C2C2A',
                         border: '1.5px solid',
                         borderColor: form.purposes.includes(p) ? '#72243E' : '#E5E1D8',
-                        borderRadius:'20px', fontSize:'13px', cursor:'pointer',
+                        borderRadius:'20px', fontSize:'17px', cursor:'pointer',
                         fontFamily:'inherit' }}>
                       {p}
                     </button>
@@ -582,30 +696,30 @@ function OrderPageContent({ branch }: { branch: string }) {
               </div>
 
               <div style={{ marginBottom:'12px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'4px' }}>おかず・オプション</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'6px' }}>おかず・オプション</label>
                 <input type="text" value={form.okazu}
                   onChange={(e) => setForm({ ...form, okazu: e.target.value })}
-                  style={{ width:'100%', padding:'10px 12px',
-                    border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                    fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box' }}
+                  style={{ width:'100%', padding:'12px 14px',
+                    border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                    fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }}
                   placeholder="例: 唐揚げ追加" />
               </div>
 
               <div style={{ marginBottom:'12px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'8px' }}>領収書</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'8px' }}>領収書</label>
                 <div style={{ display:'flex', gap:'8px' }}>
                   {[{v:'no',l:'不要'},{v:'yes',l:'必要'}].map(({ v, l }) => (
                     <button key={v}
                       onClick={() => setForm({ ...form, receipt: v })}
-                      style={{ flex:1, padding:'10px',
+                      style={{ flex:1, padding:'14px',
                         background: form.receipt === v ? '#72243E' : 'white',
                         color: form.receipt === v ? 'white' : '#2C2C2A',
                         border: '1.5px solid',
                         borderColor: form.receipt === v ? '#72243E' : '#E5E1D8',
-                        borderRadius:'8px', fontSize:'14px', cursor:'pointer',
-                        fontFamily:'inherit' }}>
+                        borderRadius:'10px', fontSize:'20px', fontWeight:500,
+                        cursor:'pointer', fontFamily:'inherit' }}>
                       {l}
                     </button>
                   ))}
@@ -613,30 +727,30 @@ function OrderPageContent({ branch }: { branch: string }) {
                 {form.receipt === 'yes' && (
                   <input type="text" value={form.receiptName}
                     onChange={(e) => setForm({ ...form, receiptName: e.target.value })}
-                    style={{ width:'100%', padding:'10px 12px', marginTop:'8px',
-                      border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                      fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box' }}
+                    style={{ width:'100%', padding:'12px 14px', marginTop:'8px',
+                      border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                      fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }}
                     placeholder="宛名を入力" />
                 )}
               </div>
 
               <div style={{ marginBottom:'16px' }}>
-                <label style={{ fontSize:'12px', color:'#888780', display:'block',
-                  marginBottom:'4px' }}>備考</label>
+                <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                  display:'block', marginBottom:'6px' }}>備考</label>
                 <textarea value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  style={{ width:'100%', padding:'10px 12px',
-                    border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                    fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box',
-                    resize:'none', minHeight:'60px' }}
+                  style={{ width:'100%', padding:'12px 14px',
+                    border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                    fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box',
+                    resize:'none', minHeight:'72px' }}
                   placeholder="その他ご要望" />
               </div>
 
               <button onClick={handleSubmit} disabled={submitting}
-                style={{ width:'100%', padding:'14px',
+                style={{ width:'100%', padding:'16px',
                   background: submitting ? '#888780' : '#72243E',
                   color:'white', border:'none', borderRadius:'12px',
-                  fontSize:'15px', fontWeight:500, cursor:'pointer',
+                  fontSize:'20px', fontWeight:500, cursor:'pointer',
                   fontFamily:'inherit' }}>
                 {submitting ? '送信中...' : '注文を送信する'}
               </button>
@@ -668,9 +782,9 @@ function OrderPageContent({ branch }: { branch: string }) {
               })
               setQuantities({})
             }}
-              style={{ padding:'14px 32px', background:'#72243E',
+              style={{ padding:'16px 32px', background:'#72243E',
                 color:'white', border:'none', borderRadius:'12px',
-                fontSize:'15px', fontWeight:500, cursor:'pointer',
+                fontSize:'20px', fontWeight:500, cursor:'pointer',
                 fontFamily:'inherit' }}>
               注文一覧に戻る
             </button>
@@ -686,6 +800,234 @@ function OrderPageContent({ branch }: { branch: string }) {
           padding:'10px 20px', borderRadius:'20px', fontSize:'13px',
           zIndex:100, whiteSpace:'nowrap' }}>
           {toast}
+        </div>
+      )}
+
+      {/* 編集モーダル */}
+      {editing && editDraft && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)',
+          zIndex:200, display:'flex', alignItems:'flex-start',
+          justifyContent:'center', overflowY:'auto', padding:'20px 12px' }}>
+          <div style={{ background:'white', borderRadius:'16px',
+            padding:'20px', maxWidth:'480px', width:'100%' }}>
+            <div style={{ fontSize:'20px', fontWeight:500, marginBottom:'16px',
+              color:'#2C2C2A' }}>
+              ✏️ 注文を編集
+            </div>
+            <div style={{ fontSize:'16px', color:'#888780', marginBottom:'16px' }}>
+              {editing.productName}
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>数量</label>
+              <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                <button onClick={() => setEditDraft({
+                  ...editDraft, quantity: Math.max(1, editDraft.quantity - 1),
+                })}
+                  style={{ width:'40px', height:'40px', borderRadius:'50%',
+                    border:'1.5px solid #E5E1D8', background:'white',
+                    fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
+                  -
+                </button>
+                <span style={{ minWidth:'36px', textAlign:'center',
+                  fontSize:'22px', fontWeight:500 }}>{editDraft.quantity}</span>
+                <button onClick={() => setEditDraft({
+                  ...editDraft, quantity: editDraft.quantity + 1,
+                })}
+                  style={{ width:'40px', height:'40px', borderRadius:'50%',
+                    border:'1.5px solid #72243E', background:'#72243E',
+                    color:'white', fontSize:'20px', cursor:'pointer',
+                    fontFamily:'inherit' }}>
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>お名前 *</label>
+              <input type="text" value={editDraft.customerName}
+                onChange={(e) => setEditDraft({ ...editDraft, customerName: e.target.value })}
+                style={{ width:'100%', padding:'12px 14px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>電話番号 *</label>
+              <input type="tel" inputMode="numeric" value={editDraft.phone}
+                onChange={(e) => setEditDraft({ ...editDraft, phone: e.target.value })}
+                style={{ width:'100%', padding:'12px 14px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'8px' }}>お受け取り方法 *</label>
+              <div style={{ display:'flex', gap:'8px' }}>
+                {[
+                  { v:'visit', l:'🏪 来店' },
+                  { v:'delivery', l:'🚗 配達' },
+                ].map(({ v, l }) => {
+                  const isVisit = editDraft.deliveryAddress === '来店'
+                  const active = (v === 'visit') === isVisit
+                  return (
+                    <button key={v}
+                      onClick={() => setEditDraft({
+                        ...editDraft,
+                        deliveryAddress: v === 'visit' ? '来店' : (
+                          editDraft.deliveryAddress === '来店' ? '' : editDraft.deliveryAddress
+                        ),
+                        timeStart: v === 'visit' ? '' : editDraft.timeStart,
+                        timeEnd  : v === 'visit' ? '' : editDraft.timeEnd,
+                      })}
+                      style={{ flex:1, padding:'14px',
+                        background: active ? '#72243E' : 'white',
+                        color: active ? 'white' : '#2C2C2A',
+                        border: '1.5px solid',
+                        borderColor: active ? '#72243E' : '#E5E1D8',
+                        borderRadius:'10px', fontSize:'20px', fontWeight:500,
+                        cursor:'pointer', fontFamily:'inherit' }}>
+                      {l}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {editDraft.deliveryAddress !== '来店' && (
+              <>
+                <div style={{ marginBottom:'14px' }}>
+                  <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                    display:'block', marginBottom:'6px' }}>配達先住所 *</label>
+                  <input type="text" value={editDraft.deliveryAddress}
+                    onChange={(e) => setEditDraft({ ...editDraft, deliveryAddress: e.target.value })}
+                    style={{ width:'100%', padding:'12px 14px',
+                      border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                      fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }} />
+                </div>
+
+                <div style={{ marginBottom:'14px' }}>
+                  <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                    display:'block', marginBottom:'6px' }}>配達時間 *</label>
+                  <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                    <select value={editDraft.timeStart}
+                      onChange={(e) => setEditDraft({ ...editDraft, timeStart: e.target.value })}
+                      style={{ flex:1, padding:'12px', border:'1.5px solid #E5E1D8',
+                        borderRadius:'10px', fontSize:'20px', fontFamily:'inherit' }}>
+                      <option value="">開始</option>
+                      {DELIVERY_TIMES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <span style={{ color:'#888780' }}>〜</span>
+                    <select value={editDraft.timeEnd}
+                      onChange={(e) => setEditDraft({ ...editDraft, timeEnd: e.target.value })}
+                      style={{ flex:1, padding:'12px', border:'1.5px solid #E5E1D8',
+                        borderRadius:'10px', fontSize:'20px', fontFamily:'inherit' }}>
+                      <option value="">終了</option>
+                      {DELIVERY_TIMES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'8px' }}>用途</label>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+                {PURPOSES.map((p) => {
+                  const active = editDraft.purposes.includes(p)
+                  return (
+                    <button key={p}
+                      onClick={() => setEditDraft({
+                        ...editDraft,
+                        purposes: active
+                          ? editDraft.purposes.filter((x) => x !== p)
+                          : [...editDraft.purposes, p],
+                      })}
+                      style={{ padding:'10px 16px',
+                        background: active ? '#72243E' : 'white',
+                        color: active ? 'white' : '#2C2C2A',
+                        border: '1.5px solid',
+                        borderColor: active ? '#72243E' : '#E5E1D8',
+                        borderRadius:'20px', fontSize:'17px', cursor:'pointer',
+                        fontFamily:'inherit' }}>
+                      {p}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>おかず・オプション</label>
+              <input type="text" value={editDraft.okazu}
+                onChange={(e) => setEditDraft({ ...editDraft, okazu: e.target.value })}
+                style={{ width:'100%', padding:'12px 14px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'8px' }}>領収書</label>
+              <div style={{ display:'flex', gap:'8px' }}>
+                {[{v:'no',l:'不要'},{v:'yes',l:'必要'}].map(({ v, l }) => (
+                  <button key={v}
+                    onClick={() => setEditDraft({ ...editDraft, receipt: v })}
+                    style={{ flex:1, padding:'14px',
+                      background: editDraft.receipt === v ? '#72243E' : 'white',
+                      color: editDraft.receipt === v ? 'white' : '#2C2C2A',
+                      border: '1.5px solid',
+                      borderColor: editDraft.receipt === v ? '#72243E' : '#E5E1D8',
+                      borderRadius:'10px', fontSize:'20px', fontWeight:500,
+                      cursor:'pointer', fontFamily:'inherit' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              {editDraft.receipt === 'yes' && (
+                <input type="text" value={editDraft.receiptName}
+                  onChange={(e) => setEditDraft({ ...editDraft, receiptName: e.target.value })}
+                  style={{ width:'100%', padding:'12px 14px', marginTop:'8px',
+                    border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                    fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }}
+                  placeholder="宛名を入力" />
+              )}
+            </div>
+
+            <div style={{ marginBottom:'18px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>備考</label>
+              <textarea value={editDraft.notes}
+                onChange={(e) => setEditDraft({ ...editDraft, notes: e.target.value })}
+                style={{ width:'100%', padding:'12px 14px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box',
+                  resize:'none', minHeight:'72px' }} />
+            </div>
+
+            <div style={{ display:'flex', gap:'10px' }}>
+              <button onClick={closeEdit} disabled={editSaving}
+                style={{ flex:1, padding:'14px', border:'1.5px solid #E5E1D8',
+                  borderRadius:'10px', background:'white', fontSize:'18px',
+                  fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>
+                キャンセル
+              </button>
+              <button onClick={submitEdit} disabled={editSaving}
+                style={{ flex:1, padding:'14px', border:'none',
+                  background: editSaving ? '#888780' : '#72243E',
+                  color:'white', borderRadius:'10px',
+                  fontSize:'18px', fontWeight:500, cursor:'pointer',
+                  fontFamily:'inherit' }}>
+                {editSaving ? '保存中...' : '保存する'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

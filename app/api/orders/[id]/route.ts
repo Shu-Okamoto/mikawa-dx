@@ -19,7 +19,7 @@ async function authorizeOrderAccess(orderId: number, role: string) {
   return { ok: true as const, order }
 }
 
-// 数量修正
+// 注文編集（数量・受取情報・備考など）
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -30,18 +30,27 @@ export async function PATCH(
   }
 
   try {
-    const { quantity } = await req.json()
-    const id = parseInt((await params).id)
+    const body = await req.json()
+    const id   = parseInt((await params).id)
 
     const auth = await authorizeOrderAccess(id, user.role)
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    await prisma.instoreOrder.update({
-      where: { id },
-      data : { quantity },
-    })
+    const data: Record<string, unknown> = {}
+    if (body.quantity        !== undefined) data.quantity        = body.quantity
+    if (body.customerName    !== undefined) data.customerName    = body.customerName
+    if (body.phone           !== undefined) data.phone           = body.phone
+    if (body.deliveryAddress !== undefined) data.deliveryAddress = body.deliveryAddress
+    if (body.deliveryTime    !== undefined) data.deliveryTime    = body.deliveryTime
+    if (body.receipt         !== undefined) data.receipt         = body.receipt
+    if (body.receiptName     !== undefined) data.receiptName     = body.receiptName
+    if (body.purpose         !== undefined) data.purpose         = body.purpose
+    if (body.okazu           !== undefined) data.okazu           = body.okazu
+    if (body.notes           !== undefined) data.notes           = body.notes
+
+    await prisma.instoreOrder.update({ where: { id }, data })
 
     return NextResponse.json({ success: true })
   } catch (e) {

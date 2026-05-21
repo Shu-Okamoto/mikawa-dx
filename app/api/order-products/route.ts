@@ -30,7 +30,15 @@ export async function GET(req: NextRequest) {
       orderBy: { productCode: 'asc' },
     })
 
-    return NextResponse.json(products)
+    return NextResponse.json(products.map((p) => ({
+      id           : p.id,
+      productCode  : p.productCode,
+      productName  : p.productName,
+      category     : p.category,
+      price        : Number(p.price),
+      availableDays: p.availableDays,
+      memo         : p.memo,
+    })))
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })

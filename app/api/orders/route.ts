@@ -44,11 +44,29 @@ export async function GET(req: NextRequest) {
         status      : 'active',
         deliveryDate: { gte: today() },
       },
-      include: { store: true },
+      include: { store: true, product: true },
       orderBy: { deliveryDate: 'asc' },
     })
 
-    return NextResponse.json(orders)
+    return NextResponse.json(orders.map((o) => ({
+      id             : o.id,
+      orderCode      : o.orderCode,
+      deliveryDate   : o.deliveryDate,
+      productId      : o.productId,
+      productName    : o.productName,
+      quantity       : Number(o.quantity),
+      price          : o.product ? Number(o.product.price) : 0,
+      customerName   : o.customerName,
+      phone          : o.phone,
+      deliveryAddress: o.deliveryAddress,
+      deliveryTime   : o.deliveryTime,
+      receipt        : o.receipt,
+      receiptName    : o.receiptName,
+      purpose        : o.purpose,
+      okazu          : o.okazu,
+      notes          : o.notes,
+      status         : o.status,
+    })))
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
