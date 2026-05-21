@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 export interface AuthUser {
@@ -88,7 +88,9 @@ export function useAuth(requiredRole?: string | string[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowedKey])
 
-  const authFetch = async (url: string, options: RequestInit = {}) => {
+  // 参照を毎レンダー安定化させる。これがないと呼び出し側の useEffect 依存が
+  // 毎レンダー変化し、fetch が再発火して直前の入力状態が上書きされる。
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const storedToken = localStorage.getItem('token')
     const res = await fetch(url, {
       ...options,
@@ -104,13 +106,13 @@ export function useAuth(requiredRole?: string | string[]) {
       router.push('/')
     }
     return res
-  }
+  }, [router])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     router.push('/')
-  }
+  }, [router])
 
   return { user, token, loading, error, authFetch, logout }
 }
