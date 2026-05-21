@@ -234,22 +234,24 @@ function CalendarPageContent() {
         position:'sticky', top:0, zIndex:10 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
-            <div style={{ fontSize:'11px', opacity:.8 }}>週間カレンダー</div>
-            <div style={{ fontSize:'20px', fontWeight:500 }}>
+            <div style={{ fontSize:'14px', opacity:.85 }}>週間カレンダー</div>
+            <div style={{ fontSize:'22px', fontWeight:500 }}>
               {user?.category === '弁当' ? '🍱' : '🍡'} {user?.category}注文
             </div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
             <button onClick={handlePrintAll}
-              style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+              style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
                 border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                color:'white', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+                color:'white', fontSize:'16px', fontWeight:500,
+                cursor:'pointer', fontFamily:'inherit' }}>
               🖨 一覧印刷
             </button>
             <button onClick={logout}
-              style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+              style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
                 border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                color:'white', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+                color:'white', fontSize:'16px', fontWeight:500,
+                cursor:'pointer', fontFamily:'inherit' }}>
               終了する
             </button>
           </div>
@@ -261,7 +263,7 @@ function CalendarPageContent() {
         {/* 日別カレンダー */}
         {visibleDays.length === 0 ? (
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
-            textAlign:'center', color:'#888780', fontSize:'14px',
+            textAlign:'center', color:'#888780', fontSize:'18px',
             marginBottom:'12px' }}>
             今後の注文はありません
           </div>
@@ -277,27 +279,28 @@ function CalendarPageContent() {
                 boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
 
                 {/* 日付ヘッダー */}
-                <div style={{ padding:'12px 16px', background:'#EBF5FB',
+                <div style={{ padding:'14px 16px', background:'#EBF5FB',
                   display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                    <span style={{ fontSize:'14px', fontWeight:500, color:'#1A5276' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px',
+                    flexWrap:'wrap' }}>
+                    <span style={{ fontSize:'18px', fontWeight:500, color:'#1A5276' }}>
                       {day.label} {isToday ? '🔵' : ''}
                     </span>
-                    <span style={{ fontSize:'12px', padding:'2px 8px',
-                      borderRadius:'10px',
+                    <span style={{ fontSize:'16px', padding:'3px 10px',
+                      borderRadius:'20px', fontWeight:500,
                       background: hasOrders ? '#1A5276' : '#E5E1D8',
                       color: hasOrders ? 'white' : '#888780' }}>
                       {hasOrders ? day.orders.length + '件' : '注文なし'}
                     </span>
                     {hasOrders && totalAmount > 0 && (
-                      <span style={{ fontSize:'13px', fontWeight:500, color:'#1A5276' }}>
+                      <span style={{ fontSize:'18px', fontWeight:500, color:'#1A5276' }}>
                         ¥{totalAmount.toLocaleString()}
                       </span>
                     )}
                   </div>
                   {hasOrders && (
                     <button onClick={() => handlePrint(day)}
-                      style={{ background:'none', border:'none', fontSize:'18px',
+                      style={{ background:'none', border:'none', fontSize:'22px',
                         cursor:'pointer', padding:'4px' }}
                       title="印刷">
                       🖨
@@ -307,53 +310,65 @@ function CalendarPageContent() {
 
                 {/* 注文詳細 */}
                 {!hasOrders ? (
-                  <div style={{ padding:'12px 16px', fontSize:'13px', color:'#888780' }}>
+                  <div style={{ padding:'14px 16px', fontSize:'16px',
+                    color:'#A8A69E', fontStyle:'italic' }}>
                     注文はありません
                   </div>
                 ) : (
                   day.orders.map((o, idx) => {
                     const sc = storeClass(o.store)
                     return (
-                      <div key={o.orderId} style={{ padding:'12px 16px',
+                      <div key={o.orderId} style={{ padding:'14px 16px',
                         borderBottom: idx < day.orders.length-1
                           ? '1px solid #F5F1EA' : 'none' }}>
                         <div style={{ display:'flex', justifyContent:'space-between',
-                          alignItems:'center', marginBottom:'6px' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                          alignItems:'center', marginBottom:'8px', gap:'10px',
+                          flexWrap:'wrap' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'8px',
+                            flexWrap:'wrap' }}>
                             <span style={{ background: sc.bg, color: sc.color,
-                              fontSize:'11px', padding:'2px 8px', borderRadius:'10px',
+                              fontSize:'16px', padding:'3px 10px', borderRadius:'10px',
                               fontWeight:500 }}>
                               {o.store}
                             </span>
-                            <span style={{ fontSize:'14px', fontWeight:500 }}>
+                            <span style={{ fontSize:'20px', fontWeight:500 }}>
                               {o.productName}
                             </span>
                           </div>
-                          <span style={{ fontSize:'13px', color:'#1A5276' }}>
-                            ¥{Number(o.price||0).toLocaleString()} ×
-                            {o.quantity}個 =
-                            <span style={{ fontWeight:500 }}>
+                          <span style={{ fontSize:'18px', color:'#1A5276',
+                            fontWeight:500, whiteSpace:'nowrap' }}>
+                            ¥{Number(o.price||0).toLocaleString()} ×{o.quantity}個{' = '}
+                            <span style={{ fontWeight:600 }}>
                               ¥{Number(o.subtotal||0).toLocaleString()}
                             </span>
                           </span>
                         </div>
-                        <div style={{ fontSize:'12px', color:'#888780',
-                          display:'grid', gridTemplateColumns:'1fr 1fr', gap:'2px' }}>
-                          <span>お名前: {o.customerName} 様</span>
-                          <span>電話: {o.phone}</span>
-                          <span>受け取り: {o.deliveryAddress}</span>
-                          <span>時間: {o.deliveryTime}</span>
+                        <div style={{ fontSize:'16px', color:'#5F5E5A',
+                          display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px' }}>
+                          <span><span style={{ color:'#A8A69E' }}>お名前: </span>
+                            {o.customerName} 様</span>
+                          <span><span style={{ color:'#A8A69E' }}>電話: </span>
+                            {o.phone}</span>
+                          <span><span style={{ color:'#A8A69E' }}>受け取り: </span>
+                            {o.deliveryAddress}</span>
+                          <span><span style={{ color:'#A8A69E' }}>時間: </span>
+                            {o.deliveryTime}</span>
                           {o.receipt === 'yes' && (
-                            <span>領収書: あり{o.receiptName ? '('+o.receiptName+')' : ''}</span>
+                            <span><span style={{ color:'#A8A69E' }}>領収書: </span>
+                              あり{o.receiptName ? '('+o.receiptName+')' : ''}</span>
                           )}
                           {o.purpose && (
-                            <span>用途: {o.purpose}</span>
+                            <span><span style={{ color:'#A8A69E' }}>用途: </span>
+                              {o.purpose}</span>
                           )}
                           {o.okazu && (
-                            <span>おかず: {o.okazu}</span>
+                            <span><span style={{ color:'#A8A69E' }}>おかず: </span>
+                              {o.okazu}</span>
                           )}
                           {o.notes && (
-                            <span style={{ gridColumn:'1/-1' }}>備考: {o.notes}</span>
+                            <span style={{ gridColumn:'1/-1' }}>
+                              <span style={{ color:'#A8A69E' }}>備考: </span>
+                              {o.notes}</span>
                           )}
                         </div>
                       </div>
@@ -367,14 +382,15 @@ function CalendarPageContent() {
 
         {/* 今後の商品別合計 */}
         {Object.keys(totalSummary).length > 0 && (
-          <div style={{ background:'white', borderRadius:'16px', padding:'16px',
+          <div style={{ background:'white', borderRadius:'16px', padding:'18px 16px',
             boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-            <div style={{ fontWeight:500, fontSize:'14px', marginBottom:'12px' }}>
+            <div style={{ fontWeight:500, fontSize:'20px', marginBottom:'12px',
+              color:'#1A5276' }}>
               📊 今後の商品別合計
             </div>
             {Object.entries(totalSummary).map(([name, v]) => (
               <div key={name} style={{ display:'flex', justifyContent:'space-between',
-                padding:'6px 0', borderBottom:'1px solid #F5F1EA', fontSize:'13px' }}>
+                padding:'10px 0', borderBottom:'1px solid #F5F1EA', fontSize:'20px' }}>
                 <span>{name}</span>
                 <span style={{ fontWeight:500, color:'#1A5276' }}>
                   {v.qty}個 / ¥{v.amount.toLocaleString()}
@@ -382,8 +398,8 @@ function CalendarPageContent() {
               </div>
             ))}
             <div style={{ display:'flex', justifyContent:'space-between',
-              padding:'8px 0', fontSize:'13px', fontWeight:500, color:'#1A5276',
-              borderTop:'2px solid #1A5276', marginTop:'4px' }}>
+              padding:'12px 0 4px', fontSize:'20px', fontWeight:500, color:'#1A5276',
+              borderTop:'2px solid #1A5276', marginTop:'6px' }}>
               <span>合計</span>
               <span>¥{grandTotal.toLocaleString()}</span>
             </div>

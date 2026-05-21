@@ -394,7 +394,7 @@ function OrderPageContent({ branch }: { branch: string }) {
                     <span style={{ fontSize:'16px', background:'#EAF3DE',
                       color:'#3B6D11', padding:'3px 10px', borderRadius:'12px',
                       fontWeight:500 }}>
-                      ×{o.quantity}
+                      {Number(o.quantity)}個
                     </span>
                   </div>
                   <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'4px' }}>
@@ -404,9 +404,10 @@ function OrderPageContent({ branch }: { branch: string }) {
                     {o.deliveryAddress} {o.deliveryTime}
                   </div>
                   <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'10px' }}>
-                    単価 ¥{Number(o.price || 0).toLocaleString()}
-                    <span style={{ color:'#888780', marginLeft:'8px' }}>
-                      / 小計 ¥{(Number(o.price || 0) * Number(o.quantity || 0)).toLocaleString()}
+                    単価{Number(o.price || 0).toLocaleString()}円
+                    ×{Number(o.quantity || 0)}個
+                    <span style={{ color:'#888780' }}>
+                      {' / '}合計{(Number(o.price || 0) * Number(o.quantity || 0)).toLocaleString()}円
                     </span>
                   </div>
                   <div style={{ display:'flex', gap:'8px' }}>
