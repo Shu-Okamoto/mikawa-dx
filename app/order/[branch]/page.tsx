@@ -124,10 +124,12 @@ function OrderPageContent({ branch }: { branch: string }) {
 
   const fetchOrders = useCallback(async () => {
     if (!user) return
+    if (!VALID_BRANCHES.has(branch)) return
+    if (!canRoleAccessBranch(user.role, branch)) return
     const res  = await authFetch(`/api/orders?branch=${branch}`)
     const data = await res.json()
     setOrders(Array.isArray(data) ? data : [])
-  }, [user, branch])
+  }, [user, branch, authFetch])
 
   const buildAvailDates = useCallback(() => {
     const dates: { value: string; label: string }[] = []
