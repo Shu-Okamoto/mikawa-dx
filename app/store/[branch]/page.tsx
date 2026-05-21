@@ -56,7 +56,7 @@ interface HistoryOrder {
   qty        : number | string
 }
 
-const FONT_STACK = "-apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif"
+const FONT_STACK = "'BIZ UDPGothic', -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif"
 
 const VALID_BRANCHES = new Set(['nishi', 'minami'])
 const BRANCH_LABELS: Record<string, string> = {

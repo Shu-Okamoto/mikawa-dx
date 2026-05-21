@@ -206,7 +206,7 @@ function ImportContent() {
   const previewRows = parsed?.rows.slice(0, 10) ?? []
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F5F1EA', fontFamily: '-apple-system,sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#F5F1EA', fontFamily: "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
       <BossHeader title="マスタインポート" subtitle="CSV から商品 / 注文商品を一括登録" onLogout={logout} />
       <BossNav active="/boss/import" />
 

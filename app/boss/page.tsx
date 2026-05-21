@@ -39,14 +39,14 @@ function BossPageContent() {
 
   if (loading || fetching) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+      minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
       読み込み中...
     </div>
   )
 
   if (error) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', fontFamily:'-apple-system,sans-serif', background:'#F5F1EA' }}>
+      minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA' }}>
       <div style={{ background:'white', borderRadius:'16px', padding:'40px',
         textAlign:'center', maxWidth:'320px' }}>
         <div style={{ fontSize:'48px', marginBottom:'16px' }}>🚫</div>
@@ -144,7 +144,7 @@ function BossPageContent() {
   )
 
   return (
-    <div style={{ fontFamily:'-apple-system,sans-serif', background:'#F5F1EA',
+    <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA',
       minHeight:'100vh', paddingBottom:'24px' }}>
 
       {/* ヘッダー */}
@@ -369,7 +369,7 @@ export default function BossPage() {
   return (
     <Suspense fallback={
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
         読み込み中...
       </div>
     }>

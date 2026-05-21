@@ -42,6 +42,9 @@ const entryGroups: { title: string; entries: Entry[] }[] = [
       { role: 'hq1', path: '/hq', label: '野菜担当' },
       { role: 'hq2', path: '/hq', label: '果物担当' },
       { role: 'hq3', path: '/hq', label: '餅・乾物担当' },
+      { role: 'hq1', path: '/order/honbu', label: '野菜:注文' },
+      { role: 'hq2', path: '/order/honbu', label: '果物:注文' },
+      { role: 'hq3', path: '/order/honbu', label: '餅:注文' },
     ],
   },
   {
@@ -108,7 +111,7 @@ export default function HomePage() {
       alignItems    : 'center',
       justifyContent: 'center',
       background    : '#F5F1EA',
-      fontFamily    : '-apple-system,sans-serif',
+      fontFamily    : "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
       padding       : '24px',
     }}>
       <div style={{ textAlign: 'center', width: '100%', maxWidth: '420px' }}>

@@ -55,7 +55,7 @@ function LineAuthContent() {
       alignItems    : 'center',
       justifyContent: 'center',
       background    : '#F5F1EA',
-      fontFamily    : '-apple-system, sans-serif',
+      fontFamily    : "'BIZ UDPGothic', -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif",
     }}>
       <div style={{
         background  : 'white',

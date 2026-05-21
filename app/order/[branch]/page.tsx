@@ -56,15 +56,23 @@ const DELIVERY_TIMES = [
   '15:00','15:30','16:00','16:30','17:00','17:30',
 ]
 
-const VALID_BRANCHES = new Set(['nishi', 'minami'])
+const VALID_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const BRANCH_LABELS: Record<string, string> = {
   nishi : '西店',
   minami: '南店',
+  honbu : '本部',
+}
+const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
+
+function canRoleAccessBranch(role: string, branch: string): boolean {
+  if (role === 'all') return true
+  if (branch === 'honbu') return HQ_ROLES.has(role)
+  return role === branch
 }
 
 function OrderPageContent({ branch }: { branch: string }) {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'all'])
+  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'])
   const [screen, setScreen]         = useState<Screen>('list')
   const [orders, setOrders]         = useState<InstoreOrder[]>([])
   const [products, setProducts]     = useState<OrderProduct[]>([])
@@ -98,7 +106,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       router.replace('/')
       return
     }
-    if (user.role !== 'all' && user.role !== branch) {
+    if (!canRoleAccessBranch(user.role, branch)) {
       router.replace('/')
     }
   }, [branch, user, loading, error, router])
@@ -311,14 +319,14 @@ function OrderPageContent({ branch }: { branch: string }) {
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+      minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
       読み込み中...
     </div>
   )
 
   if (error) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', fontFamily:'-apple-system,sans-serif', background:'#F5F1EA' }}>
+      minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA' }}>
       <div style={{ background:'white', borderRadius:'16px', padding:'40px',
         textAlign:'center', maxWidth:'320px' }}>
         <div style={{ fontSize:'48px', marginBottom:'16px' }}>🚫</div>
@@ -337,20 +345,26 @@ function OrderPageContent({ branch }: { branch: string }) {
     </div>
   )
 
-  const headerStyle = (color1: string, color2: string) => ({
-    background: `linear-gradient(135deg,${color1},${color2})`,
+  const BRANCH_THEMES: Record<string, { from: string; to: string; accent: string }> = {
+    nishi : { from: '#3B6D11', to: '#639922', accent: '#3B6D11' },
+    minami: { from: '#72243E', to: '#A93226', accent: '#72243E' },
+    honbu : { from: '#6A1B9A', to: '#8E44AD', accent: '#6A1B9A' },
+  }
+  const theme       = BRANCH_THEMES[branch] ?? BRANCH_THEMES.minami
+  const headerStyle = () => ({
+    background: `linear-gradient(135deg,${theme.from},${theme.to})`,
     color: 'white', padding: '20px 16px 16px',
     position: 'sticky' as const, top: 0, zIndex: 10,
   })
 
   return (
-    <div style={{ fontFamily:'-apple-system,sans-serif', background:'#F5F1EA',
+    <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA',
       minHeight:'100vh', paddingBottom:'24px' }}>
 
       {/* 注文一覧画面 */}
       {screen === 'list' && (
         <>
-          <div style={headerStyle('#72243E','#A93226')}>
+          <div style={headerStyle()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>惣菜注文受付</div>
@@ -359,7 +373,7 @@ function OrderPageContent({ branch }: { branch: string }) {
               <div style={{ display:'flex', gap:'8px' }}>
                 <button onClick={() => setScreen('date')}
                   style={{ padding:'10px 16px', background:'white',
-                    color:'#72243E', border:'none', borderRadius:'10px',
+                    color:theme.accent, border:'none', borderRadius:'10px',
                     fontSize:'16px', fontWeight:500, cursor:'pointer',
                     fontFamily:'inherit' }}>
                   ＋ 新規注文
@@ -436,7 +450,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       {/* 日付選択 */}
       {screen === 'date' && (
         <>
-          <div style={headerStyle('#72243E','#A93226')}>
+          <div style={headerStyle()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>配達日を選択</div>
@@ -474,7 +488,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       {/* 商品選択 */}
       {screen === 'product' && (
         <>
-          <div style={headerStyle('#72243E','#A93226')}>
+          <div style={headerStyle()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>商品を選択</div>
@@ -569,7 +583,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       {/* お客様情報入力 */}
       {screen === 'form' && (
         <>
-          <div style={headerStyle('#72243E','#A93226')}>
+          <div style={headerStyle()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>お客様情報</div>
@@ -763,7 +777,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       {/* 完了画面 */}
       {screen === 'complete' && (
         <>
-          <div style={headerStyle('#72243E','#A93226')}>
+          <div style={headerStyle()}>
             <div style={{ fontSize:'20px', fontWeight:500 }}>注文完了</div>
           </div>
           <div style={{ padding:'40px', textAlign:'center' }}>
@@ -1073,7 +1087,7 @@ export default function OrderBranchPage({
   return (
     <Suspense fallback={
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
         読み込み中...
       </div>
     }>

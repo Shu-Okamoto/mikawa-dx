@@ -26,6 +26,12 @@ interface CalendarDay {
   }[]
 }
 
+type CategoryKey = '弁当' | '餅'
+const CATEGORY_TABS: { key: CategoryKey; label: string; icon: string }[] = [
+  { key: '弁当', label: '弁当', icon: '🍱' },
+  { key: '餅',   label: '餅',   icon: '🍡' },
+]
+
 function CalendarPageContent() {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'])
@@ -33,6 +39,7 @@ function CalendarPageContent() {
   const [fetching, setFetching] = useState(true)
   const [printModal, setPrintModal] = useState<CalendarDay | null>(null)
   const [toast, setToast]       = useState('')
+  const [category, setCategory] = useState<CategoryKey>('弁当')
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -42,17 +49,19 @@ function CalendarPageContent() {
   const fetchCalendar = useCallback(async () => {
     if (!user) return
     setFetching(true)
-    const res  = await authFetch('/api/calendar')
+    const res  = await authFetch(`/api/calendar?category=${encodeURIComponent(category)}`)
     const data = await res.json()
     setCalData(Array.isArray(data) ? data : [])
     setFetching(false)
-  }, [user])
+  }, [user, category])
 
   useEffect(() => {
     if (loading) return
     if (error) { setFetching(false); return }
     fetchCalendar()
   }, [loading, error, fetchCalendar])
+
+  const currentTab = CATEGORY_TABS.find((t) => t.key === category) ?? CATEGORY_TABS[0]
 
   // 商品別合計
   const totalSummary = calData.reduce((acc, day) => {
@@ -75,6 +84,7 @@ function CalendarPageContent() {
     const storeColor = (store: string) => {
       if (store === '西店') return { bg:'#EAF3DE', color:'#3B6D11' }
       if (store === '南店') return { bg:'#FBEAF0', color:'#72243E' }
+      if (store === '本部') return { bg:'#F3E5F5', color:'#6A1B9A' }
       return { bg:'#F3E5F5', color:'#6A1B9A' }
     }
 
@@ -101,7 +111,7 @@ function CalendarPageContent() {
     w.document.write(`<!DOCTYPE html><html lang="ja"><head>
       <meta charset="UTF-8"><title>${day.label} 注文一覧</title>
       <style>
-        body{font-family:-apple-system,sans-serif;padding:20px;font-size:12px;}
+        body{font-family:'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;padding:20px;font-size:12px;}
         h2{color:#1A5276;font-size:16px;margin-bottom:4px;}
         p{font-size:11px;color:#888;margin-bottom:16px;}
         table{width:100%;border-collapse:collapse;}
@@ -168,14 +178,14 @@ function CalendarPageContent() {
 
     w.document.write(`<!DOCTYPE html><html lang="ja"><head>
       <meta charset="UTF-8">
-      <title>${user?.category}注文 週間カレンダー</title>
+      <title>${category}注文 週間カレンダー</title>
       <style>
-        body{font-family:-apple-system,sans-serif;padding:20px;font-size:12px;}
+        body{font-family:'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;padding:20px;font-size:12px;}
         h2{color:#1A5276;font-size:16px;margin-bottom:4px;}
         @media print{div{page-break-inside:avoid;}}
       </style>
     </head><body>
-      <h2>${user?.category}注文 週間カレンダー</h2>
+      <h2>${category}注文 週間カレンダー</h2>
       <p style="font-size:11px;color:#888;margin-bottom:16px;">
         ${new Date().toLocaleDateString('ja-JP')} 印刷
       </p>
@@ -188,6 +198,7 @@ function CalendarPageContent() {
   const storeClass = (store: string) => {
     if (store === '西店') return { bg:'#EAF3DE', color:'#3B6D11' }
     if (store === '南店') return { bg:'#FBEAF0', color:'#72243E' }
+    if (store === '本部') return { bg:'#F3E5F5', color:'#6A1B9A' }
     return { bg:'#F3E5F5', color:'#6A1B9A' }
   }
 
@@ -198,14 +209,14 @@ function CalendarPageContent() {
 
   if (loading || fetching) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+      minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
       読み込み中...
     </div>
   )
 
   if (error) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', fontFamily:'-apple-system,sans-serif', background:'#F5F1EA' }}>
+      minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA' }}>
       <div style={{ background:'white', borderRadius:'16px', padding:'40px',
         textAlign:'center', maxWidth:'320px' }}>
         <div style={{ fontSize:'48px', marginBottom:'16px' }}>🚫</div>
@@ -225,18 +236,19 @@ function CalendarPageContent() {
   )
 
   return (
-    <div style={{ fontFamily:'-apple-system,sans-serif', background:'#F5F1EA',
+    <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA',
       minHeight:'100vh', paddingBottom:'24px' }}>
 
       {/* ヘッダー */}
       <div style={{ background:'linear-gradient(135deg,#1A5276,#2980B9)',
-        color:'white', padding:'20px 16px 16px',
+        color:'white', padding:'20px 16px 0',
         position:'sticky', top:0, zIndex:10 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div style={{ display:'flex', justifyContent:'space-between',
+          alignItems:'center', paddingBottom:'12px' }}>
           <div>
             <div style={{ fontSize:'14px', opacity:.85 }}>週間カレンダー</div>
             <div style={{ fontSize:'22px', fontWeight:500 }}>
-              {user?.category === '弁当' ? '🍱' : '🍡'} {user?.category}注文
+              {currentTab.icon} {currentTab.label}注文
             </div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
@@ -255,6 +267,23 @@ function CalendarPageContent() {
               終了する
             </button>
           </div>
+        </div>
+        {/* カテゴリタブ */}
+        <div style={{ display:'flex', gap:'4px' }}>
+          {CATEGORY_TABS.map((t) => {
+            const active = t.key === category
+            return (
+              <button key={t.key} onClick={() => setCategory(t.key)}
+                style={{ flex:1, padding:'12px 8px',
+                  background: active ? 'white' : 'rgba(255,255,255,.15)',
+                  color: active ? '#1A5276' : 'white',
+                  border:'none', borderRadius:'10px 10px 0 0',
+                  fontSize:'18px', fontWeight:500,
+                  cursor:'pointer', fontFamily:'inherit' }}>
+                {t.icon} {t.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -425,7 +454,7 @@ export default function CalendarPage() {
   return (
     <Suspense fallback={
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-        minHeight:'100vh', fontFamily:'-apple-system,sans-serif' }}>
+        minHeight:'100vh', fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
         読み込み中...
       </div>
     }>

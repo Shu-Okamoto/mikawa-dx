@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
+const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
+
 function canAccessBranch(role: string, branch: string): boolean {
   if (role === 'all') return true
+  if (branch === 'honbu') return HQ_ROLES.has(role)
   return role === branch
 }
 

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
           ? { productId: { in: productIds } }
           : {}),
       },
-      include : { store: true },
+      include : { store: true, product: true },
       orderBy : { deliveryDate: 'asc' },
     })
 
@@ -54,13 +54,18 @@ export async function GET(req: NextRequest) {
     }
 
     orders.forEach((o: any) => {
-      const dStr = o.deliveryDate.toISOString().split('T')[0]
+      const dStr     = o.deliveryDate.toISOString().split('T')[0]
+      const qty      = Number(o.quantity)
+      const price    = o.product ? Number(o.product.price) : 0
+      const subtotal = price * qty
       if (days[dStr]) {
         days[dStr].orders.push({
           orderId        : o.id,
           store          : o.store.storeName,
           productName    : o.productName,
-          quantity       : Number(o.quantity),
+          quantity       : qty,
+          price,
+          subtotal,
           customerName   : o.customerName,
           phone          : o.phone,
           deliveryAddress: o.deliveryAddress,
