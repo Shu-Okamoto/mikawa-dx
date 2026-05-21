@@ -548,7 +548,6 @@ function InputScreen({
           return (
             <ItemRow key={p.id}
               name={p.productName}
-              hint={`先週平均 ${p.weeklyAvg}${p.unit}`}
               unit={p.unit}
               status={st.status}
               qty={st.qty}
@@ -627,7 +626,7 @@ function ItemRow({
   name           : string
   customName?    : string
   onSetCustomName?: (v: string) => void
-  hint           : string
+  hint?          : string
   unit           : string
   status         : string | null
   qty            : string
@@ -661,7 +660,9 @@ function ItemRow({
         ) : (
           <div style={{ fontSize: '15px', fontWeight: 500, marginBottom: '2px' }}>{name}</div>
         )}
-        <div style={{ fontSize: '11px', color: '#A8A69E', marginTop: '2px' }}>{hint}</div>
+        {hint && (
+          <div style={{ fontSize: '11px', color: '#A8A69E', marginTop: '2px' }}>{hint}</div>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <div style={{ display: 'flex', gap: '4px' }}>
