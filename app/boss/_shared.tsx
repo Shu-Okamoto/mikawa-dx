@@ -37,6 +37,7 @@ export function BossHeader({
 
 const NAV_ITEMS = [
   { href: '/boss',                 label: '📊 ダッシュボード' },
+  { href: '/boss/analytics',       label: '📈 売上分析' },
   { href: '/boss/users',           label: '👥 ユーザー' },
   { href: '/boss/products',        label: '🥬 商品' },
   { href: '/boss/order-products',  label: '🍱 店内商品' },
