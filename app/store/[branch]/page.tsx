@@ -791,6 +791,7 @@ function WeeklyScreen({
   const [data, setData]     = useState<Record<string, BranchOrder[]>>({})
   const [memos, setMemos]   = useState<Record<string, Record<string, string>>>({}) // dateStr → cat → memo
   const [loading, setLoading] = useState(true)
+  const [activeCat, setActiveCat] = useState<string | null>(null)
 
   const weekDays = useMemo(() => {
     const today = new Date()
@@ -874,6 +875,10 @@ function WeeklyScreen({
     })
   })
 
+  const categories = Array.from(productByCat.keys())
+  const currentCat = activeCat && productByCat.has(activeCat) ? activeCat : (categories[0] ?? null)
+  const currentProducts = currentCat ? productByCat.get(currentCat) : undefined
+
   const statusStyle = (status: string | null | undefined): { bg: string; fg: string } => {
     if (status === '〇') return { bg: '#FCEBEB', fg: '#A32D2D' }
     if (status === '△') return { bg: '#FAEEDA', fg: '#854F0B' }
@@ -905,15 +910,40 @@ function WeeklyScreen({
           </div>
         )}
 
-        {!loading && Array.from(productByCat.entries()).map(([cat, products]) => (
-          <div key={cat} style={{
+        {!loading && categories.length > 1 && (
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
+            {categories.map((cat) => {
+              const isActive = cat === currentCat
+              return (
+                <button key={cat} onClick={() => setActiveCat(cat)}
+                  style={{
+                    padding:'8px 14px', borderRadius:'20px', fontSize:'14px',
+                    fontWeight:500, fontFamily:'inherit', cursor:'pointer',
+                    border: isActive ? '1.5px solid #3B6D11' : '1.5px solid #E5E1D8',
+                    background: isActive ? '#3B6D11' : 'white',
+                    color    : isActive ? 'white'   : '#2C2C2A',
+                  }}>
+                  {(catIcons[cat] || '📦') + ' ' + cat}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {!loading && currentCat && currentProducts && (
+          <div style={{
             background:'white', borderRadius:'14px', overflow:'hidden',
             boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginBottom:'14px',
           }}>
             <div style={{
               padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
               fontWeight:500, fontSize:'16px',
-            }}>{(catIcons[cat] || '📦') + ' ' + cat}</div>
+            }}>
+              {(catIcons[currentCat] || '📦') + ' ' + currentCat}
+              <span style={{ marginLeft:'8px', fontSize:'12px', color:'#888780', fontWeight:400 }}>
+                （{currentProducts.size}品）
+              </span>
+            </div>
 
             <div style={{ overflowX:'auto' }}>
               <table style={{ borderCollapse:'collapse', width:'100%', minWidth:'480px' }}>
@@ -939,7 +969,7 @@ function WeeklyScreen({
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from(products.entries()).map(([pid, info]) => (
+                  {Array.from(currentProducts.entries()).map(([pid, info]) => (
                     <tr key={pid}>
                       <td style={{
                         padding:'8px 10px', fontWeight:500, fontSize:'16px',
@@ -972,10 +1002,10 @@ function WeeklyScreen({
             </div>
 
             {/* メモ行 */}
-            {weekDays.some((wd) => memos[wd.dateStr]?.[cat]) && (
+            {weekDays.some((wd) => memos[wd.dateStr]?.[currentCat]) && (
               <div style={{ padding:'10px 16px', background:'#FFFBF0' }}>
                 {weekDays.map((wd) => {
-                  const memo = memos[wd.dateStr]?.[cat]
+                  const memo = memos[wd.dateStr]?.[currentCat]
                   if (!memo) return null
                   return (
                     <div key={wd.dateStr} style={{
@@ -992,7 +1022,7 @@ function WeeklyScreen({
               </div>
             )}
           </div>
-        ))}
+        )}
 
         {!loading && (
           <div style={{

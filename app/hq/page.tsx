@@ -559,6 +559,7 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
 }) {
   const [data, setData] = useState<Record<string, ProductSummary[]>>({})
   const [loading, setLoading] = useState(true)
+  const [activeCat, setActiveCat] = useState<string | null>(null)
 
   const weekDays = useMemo(() => {
     const today = new Date()
@@ -617,6 +618,10 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
     })
   })
 
+  const categories = Array.from(productByCat.keys())
+  const currentCat = activeCat && productByCat.has(activeCat) ? activeCat : (categories[0] ?? null)
+  const currentProducts = currentCat ? productByCat.get(currentCat) : undefined
+
   const monday    = weekDays[0]?.date
   const saturday  = weekDays[weekDays.length - 1]?.date
   const rangeText = monday && saturday
@@ -658,12 +663,35 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
         </div>
       )}
 
-      {!loading && Array.from(productByCat.entries()).map(([cat, products]) => (
-        <div key={cat} style={{ background:'white', borderRadius:'14px', overflow:'hidden',
+      {!loading && categories.length > 1 && (
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
+          {categories.map((cat) => {
+            const isActive = cat === currentCat
+            return (
+              <button key={cat} onClick={() => setActiveCat(cat)}
+                style={{
+                  padding:'8px 14px', borderRadius:'20px', fontSize:'14px',
+                  fontWeight:500, fontFamily:'inherit', cursor:'pointer',
+                  border: isActive ? '1.5px solid #1A5276' : '1.5px solid #E5E1D8',
+                  background: isActive ? '#1A5276' : 'white',
+                  color    : isActive ? 'white'   : '#2C2C2A',
+                }}>
+                {(catIcons[cat] || '📦') + ' ' + cat}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {!loading && currentCat && currentProducts && (
+        <div style={{ background:'white', borderRadius:'14px', overflow:'hidden',
           boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginBottom:'14px' }}>
           <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
             fontWeight:500, fontSize:'16px' }}>
-            {(catIcons[cat] || '📦') + ' ' + cat}
+            {(catIcons[currentCat] || '📦') + ' ' + currentCat}
+            <span style={{ marginLeft:'8px', fontSize:'12px', color:'#888780', fontWeight:400 }}>
+              （{currentProducts.size}品）
+            </span>
           </div>
           <div style={{ overflowX:'auto' }}>
             <table style={{ borderCollapse:'collapse', width:'100%', minWidth:'600px', fontSize:'13px' }}>
@@ -700,7 +728,7 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
                 </tr>
               </thead>
               <tbody>
-                {Array.from(products.entries()).map(([pid, info]) => (
+                {Array.from(currentProducts.entries()).map(([pid, info]) => (
                   <tr key={pid}>
                     <td style={{ padding:'8px 10px', fontWeight:500, fontSize:'18px',
                       borderBottom:'1px solid #F5F1EA', whiteSpace:'nowrap' }}>
@@ -745,7 +773,7 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
             </table>
           </div>
         </div>
-      ))}
+      )}
 
       {!loading && productByCat.size > 0 && (
         <div style={{ padding:'8px 4px', fontSize:'12px', color:'#888780',
