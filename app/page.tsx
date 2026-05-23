@@ -23,40 +23,33 @@ const roleHome: Record<RoleKey, string> = {
 
 const entryGroups: { title: string; entries: Entry[] }[] = [
   {
-    title: '西店',
+    title: '在庫発注',
     entries: [
-      { role: 'nishi', path: '/store/nishi', label: '発注' },
-      { role: 'nishi', path: '/order/nishi', label: '注文' },
+      { role: 'nishi',  path: '/store/nishi',  label: '西店' },
+      { role: 'minami', path: '/store/minami', label: '南店' },
     ],
   },
   {
-    title: '南店',
+    title: '弁当餅注文',
     entries: [
-      { role: 'minami', path: '/store/minami', label: '発注' },
-      { role: 'minami', path: '/order/minami', label: '注文' },
+      { role: 'nishi',  path: '/order/nishi',  label: '西店' },
+      { role: 'minami', path: '/order/minami', label: '南店' },
+      { role: 'hq1',    path: '/order/honbu',  label: '本部' },
     ],
   },
   {
-    title: '本部',
+    title: '週間カレンダー',
     entries: [
-      { role: 'hq1', path: '/hq', label: '野菜担当' },
-      { role: 'hq2', path: '/hq', label: '果物担当' },
-      { role: 'hq3', path: '/hq', label: '餅・乾物担当' },
-      { role: 'hq1', path: '/order/honbu', label: '野菜:注文' },
-      { role: 'hq2', path: '/order/honbu', label: '果物:注文' },
-      { role: 'hq3', path: '/order/honbu', label: '餅:注文' },
+      { role: 'all', path: '/calendar', label: '共通' },
     ],
   },
   {
-    title: '共通',
+    title: '管理',
     entries: [
-      { role: 'all', path: '/calendar', label: 'カレンダー' },
-    ],
-  },
-  {
-    title: 'オーナー',
-    entries: [
-      { role: 'all', path: '/boss', label: '全権限' },
+      { role: 'all', path: '/boss', label: 'ダッシュボード' },
+      { role: 'hq1', path: '/hq',   label: '野菜発注調整' },
+      { role: 'hq2', path: '/hq',   label: '果物発注調整' },
+      { role: 'hq3', path: '/hq',   label: '菓子類発注調整' },
     ],
   },
 ]
