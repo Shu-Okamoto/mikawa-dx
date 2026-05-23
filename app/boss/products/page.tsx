@@ -5,15 +5,16 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav, Toast, useToast, inputStyle } from '../_shared'
 
 interface Product {
-  id         : number
-  productCode: string
-  productName: string
-  category   : string
-  unit       : string
-  weeklyAvg  : number
-  vendorId   : number | null
-  vendorName : string | null
-  isActive   : boolean
+  id          : number
+  productCode : string
+  productName : string
+  category    : string
+  unit        : string
+  weeklyAvg   : number
+  vendorId    : number | null
+  vendorName  : string | null
+  isActive    : boolean
+  displayOrder: number
 }
 
 interface Vendor {
@@ -23,16 +24,6 @@ interface Vendor {
 }
 
 const CATEGORIES = ['野菜', '果物', '餅・乾物菓子類']
-
-type SortKey = 'productCode' | 'productName' | 'category' | 'unit' | 'weeklyAvg' | 'vendorName'
-const SORT_LABELS: Record<SortKey, string> = {
-  productCode: '商品コード',
-  productName: '商品名',
-  category   : 'カテゴリ',
-  unit       : '単位',
-  weeklyAvg  : '先週平均',
-  vendorName : '仕入先',
-}
 
 type Draft = {
   productCode: string
@@ -63,10 +54,10 @@ function ProductsContent() {
   const [draft, setDraft]     = useState<Draft>(EMPTY_DRAFT)
   const [saving, setSaving]   = useState(false)
   const [showAdd, setShowAdd] = useState(false)
-  const [activeCat, setActiveCat] = useState<string>('all')
-  const [sortKey, setSortKey]     = useState<SortKey>('productCode')
-  const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('asc')
+  const [activeCat, setActiveCat] = useState<string>(CATEGORIES[0])
   const [showInactive, setShowInactive] = useState(true)
+  const [dragId, setDragId]   = useState<number | null>(null)
+  const [reordering, setReordering] = useState(false)
 
   const fetchAll = useCallback(async () => {
     if (!user) return
@@ -142,24 +133,45 @@ function ProductsContent() {
   if (loading) return <Loading />
   if (error) return <ErrorBox msg={error} />
 
-  const counts: Record<string, number> = { all: items.length }
+  const counts: Record<string, number> = {}
   CATEGORIES.forEach((c) => { counts[c] = items.filter((p) => p.category === c).length })
 
-  const filtered = items
-    .filter((p) => activeCat === 'all' ? true : p.category === activeCat)
+  // 表示は現在のカテゴリに固定（並び替えはカテゴリ内のみ可）
+  const visible = items
+    .filter((p) => p.category === activeCat)
     .filter((p) => showInactive ? true : p.isActive)
 
-  const compare = (a: Product, b: Product): number => {
-    let av: string | number
-    let bv: string | number
-    if (sortKey === 'weeklyAvg') { av = a.weeklyAvg; bv = b.weeklyAvg }
-    else if (sortKey === 'vendorName') { av = a.vendorName ?? ''; bv = b.vendorName ?? '' }
-    else { av = a[sortKey] ?? ''; bv = b[sortKey] ?? '' }
-    if (av < bv) return sortDir === 'asc' ? -1 : 1
-    if (av > bv) return sortDir === 'asc' ? 1 : -1
-    return 0
+  const persistOrder = async (orderedIds: number[]) => {
+    setReordering(true)
+    // ローカル更新（楽観的）
+    const idToOrder = new Map(orderedIds.map((id, i) => [id, i + 1]))
+    setItems((prev) => prev.map((p) =>
+      idToOrder.has(p.id) ? { ...p, displayOrder: idToOrder.get(p.id)! } : p))
+
+    const payload = orderedIds.map((id, i) => ({ id, displayOrder: i + 1 }))
+    const res  = await authFetch('/api/boss/products/reorder', {
+      method: 'POST',
+      body  : JSON.stringify({ items: payload }),
+    })
+    const data = await res.json()
+    setReordering(false)
+    if (!data.success) {
+      showToast('並び替えの保存に失敗: ' + (data.error ?? '不明'))
+      fetchAll()
+    }
   }
-  const sorted = [...filtered].sort(compare)
+
+  const handleDrop = (targetId: number) => {
+    if (dragId == null || dragId === targetId) return
+    const ids = visible.map((p) => p.id)
+    const from = ids.indexOf(dragId)
+    const to   = ids.indexOf(targetId)
+    if (from < 0 || to < 0) return
+    ids.splice(from, 1)
+    ids.splice(to, 0, dragId)
+    setDragId(null)
+    persistOrder(ids)
+  }
 
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA',
@@ -191,9 +203,8 @@ function ProductsContent() {
 
         {/* カテゴリタブ */}
         <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
-          {(['all', ...CATEGORIES] as const).map((cat) => {
+          {CATEGORIES.map((cat) => {
             const active = activeCat === cat
-            const label  = cat === 'all' ? '全部' : cat
             return (
               <button key={cat} onClick={() => setActiveCat(cat)}
                 style={{
@@ -203,30 +214,22 @@ function ProductsContent() {
                   background: active ? '#3B6D11' : 'white',
                   color    : active ? 'white'   : '#2C2C2A',
                 }}>
-                {label}（{counts[cat] ?? 0}）
+                {cat}（{counts[cat] ?? 0}）
               </button>
             )
           })}
         </div>
 
-        {/* ソート＆オプション */}
+        {/* オプション */}
         <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center',
           marginBottom:'10px', padding:'8px 12px', background:'white',
           borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <span style={{ fontSize:'12px', color:'#888780' }}>並び替え</span>
-          <select value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
-            style={{ ...inputStyle({ width:'auto', padding:'6px 10px', fontSize:'13px' }) }}>
-            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-              <option key={k} value={k}>{SORT_LABELS[k]}</option>
-            ))}
-          </select>
-          <button onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-            style={{ padding:'6px 12px', background:'#F5F1EA',
-              border:'1.5px solid #E5E1D8', borderRadius:'8px',
-              fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
-            {sortDir === 'asc' ? '↑ 昇順' : '↓ 降順'}
-          </button>
+          <span style={{ fontSize:'12px', color:'#888780' }}>
+            ⇅ 行をドラッグして並び替え（カテゴリ内のみ）
+          </span>
+          {reordering && (
+            <span style={{ fontSize:'11px', color:'#3B6D11' }}>保存中...</span>
+          )}
           <label style={{ display:'flex', alignItems:'center', gap:'6px',
             fontSize:'12px', color:'#888780', cursor:'pointer', marginLeft:'auto' }}>
             <input type="checkbox" checked={showInactive}
@@ -238,28 +241,34 @@ function ProductsContent() {
         <div style={{ marginBottom:'12px', background:'white', borderRadius:'16px',
           overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
           <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
-            fontWeight:500, fontSize:'14px', background:'#FBF8F2',
-            display:'flex', justifyContent:'space-between' }}>
-            <span>{activeCat === 'all' ? '全カテゴリ' : activeCat}（{sorted.length}品）</span>
-            <span style={{ fontSize:'11px', color:'#888780', fontWeight:400 }}>
-              {SORT_LABELS[sortKey]} {sortDir === 'asc' ? '↑' : '↓'}
-            </span>
+            fontWeight:500, fontSize:'14px', background:'#FBF8F2' }}>
+            {activeCat}（{visible.length}品）
           </div>
-          {sorted.map((p, idx) => (
+          {visible.map((p, idx) => (
             <div key={p.id}>
               {editing === p.id ? (
                 <div style={{ padding:'12px 16px',
-                  borderBottom: idx < sorted.length-1 ? '1px solid #F5F1EA' : 'none',
+                  borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
                   background:'#FAFAFA' }}>
                   <ProductForm draft={draft} vendors={vendors}
                     onChange={setDraft} onSubmit={() => submit(false)}
                     onCancel={cancelEdit} saving={saving} />
                 </div>
               ) : (
-                <div style={{ padding:'12px 16px',
-                  borderBottom: idx < sorted.length-1 ? '1px solid #F5F1EA' : 'none',
-                  display:'flex', justifyContent:'space-between',
-                  alignItems:'center', opacity: p.isActive ? 1 : .5 }}>
+                <div
+                  draggable
+                  onDragStart={() => setDragId(p.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop(p.id)}
+                  onDragEnd={() => setDragId(null)}
+                  style={{ padding:'12px 16px',
+                    borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
+                    display:'flex', justifyContent:'space-between',
+                    alignItems:'center', opacity: p.isActive ? (dragId === p.id ? .4 : 1) : .5,
+                    background: dragId === p.id ? '#FAF8F3' : 'transparent',
+                    cursor: 'grab' }}>
+                  <span style={{ color:'#C0BDB8', fontSize:'18px',
+                    marginRight:'10px', userSelect:'none' }}>⋮⋮</span>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:'14px', fontWeight:500, color:'#2C2C2A' }}>
                       {p.productName}
@@ -270,7 +279,7 @@ function ProductsContent() {
                       )}
                     </div>
                     <div style={{ fontSize:'11px', color:'#888780', marginTop:'2px' }}>
-                      {p.productCode} / {p.category} / {p.unit} / 先週平均 {p.weeklyAvg}
+                      {p.productCode} / {p.unit} / 先週平均 {p.weeklyAvg}
                       {p.vendorName && ` / ${p.vendorName}`}
                     </div>
                   </div>
@@ -295,7 +304,7 @@ function ProductsContent() {
               )}
             </div>
           ))}
-          {sorted.length === 0 && (
+          {visible.length === 0 && (
             <div style={{ padding:'24px', textAlign:'center', color:'#888780', fontSize:'13px' }}>
               該当する商品がありません
             </div>

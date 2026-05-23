@@ -16,18 +16,19 @@ export async function GET(req: NextRequest) {
   try {
     const products = await prisma.product.findMany({
       include: { vendor: true },
-      orderBy: [{ category: 'asc' }, { productCode: 'asc' }],
+      orderBy: [{ category: 'asc' }, { displayOrder: 'asc' }, { productCode: 'asc' }],
     })
     return NextResponse.json(products.map((p) => ({
-      id         : p.id,
-      productCode: p.productCode,
-      productName: p.productName,
-      category   : p.category,
-      unit       : p.unit,
-      weeklyAvg  : Number(p.weeklyAvg),
-      vendorId   : p.vendorId,
-      vendorName : p.vendor?.vendorName ?? null,
-      isActive   : p.isActive,
+      id          : p.id,
+      productCode : p.productCode,
+      productName : p.productName,
+      category    : p.category,
+      unit        : p.unit,
+      weeklyAvg   : Number(p.weeklyAvg),
+      vendorId    : p.vendorId,
+      vendorName  : p.vendor?.vendorName ?? null,
+      isActive    : p.isActive,
+      displayOrder: p.displayOrder,
     })))
   } catch (e) {
     console.error(e)
