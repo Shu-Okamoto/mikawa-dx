@@ -53,12 +53,22 @@ export async function GET(req: NextRequest) {
 
   try {
     const now        = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const dow        = todayStart.getDay()
+    const weekStart  = new Date(todayStart)
+    weekStart.setDate(todayStart.getDate() - (dow === 0 ? 6 : dow - 1)) // 月曜
+    const weekEnd    = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 7) // 翌週月曜
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1)
     const yearStart  = new Date(now.getFullYear(), 0, 1)
     const yearEnd    = new Date(now.getFullYear() + 1, 0, 1)
 
-    const [monthSales, yearSales] = await Promise.all([
+    const [weekSales, monthSales, yearSales] = await Promise.all([
+      prisma.sale.findMany({
+        where  : { saleDate: { gte: weekStart, lt: weekEnd } },
+        include: { store: true },
+      }),
       prisma.sale.findMany({
         where  : { saleDate: { gte: monthStart, lt: monthEnd } },
         include: { store: true },
@@ -69,8 +79,13 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
+    const weeklyByStore  = aggregateByStore(weekSales  as unknown as SaleRow[])
     const monthlyByStore = aggregateByStore(monthSales as unknown as SaleRow[])
     const yearlyByStore  = aggregateByStore(yearSales  as unknown as SaleRow[])
+
+    const weekLabel = `${weekStart.getMonth()+1}/${weekStart.getDate()} 〜 ${
+      new Date(weekEnd.getTime() - 24*3600*1000).getMonth()+1}/${
+      new Date(weekEnd.getTime() - 24*3600*1000).getDate()}`
 
     // 曜日別: 年内データを曜日でグループ化
     const dowLabels = ['日', '月', '火', '水', '木', '金', '土']
@@ -114,6 +129,10 @@ export async function GET(req: NextRequest) {
     })
 
     return NextResponse.json({
+      weekly: {
+        label  : `今週 ${weekLabel}`,
+        byStore: weeklyByStore,
+      },
       monthly: {
         label  : `${now.getFullYear()}年${now.getMonth() + 1}月`,
         byStore: monthlyByStore,

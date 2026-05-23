@@ -378,6 +378,7 @@ interface DowEntry {
   avgCustomer : number
 }
 interface AnalyticsData {
+  weekly : { label: string; byStore: Record<string, PeriodBucket> }
   monthly: { label: string; byStore: Record<string, PeriodBucket> }
   yearly : { label: string; byStore: Record<string, PeriodBucket> }
   dow    : { label: string; byStore: Record<string, DowEntry[]> }
@@ -387,7 +388,7 @@ function SalesAnalytics() {
   const { authFetch } = useAuth('all')
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'month' | 'year' | 'dow'>('month')
+  const [tab, setTab] = useState<'week' | 'month' | 'year' | 'dow'>('week')
 
   useEffect(() => {
     let cancelled = false
@@ -415,6 +416,7 @@ function SalesAnalytics() {
         <div style={{ fontWeight:500, fontSize:'14px' }}>📈 売上分析</div>
         <div style={{ display:'flex', gap:'6px' }}>
           {([
+            ['week' , '今週'],
             ['month', '今月'],
             ['year' , '今年'],
             ['dow'  , '曜日別'],
@@ -440,6 +442,9 @@ function SalesAnalytics() {
         </div>
       )}
 
+      {!loading && data && tab === 'week' && (
+        <PeriodSummary label={data.weekly.label} byStore={data.weekly.byStore} stores={stores} />
+      )}
       {!loading && data && tab === 'month' && (
         <PeriodSummary label={data.monthly.label} byStore={data.monthly.byStore} stores={stores} />
       )}
