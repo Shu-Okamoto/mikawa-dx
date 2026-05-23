@@ -188,6 +188,20 @@ function DowSummary({
     1,
   )
 
+  const SEGMENTS = [
+    { key: 'souzai', label: '惣菜', color: '#639922' },
+    { key: 'mochi' , label: '餅'  , color: '#1A5276' },
+    { key: 'hana'  , label: '花'  , color: '#E67E22' },
+    { key: 'other' , label: 'その他', color: '#A8A69E' },
+  ] as const
+
+  const segValues = (e: DowEntry) => ({
+    souzai: e.avgSouzai,
+    mochi : e.avgMochi,
+    hana  : e.avgHana,
+    other : Math.max(0, e.avgAmount - e.avgSouzai - e.avgMochi - e.avgHana),
+  })
+
   const renderStore = (name: string, arr: DowEntry[]) => (
     <div key={name} style={{ marginBottom:'14px', paddingBottom:'12px',
       borderBottom:'1px solid #F5F1EA' }}>
@@ -195,19 +209,29 @@ function DowSummary({
         marginBottom:'8px' }}>{name}</div>
       <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
         {arr.map((e) => {
-          const widthPct = e.avgAmount > 0 ? (e.avgAmount / maxAvg) * 100 : 0
-          const isSun    = e.dow === 0
-          const isSat    = e.dow === 6
+          const isSun = e.dow === 0
+          const isSat = e.dow === 6
           const labelColor = isSun ? '#E24B4A' : isSat ? '#1A6FAF' : '#2C2C2A'
+          const segs = segValues(e)
           return (
             <div key={e.dow} style={{ display:'grid',
               gridTemplateColumns:'30px 1fr 120px', gap:'8px',
               alignItems:'center', fontSize:'13px' }}>
               <span style={{ fontWeight:500, color: labelColor }}>{e.label}</span>
               <div style={{ background:'#F5F1EA', borderRadius:'4px',
-                height:'20px', overflow:'hidden', position:'relative' }}>
-                <div style={{ width: widthPct + '%', height:'100%',
-                  background:'#639922', transition:'width .25s' }} />
+                height:'20px', overflow:'hidden', position:'relative',
+                display:'flex' }}>
+                {SEGMENTS.map((seg) => {
+                  const v = segs[seg.key]
+                  const w = v > 0 ? (v / maxAvg) * 100 : 0
+                  if (w === 0) return null
+                  const tip = `${seg.label}: ¥${v.toLocaleString()}`
+                  return (
+                    <div key={seg.key} title={tip}
+                      style={{ width: w + '%', height:'100%',
+                        background: seg.color, transition:'width .25s' }} />
+                  )
+                })}
               </div>
               <div style={{ textAlign:'right' }}>
                 {e.days > 0 ? (
@@ -230,8 +254,19 @@ function DowSummary({
 
   return (
     <div>
-      <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
-        {label}（バーは平均売上）
+      <div style={{ fontSize:'13px', color:'#888780', marginBottom:'8px' }}>
+        {label}
+      </div>
+      {/* 凡例 */}
+      <div style={{ display:'flex', gap:'12px', flexWrap:'wrap',
+        marginBottom:'14px', fontSize:'12px', color:'#888780' }}>
+        {SEGMENTS.map((seg) => (
+          <span key={seg.key} style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+            <span style={{ width:'12px', height:'12px', borderRadius:'2px',
+              background: seg.color, display:'inline-block' }} />
+            {seg.label}
+          </span>
+        ))}
       </div>
       {stores.map((s) => renderStore(s, byStore[s] ?? []))}
       {renderStore('🧮 2店合計', totalDow)}
