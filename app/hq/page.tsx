@@ -607,11 +607,15 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
     return () => { cancelled = true }
   }, [authFetch, queryCategory, weekDays])
 
-  const productMap = new Map<number, { name: string; unit: string }>()
+  // カテゴリ別に商品を整理（カテゴリ → 商品ID → {name, unit}）
+  const productByCat = new Map<string, Map<number, { name: string; unit: string }>>()
   Object.values(data).forEach((items) => {
-    items.forEach((it) => productMap.set(it.productId, { name: it.productName, unit: it.unit }))
+    items.forEach((it) => {
+      if (!productByCat.has(it.category)) productByCat.set(it.category, new Map())
+      const inner = productByCat.get(it.category)!
+      if (!inner.has(it.productId)) inner.set(it.productId, { name: it.productName, unit: it.unit })
+    })
   })
-  const productIds = Array.from(productMap.keys())
 
   const monday    = weekDays[0]?.date
   const saturday  = weekDays[weekDays.length - 1]?.date
@@ -626,66 +630,81 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
     return { bg: '#FAFAFA', fg: '#C0BDB8' }
   }
 
+  const catIcons: Record<string, string> = {
+    '野菜': '🥬', '果物': '🍎', '餅・乾物菓子類': '🍘',
+  }
+
   return (
-    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
-      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-      <div style={{ padding:'14px 18px', borderBottom:'1px solid #F0ECE3',
+    <div>
+      <div style={{ padding:'0 4px 12px',
         display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
         <div style={{ fontWeight:500, fontSize:'16px' }}>📊 {label} 週間発注表</div>
         <div style={{ fontSize:'13px', color:'#888780' }}>{rangeText}</div>
       </div>
 
-      {loading ? (
-        <div style={{ padding:'40px', textAlign:'center', color:'#888780', fontSize:'14px' }}>
+      {loading && (
+        <div style={{ background:'white', borderRadius:'16px',
+          padding:'40px', textAlign:'center', color:'#888780', fontSize:'14px',
+          boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
           読み込み中...
         </div>
-      ) : productIds.length === 0 ? (
-        <div style={{ padding:'40px', textAlign:'center', color:'#888780', fontSize:'14px' }}>
+      )}
+
+      {!loading && productByCat.size === 0 && (
+        <div style={{ background:'white', borderRadius:'16px',
+          padding:'40px', textAlign:'center', color:'#888780', fontSize:'14px',
+          boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
           この週の発注データはありません
         </div>
-      ) : (
-        <div style={{ overflowX:'auto', padding:'0 4px 16px' }}>
-          <table style={{ borderCollapse:'collapse', width:'100%', minWidth:'600px', fontSize:'13px' }}>
-            <thead>
-              <tr>
-                <th style={{ padding:'8px 10px', textAlign:'left', fontSize:'13px', color:'#888780',
-                  background:'#FAF8F3', borderBottom:'1.5px solid #F0ECE3', minWidth:'120px' }}>商品</th>
-                {weekDays.map((wd) => (
-                  <th key={wd.dateStr} colSpan={2} style={{
-                    padding:'8px 6px', fontSize:'13px', color: wd.isToday ? '#1A5276' : '#888780',
-                    background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
-                    borderBottom:'1.5px solid #F0ECE3', textAlign:'center', whiteSpace:'nowrap' }}>
-                    <div style={{ fontSize:'15px', fontWeight:500 }}>{wd.label}</div>
-                    <div style={{ fontSize:'13px', fontWeight:400 }}>
-                      {wd.date.getMonth()+1}/{wd.date.getDate()}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                <th style={{ background:'#FAF8F3', borderBottom:'1.5px solid #F0ECE3' }} />
-                {weekDays.map((wd) => (
-                  <Fragment key={wd.dateStr}>
-                    <th style={{ padding:'4px 0', fontSize:'12px',
-                      color: wd.isToday ? '#1A5276' : '#888780',
+      )}
+
+      {!loading && Array.from(productByCat.entries()).map(([cat, products]) => (
+        <div key={cat} style={{ background:'white', borderRadius:'14px', overflow:'hidden',
+          boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginBottom:'14px' }}>
+          <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+            fontWeight:500, fontSize:'16px' }}>
+            {(catIcons[cat] || '📦') + ' ' + cat}
+          </div>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ borderCollapse:'collapse', width:'100%', minWidth:'600px', fontSize:'13px' }}>
+              <thead>
+                <tr>
+                  <th style={{ padding:'8px 10px', textAlign:'left', fontSize:'13px', color:'#888780',
+                    background:'#FAF8F3', borderBottom:'1.5px solid #F0ECE3', minWidth:'120px' }}>商品</th>
+                  {weekDays.map((wd) => (
+                    <th key={wd.dateStr} colSpan={2} style={{
+                      padding:'8px 6px', fontSize:'13px', color: wd.isToday ? '#1A5276' : '#888780',
                       background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
-                      borderBottom:'1.5px solid #F0ECE3' }}>西</th>
-                    <th style={{ padding:'4px 0', fontSize:'12px',
-                      color: wd.isToday ? '#1A5276' : '#888780',
-                      background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
-                      borderBottom:'1.5px solid #F0ECE3' }}>南</th>
-                  </Fragment>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {productIds.map((pid) => {
-                const product = productMap.get(pid)!
-                return (
+                      borderBottom:'1.5px solid #F0ECE3', textAlign:'center', whiteSpace:'nowrap' }}>
+                      <div style={{ fontSize:'15px', fontWeight:500 }}>{wd.label}</div>
+                      <div style={{ fontSize:'13px', fontWeight:400 }}>
+                        {wd.date.getMonth()+1}/{wd.date.getDate()}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  <th style={{ background:'#FAF8F3', borderBottom:'1.5px solid #F0ECE3' }} />
+                  {weekDays.map((wd) => (
+                    <Fragment key={wd.dateStr}>
+                      <th style={{ padding:'4px 0', fontSize:'12px',
+                        color: wd.isToday ? '#1A5276' : '#888780',
+                        background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
+                        borderBottom:'1.5px solid #F0ECE3' }}>西</th>
+                      <th style={{ padding:'4px 0', fontSize:'12px',
+                        color: wd.isToday ? '#1A5276' : '#888780',
+                        background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
+                        borderBottom:'1.5px solid #F0ECE3' }}>南</th>
+                    </Fragment>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(products.entries()).map(([pid, info]) => (
                   <tr key={pid}>
                     <td style={{ padding:'8px 10px', fontWeight:500, fontSize:'18px',
                       borderBottom:'1px solid #F5F1EA', whiteSpace:'nowrap' }}>
-                      {product.name}
+                      {info.name}
                     </td>
                     {weekDays.map((wd) => {
                       const item = (data[wd.dateStr] ?? []).find((it) => it.productId === pid)
@@ -721,28 +740,31 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
                       )
                     })}
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          <div style={{ padding:'10px 14px', fontSize:'12px', color:'#888780',
-            display:'flex', gap:'14px', flexWrap:'wrap' }}>
-            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
-              <span style={{ padding:'2px 8px', borderRadius:'4px',
-                background:'#EAF3DE', color:'#3B6D11', fontWeight:500 }}>〇</span>
-              在庫なし
-            </span>
-            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
-              <span style={{ padding:'2px 8px', borderRadius:'4px',
-                background:'#FAEEDA', color:'#854F0B', fontWeight:500 }}>△</span>
-              残り少ない
-            </span>
-            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
-              <span style={{ padding:'2px 8px', borderRadius:'4px',
-                background:'#F5F1EA', color:'#888780', fontWeight:500 }}>×</span>
-              在庫あり
-            </span>
+                ))}
+              </tbody>
+            </table>
           </div>
+        </div>
+      ))}
+
+      {!loading && productByCat.size > 0 && (
+        <div style={{ padding:'8px 4px', fontSize:'12px', color:'#888780',
+          display:'flex', gap:'14px', flexWrap:'wrap' }}>
+          <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+            <span style={{ padding:'2px 8px', borderRadius:'4px',
+              background:'#EAF3DE', color:'#3B6D11', fontWeight:500 }}>〇</span>
+            在庫なし
+          </span>
+          <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+            <span style={{ padding:'2px 8px', borderRadius:'4px',
+              background:'#FAEEDA', color:'#854F0B', fontWeight:500 }}>△</span>
+            残り少ない
+          </span>
+          <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+            <span style={{ padding:'2px 8px', borderRadius:'4px',
+              background:'#F5F1EA', color:'#888780', fontWeight:500 }}>×</span>
+            在庫あり
+          </span>
         </div>
       )}
     </div>
