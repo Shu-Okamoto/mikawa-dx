@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { Fragment, useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+
+type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
 
 interface ProductSummary {
   productId  : number
@@ -47,6 +49,7 @@ function HqPageContent() {
   const [sales, setSales]       = useState<Record<string, SalesEntry>>({})
   const [saving, setSaving]     = useState(false)
   const [toast, setToast]       = useState('')
+  const [view, setView]         = useState<'main' | 'weekly'>('main')
 
   const queryCategory = searchParams.get('category')
 
@@ -203,17 +206,23 @@ function HqPageContent() {
               {user?.name}（{user?.role}）
             </div>
           </div>
-          <div style={{ display:'flex', gap:'8px' }}>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            <button onClick={() => setView(view === 'weekly' ? 'main' : 'weekly')}
+              style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
+                border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
+                color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+              {view === 'weekly' ? '← 本日に戻る' : '📊 週間表示'}
+            </button>
             <button onClick={copyForLine}
               style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
                 border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                color:'white', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+                color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
               LINEコピー
             </button>
             <button onClick={logout}
               style={{ padding:'8px 12px', background:'rgba(255,255,255,.2)',
                 border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-                color:'white', fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+                color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
               終了する
             </button>
           </div>
@@ -222,31 +231,41 @@ function HqPageContent() {
       </div>
 
       <div style={{ padding:'12px' }}>
-        {/* 売上実績 */}
-        <SalesSummary sales={sales} />
-
-        {/* 注文（〇・△） */}
-        <SectionTitle text={`📋 注文（${orderItems.length}品）`}
-          color="#1A5276" subtitle="〇＝在庫なし / △＝在庫少なめ" />
-        {orderItems.length === 0 ? (
-          <EmptyBox text="注文対象の商品はありません" />
+        {view === 'weekly' ? (
+          <WeeklyMatrix
+            authFetch={authFetch}
+            queryCategory={queryCategory}
+            label={headerCategory}
+          />
         ) : (
-          <OrderCards items={orderItems} adjusted={adjusted} setAdjusted={setAdjusted}
-            statusColor={statusColor} />
-        )}
+          <>
+            {/* 売上実績 */}
+            <SalesSummary sales={sales} />
 
-        {/* 在庫（× or 未設定） */}
-        <SectionTitle text={`📦 在庫あり（${stockItems.length}品）`}
-          color="#3B6D11" subtitle="× または未設定（発注不要）" />
-        {stockItems.length === 0 ? (
-          <EmptyBox text="該当なし" />
-        ) : (
-          <StockCards items={stockItems} statusColor={statusColor} />
+            {/* 注文（〇・△） */}
+            <SectionTitle text={`📋 注文（${orderItems.length}品）`}
+              color="#1A5276" subtitle="〇＝在庫なし / △＝在庫少なめ" />
+            {orderItems.length === 0 ? (
+              <EmptyBox text="注文対象の商品はありません" />
+            ) : (
+              <OrderCards items={orderItems} adjusted={adjusted} setAdjusted={setAdjusted}
+                statusColor={statusColor} />
+            )}
+
+            {/* 在庫（× or 未設定） */}
+            <SectionTitle text={`📦 在庫あり（${stockItems.length}品）`}
+              color="#3B6D11" subtitle="× または未設定（発注不要）" />
+            {stockItems.length === 0 ? (
+              <EmptyBox text="該当なし" />
+            ) : (
+              <StockCards items={stockItems} statusColor={statusColor} />
+            )}
+          </>
         )}
       </div>
 
       {/* フッター */}
-      {orderItems.length > 0 && (
+      {view !== 'weekly' && orderItems.length > 0 && (
         <div style={{ position:'fixed', bottom:0, left:0, right:0,
           padding:'12px 16px', background:'white',
           borderTop:'1px solid #E5E1D8', zIndex:10 }}>
@@ -413,33 +432,33 @@ function OrderCards({
               <div style={{ display:'flex', justifyContent:'space-between',
                 alignItems:'flex-start', marginBottom:'8px' }}>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:'14px', fontWeight:500, color:'#2C2C2A' }}>
+                  <div style={{ fontSize:'18px', fontWeight:500, color:'#2C2C2A' }}>
                     {item.productName}
                   </div>
-                  <div style={{ fontSize:'11px', color:'#888780', marginTop:'2px' }}>
+                  <div style={{ fontSize:'12px', color:'#888780', marginTop:'2px' }}>
                     {item.vendor || '仕入先未設定'}
                   </div>
                 </div>
               </div>
 
               <div style={{ display:'grid',
-                gridTemplateColumns:'1fr 1fr 60px 80px',
+                gridTemplateColumns:'1fr 1fr 70px 96px',
                 gap:'6px', alignItems:'center' }}>
                 {(['storeA', 'storeB'] as const).map((key, i) => {
                   const s = item[key]
                   const label = i === 0 ? '西' : '南'
                   return (
                     <div key={key} style={{ display:'flex', alignItems:'center',
-                      gap:'4px', padding:'4px 8px',
+                      gap:'6px', padding:'6px 10px',
                       background:'#F5F1EA', borderRadius:'8px',
-                      fontSize:'12px' }}>
-                      <span style={{ color:'#888780' }}>{label}</span>
+                      fontSize:'16px' }}>
+                      <span style={{ color:'#888780', fontSize:'13px' }}>{label}</span>
                       {s ? (
                         <>
-                          <span style={{ color: statusColor(s.status),
+                          <span style={{ color: statusColor(s.status), fontSize:'20px',
                             fontWeight:500 }}>{s.status || '―'}</span>
                           {s.qty > 0 && (
-                            <span style={{ marginLeft:'auto' }}>
+                            <span style={{ marginLeft:'auto', fontSize:'16px' }}>
                               {s.qty}{item.unit}
                             </span>
                           )}
@@ -450,22 +469,22 @@ function OrderCards({
                     </div>
                   )
                 })}
-                <div style={{ textAlign:'center', fontSize:'12px',
+                <div style={{ textAlign:'center', fontSize:'14px',
                   fontWeight:500, color:'#2C2C2A' }}>
                   計 {item.totalQty}{item.unit}
                 </div>
-                <div style={{ display:'flex', alignItems:'center', gap:'2px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'4px' }}>
                   <input type="number"
                     value={adjusted[item.productId] ?? 0}
                     onChange={(e) => setAdjusted({
                       ...adjusted,
                       [item.productId]: parseInt(e.target.value) || 0,
                     })}
-                    style={{ width:'48px', padding:'6px', textAlign:'center',
+                    style={{ width:'64px', height:'40px', padding:'6px', textAlign:'center',
                       border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                      fontSize:'14px', fontFamily:'inherit' }}
+                      fontSize:'20px', fontWeight:500, fontFamily:'inherit' }}
                     min="0" />
-                  <span style={{ fontSize:'11px', color:'#888780' }}>{item.unit}</span>
+                  <span style={{ fontSize:'12px', color:'#888780' }}>{item.unit}</span>
                 </div>
               </div>
             </div>
@@ -501,23 +520,24 @@ function StockCards({
           </div>
           {list.map((item, idx) => (
             <div key={item.productId}
-              style={{ padding:'8px 14px',
+              style={{ padding:'10px 14px',
                 borderBottom: idx < list.length-1 ? '1px solid #F5F1EA' : 'none',
                 display:'flex', justifyContent:'space-between',
-                alignItems:'center', fontSize:'13px' }}>
+                alignItems:'center', fontSize:'14px' }}>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ color:'#2C2C2A' }}>{item.productName}</div>
-                <div style={{ fontSize:'11px', color:'#888780' }}>
+                <div style={{ color:'#2C2C2A', fontSize:'16px', fontWeight:500 }}>{item.productName}</div>
+                <div style={{ fontSize:'12px', color:'#888780' }}>
                   {item.vendor || '仕入先未設定'}
                 </div>
               </div>
-              <div style={{ display:'flex', gap:'6px', fontSize:'11px' }}>
+              <div style={{ display:'flex', gap:'6px', fontSize:'14px' }}>
                 {(['storeA', 'storeB'] as const).map((key, i) => {
                   const s = item[key]
                   const label = i === 0 ? '西' : '南'
                   return (
                     <span key={key} style={{
-                      padding:'2px 6px', background:'#F5F1EA', borderRadius:'6px',
+                      padding:'4px 10px', background:'#F5F1EA', borderRadius:'6px',
+                      fontWeight:500,
                       color: s?.status ? statusColor(s.status) : '#888780' }}>
                       {label}: {s?.status ?? '—'}
                     </span>
@@ -529,6 +549,203 @@ function StockCards({
         </div>
       ))}
     </>
+  )
+}
+
+function WeeklyMatrix({ authFetch, queryCategory, label }: {
+  authFetch    : AuthFetch
+  queryCategory: string | null
+  label        : string
+}) {
+  const [data, setData] = useState<Record<string, ProductSummary[]>>({})
+  const [loading, setLoading] = useState(true)
+
+  const weekDays = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const dow = today.getDay()
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+    const out: { date: Date; dateStr: string; label: string; isToday: boolean }[] = []
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(monday)
+      d.setDate(monday.getDate() + i)
+      const yyyy = d.getFullYear()
+      const mm   = String(d.getMonth() + 1).padStart(2, '0')
+      const dd   = String(d.getDate()).padStart(2, '0')
+      out.push({
+        date   : d,
+        dateStr: `${yyyy}-${mm}-${dd}`,
+        label  : ['月','火','水','木','金','土'][i],
+        isToday: d.getTime() === today.getTime(),
+      })
+    }
+    return out
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchAll = async () => {
+      setLoading(true)
+      const catParam = queryCategory ? `&category=${queryCategory}` : ''
+      const results = await Promise.all(weekDays.map(async (wd) => {
+        try {
+          const res  = await authFetch(`/api/daily-orders/hq?date=${wd.dateStr}${catParam}`)
+          const json = await res.json()
+          return [wd.dateStr, (json.items ?? []) as ProductSummary[]] as const
+        } catch {
+          return [wd.dateStr, [] as ProductSummary[]] as const
+        }
+      }))
+      if (cancelled) return
+      const map: Record<string, ProductSummary[]> = {}
+      results.forEach(([k, v]) => { map[k] = v })
+      setData(map)
+      setLoading(false)
+    }
+    fetchAll()
+    return () => { cancelled = true }
+  }, [authFetch, queryCategory, weekDays])
+
+  const productMap = new Map<number, { name: string; unit: string }>()
+  Object.values(data).forEach((items) => {
+    items.forEach((it) => productMap.set(it.productId, { name: it.productName, unit: it.unit }))
+  })
+  const productIds = Array.from(productMap.keys())
+
+  const monday    = weekDays[0]?.date
+  const saturday  = weekDays[weekDays.length - 1]?.date
+  const rangeText = monday && saturday
+    ? `${monday.getMonth()+1}月${monday.getDate()}日 〜 ${saturday.getMonth()+1}月${saturday.getDate()}日`
+    : ''
+
+  const statusStyle = (status: string | null | undefined): { bg: string; fg: string } => {
+    if (status === '〇') return { bg: '#EAF3DE', fg: '#3B6D11' }
+    if (status === '△') return { bg: '#FAEEDA', fg: '#854F0B' }
+    if (status === '×') return { bg: '#F5F1EA', fg: '#888780' }
+    return { bg: '#FAFAFA', fg: '#C0BDB8' }
+  }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'14px 18px', borderBottom:'1px solid #F0ECE3',
+        display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
+        <div style={{ fontWeight:500, fontSize:'16px' }}>📊 {label} 週間発注表</div>
+        <div style={{ fontSize:'13px', color:'#888780' }}>{rangeText}</div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding:'40px', textAlign:'center', color:'#888780', fontSize:'14px' }}>
+          読み込み中...
+        </div>
+      ) : productIds.length === 0 ? (
+        <div style={{ padding:'40px', textAlign:'center', color:'#888780', fontSize:'14px' }}>
+          この週の発注データはありません
+        </div>
+      ) : (
+        <div style={{ overflowX:'auto', padding:'0 4px 16px' }}>
+          <table style={{ borderCollapse:'collapse', width:'100%', minWidth:'600px', fontSize:'13px' }}>
+            <thead>
+              <tr>
+                <th style={{ padding:'8px 10px', textAlign:'left', fontSize:'13px', color:'#888780',
+                  background:'#FAF8F3', borderBottom:'1.5px solid #F0ECE3', minWidth:'120px' }}>商品</th>
+                {weekDays.map((wd) => (
+                  <th key={wd.dateStr} colSpan={2} style={{
+                    padding:'8px 6px', fontSize:'13px', color: wd.isToday ? '#1A5276' : '#888780',
+                    background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
+                    borderBottom:'1.5px solid #F0ECE3', textAlign:'center', whiteSpace:'nowrap' }}>
+                    <div style={{ fontSize:'15px', fontWeight:500 }}>{wd.label}</div>
+                    <div style={{ fontSize:'13px', fontWeight:400 }}>
+                      {wd.date.getMonth()+1}/{wd.date.getDate()}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                <th style={{ background:'#FAF8F3', borderBottom:'1.5px solid #F0ECE3' }} />
+                {weekDays.map((wd) => (
+                  <Fragment key={wd.dateStr}>
+                    <th style={{ padding:'4px 0', fontSize:'12px',
+                      color: wd.isToday ? '#1A5276' : '#888780',
+                      background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
+                      borderBottom:'1.5px solid #F0ECE3' }}>西</th>
+                    <th style={{ padding:'4px 0', fontSize:'12px',
+                      color: wd.isToday ? '#1A5276' : '#888780',
+                      background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
+                      borderBottom:'1.5px solid #F0ECE3' }}>南</th>
+                  </Fragment>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {productIds.map((pid) => {
+                const product = productMap.get(pid)!
+                return (
+                  <tr key={pid}>
+                    <td style={{ padding:'8px 10px', fontWeight:500, fontSize:'18px',
+                      borderBottom:'1px solid #F5F1EA', whiteSpace:'nowrap' }}>
+                      {product.name}
+                    </td>
+                    {weekDays.map((wd) => {
+                      const item = (data[wd.dateStr] ?? []).find((it) => it.productId === pid)
+                      const a = item?.storeA
+                      const b = item?.storeB
+                      const aStyle = statusStyle(a?.status ?? null)
+                      const bStyle = statusStyle(b?.status ?? null)
+                      const aText = !a || a.status === null ? '—'
+                        : a.status + (a.qty > 0 ? ` ${a.qty}` : '')
+                      const bText = !b || b.status === null ? '—'
+                        : b.status + (b.qty > 0 ? ` ${b.qty}` : '')
+                      return (
+                        <Fragment key={`${pid}-${wd.dateStr}`}>
+                          <td style={{
+                            padding:'4px 4px', borderBottom:'1px solid #F5F1EA',
+                            borderRight:'1px solid #F5F1EA', textAlign:'center' }}>
+                            <span style={{ display:'inline-block', padding:'4px 8px', borderRadius:'4px',
+                              fontSize:'18px', fontWeight:500,
+                              background: aStyle.bg, color: aStyle.fg, minWidth:'40px' }}>
+                              {aText}
+                            </span>
+                          </td>
+                          <td style={{
+                            padding:'4px 4px', borderBottom:'1px solid #F5F1EA',
+                            borderRight:'1px solid #F5F1EA', textAlign:'center' }}>
+                            <span style={{ display:'inline-block', padding:'4px 8px', borderRadius:'4px',
+                              fontSize:'18px', fontWeight:500,
+                              background: bStyle.bg, color: bStyle.fg, minWidth:'40px' }}>
+                              {bText}
+                            </span>
+                          </td>
+                        </Fragment>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div style={{ padding:'10px 14px', fontSize:'12px', color:'#888780',
+            display:'flex', gap:'14px', flexWrap:'wrap' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ padding:'2px 8px', borderRadius:'4px',
+                background:'#EAF3DE', color:'#3B6D11', fontWeight:500 }}>〇</span>
+              在庫なし
+            </span>
+            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ padding:'2px 8px', borderRadius:'4px',
+                background:'#FAEEDA', color:'#854F0B', fontWeight:500 }}>△</span>
+              残り少ない
+            </span>
+            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ padding:'2px 8px', borderRadius:'4px',
+                background:'#F5F1EA', color:'#888780', fontWeight:500 }}>×</span>
+              在庫あり
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
