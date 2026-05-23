@@ -67,6 +67,7 @@ model OrderProduct {
   price         Decimal        @default(0)
   availableDays String
   isActive      Boolean        @default(true)
+  displayOrder  Int            @default(0)
   memo          String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @default(now()) @updatedAt

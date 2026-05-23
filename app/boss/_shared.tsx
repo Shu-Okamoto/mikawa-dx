@@ -40,7 +40,7 @@ const NAV_ITEMS = [
   { href: '/boss/analytics',       label: '📈 売上分析' },
   { href: '/boss/users',           label: '👥 ユーザー' },
   { href: '/boss/products',        label: '🥬 商品' },
-  { href: '/boss/order-products',  label: '🍱 店内商品' },
+  { href: '/boss/order-products',  label: '🍱 オリジナル商品' },
   { href: '/boss/vendors',         label: '🏢 仕入先' },
   { href: '/boss/import',          label: '📥 インポート' },
 ]
