@@ -49,7 +49,6 @@ function OrderProductsContent() {
   const [showAdd, setShowAdd] = useState(false)
   const [activeCat, setActiveCat] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(true)
-  const [dragId, setDragId]         = useState<number | null>(null)
   const [reordering, setReordering] = useState(false)
 
   const fetchAll = useCallback(async () => {
@@ -176,15 +175,12 @@ function OrderProductsContent() {
     }
   }
 
-  const handleDrop = (targetId: number) => {
-    if (dragId == null || dragId === targetId) return
+  const moveRow = (id: number, direction: -1 | 1) => {
     const ids = visible.map((p) => p.id)
-    const from = ids.indexOf(dragId)
-    const to   = ids.indexOf(targetId)
-    if (from < 0 || to < 0) return
-    ids.splice(from, 1)
-    ids.splice(to, 0, dragId)
-    setDragId(null)
+    const from = ids.indexOf(id)
+    const to   = from + direction
+    if (from < 0 || to < 0 || to >= ids.length) return
+    ;[ids[from], ids[to]] = [ids[to], ids[from]]
     persistOrder(ids)
   }
 
@@ -243,7 +239,7 @@ function OrderProductsContent() {
             marginBottom:'10px', padding:'8px 12px', background:'white',
             borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
             <span style={{ fontSize:'12px', color:'#888780' }}>
-              ⇅ 行をドラッグして並び替え（カテゴリ内のみ）
+              ↑↓ ボタンで並び替え（カテゴリ内のみ）
             </span>
             {reordering && (
               <span style={{ fontSize:'11px', color:'#3B6D11' }}>保存中...</span>
@@ -276,21 +272,28 @@ function OrderProductsContent() {
                       onCancel={cancelEdit} saving={saving} />
                   </div>
                 ) : (
-                  <div
-                    draggable
-                    onDragStart={() => setDragId(p.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => handleDrop(p.id)}
-                    onDragEnd={() => setDragId(null)}
-                    style={{ padding:'12px 16px',
-                      borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
-                      display:'flex', justifyContent:'space-between',
-                      alignItems:'center',
-                      opacity: p.isActive ? (dragId === p.id ? .4 : 1) : .5,
-                      background: dragId === p.id ? '#FAF8F3' : 'transparent',
-                      cursor: 'grab' }}>
-                    <span style={{ color:'#C0BDB8', fontSize:'18px',
-                      marginRight:'10px', userSelect:'none' }}>⋮⋮</span>
+                  <div style={{ padding:'12px 16px',
+                    borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
+                    display:'flex', justifyContent:'space-between',
+                    alignItems:'center', opacity: p.isActive ? 1 : .5 }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'2px',
+                      marginRight:'10px' }}>
+                      <button onClick={() => moveRow(p.id, -1)}
+                        disabled={idx === 0 || reordering}
+                        style={{ padding:'2px 6px', border:'1.5px solid #E5E1D8',
+                          borderRadius:'6px', background:'white',
+                          cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                          fontSize:'11px', color: idx === 0 ? '#D9D5CC' : '#2C2C2A',
+                          fontFamily:'inherit', lineHeight:1 }}>▲</button>
+                      <button onClick={() => moveRow(p.id, 1)}
+                        disabled={idx === visible.length - 1 || reordering}
+                        style={{ padding:'2px 6px', border:'1.5px solid #E5E1D8',
+                          borderRadius:'6px', background:'white',
+                          cursor: idx === visible.length - 1 ? 'not-allowed' : 'pointer',
+                          fontSize:'11px',
+                          color: idx === visible.length - 1 ? '#D9D5CC' : '#2C2C2A',
+                          fontFamily:'inherit', lineHeight:1 }}>▼</button>
+                    </div>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:'14px', fontWeight:500, color:'#2C2C2A' }}>
                         {p.productName}
