@@ -65,8 +65,15 @@ function ProductsContent() {
       authFetch('/api/boss/products'),
       authFetch('/api/boss/vendors'),
     ])
-    setItems(await pRes.json())
-    setVendors(await vRes.json())
+    const pData = await pRes.json()
+    const vData = await vRes.json()
+    if (!Array.isArray(pData)) {
+      showToast('商品の取得に失敗: ' + (pData?.error ?? '不明'))
+      setItems([])
+    } else {
+      setItems(pData)
+    }
+    setVendors(Array.isArray(vData) ? vData : [])
   }, [user])
 
   useEffect(() => {

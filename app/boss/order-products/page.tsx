@@ -54,8 +54,14 @@ function OrderProductsContent() {
 
   const fetchAll = useCallback(async () => {
     if (!user) return
-    const res = await authFetch('/api/boss/order-products')
-    setItems(await res.json())
+    const res  = await authFetch('/api/boss/order-products')
+    const data = await res.json()
+    if (!Array.isArray(data)) {
+      showToast('商品の取得に失敗: ' + (data?.error ?? '不明'))
+      setItems([])
+    } else {
+      setItems(data)
+    }
   }, [user])
 
   useEffect(() => {
