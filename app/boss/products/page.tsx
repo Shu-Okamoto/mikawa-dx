@@ -56,6 +56,8 @@ function ProductsContent() {
   const [showAdd, setShowAdd] = useState(false)
   const [activeCat, setActiveCat] = useState<string>(CATEGORIES[0])
   const [showInactive, setShowInactive] = useState(true)
+  const [dragId, setDragId]   = useState<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)
   const [reordering, setReordering] = useState(false)
 
   const fetchAll = useCallback(async () => {
@@ -142,10 +144,15 @@ function ProductsContent() {
   const counts: Record<string, number> = {}
   CATEGORIES.forEach((c) => { counts[c] = items.filter((p) => p.category === c).length })
 
-  // 表示は現在のカテゴリに固定（並び替えはカテゴリ内のみ可）
+  // 表示は現在のカテゴリに固定。displayOrder で並び替え（同値は productCode で安定化）
   const visible = items
     .filter((p) => p.category === activeCat)
     .filter((p) => showInactive ? true : p.isActive)
+    .slice()
+    .sort((a, b) => {
+      if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder
+      return a.productCode.localeCompare(b.productCode)
+    })
 
   const persistOrder = async (orderedIds: number[]) => {
     setReordering(true)
@@ -173,6 +180,19 @@ function ProductsContent() {
     const to   = from + direction
     if (from < 0 || to < 0 || to >= ids.length) return
     ;[ids[from], ids[to]] = [ids[to], ids[from]]
+    persistOrder(ids)
+  }
+
+  const handleDrop = (targetId: number) => {
+    if (dragId == null || dragId === targetId) return
+    const ids = visible.map((p) => p.id)
+    const from = ids.indexOf(dragId)
+    const to   = ids.indexOf(targetId)
+    if (from < 0 || to < 0) return
+    ids.splice(from, 1)
+    ids.splice(to, 0, dragId)
+    setDragId(null)
+    setDragOverId(null)
     persistOrder(ids)
   }
 
@@ -228,7 +248,7 @@ function ProductsContent() {
           marginBottom:'10px', padding:'8px 12px', background:'white',
           borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
           <span style={{ fontSize:'12px', color:'#888780' }}>
-            ↑↓ ボタンで並び替え（カテゴリ内のみ）
+            ⋮⋮ をドラッグ または ▲▼ で並び替え（カテゴリ内のみ）
           </span>
           {reordering && (
             <span style={{ fontSize:'11px', color:'#3B6D11' }}>保存中...</span>
@@ -258,10 +278,34 @@ function ProductsContent() {
                     onCancel={cancelEdit} saving={saving} />
                 </div>
               ) : (
-                <div style={{ padding:'12px 16px',
+                <div
+                  onDragOver={(e) => {
+                    if (dragId == null || dragId === p.id) return
+                    e.preventDefault()
+                    if (dragOverId !== p.id) setDragOverId(p.id)
+                  }}
+                  onDragLeave={() => { if (dragOverId === p.id) setDragOverId(null) }}
+                  onDrop={() => handleDrop(p.id)}
+                  style={{ padding:'12px 16px',
                   borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
                   display:'flex', justifyContent:'space-between',
-                  alignItems:'center', opacity: p.isActive ? 1 : .5 }}>
+                  alignItems:'center', opacity: p.isActive ? (dragId === p.id ? .4 : 1) : .5,
+                  background: dragOverId === p.id ? '#FAFEF6' : 'transparent',
+                  borderTop: dragOverId === p.id ? '2px solid #639922' : undefined }}>
+                  <div
+                    draggable
+                    onDragStart={(e) => {
+                      setDragId(p.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                      // ドラッグ画像をテキストにするため Firefox 対応
+                      e.dataTransfer.setData('text/plain', String(p.id))
+                    }}
+                    onDragEnd={() => { setDragId(null); setDragOverId(null) }}
+                    title="ドラッグして並び替え"
+                    style={{ fontSize:'18px', color:'#A8A69E', cursor:'grab',
+                      padding:'4px 8px', userSelect:'none', marginRight:'4px' }}>
+                    ⋮⋮
+                  </div>
                   <div style={{ display:'flex', flexDirection:'column', gap:'2px',
                     marginRight:'10px' }}>
                     <button onClick={() => moveRow(p.id, -1)}
