@@ -40,6 +40,7 @@ function CalendarPageContent() {
   const [printModal, setPrintModal] = useState<CalendarDay | null>(null)
   const [toast, setToast]       = useState('')
   const [category, setCategory] = useState<CategoryKey>('弁当')
+  const [range, setRange]       = useState<'future' | 'past'>('future')
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -49,11 +50,12 @@ function CalendarPageContent() {
   const fetchCalendar = useCallback(async () => {
     if (!user) return
     setFetching(true)
-    const res  = await authFetch(`/api/calendar?category=${encodeURIComponent(category)}`)
+    const res  = await authFetch(
+      `/api/calendar?category=${encodeURIComponent(category)}&range=${range}`)
     const data = await res.json()
     setCalData(Array.isArray(data) ? data : [])
     setFetching(false)
-  }, [user, category])
+  }, [user, category, range])
 
   useEffect(() => {
     if (loading) return
@@ -203,9 +205,10 @@ function CalendarPageContent() {
   }
 
   const today = new Date().toISOString().split('T')[0]
-  const visibleDays = calData.filter((d) =>
-    d.orders.length > 0 || d.date === today
-  )
+  // 過去ビューは注文ありの日のみ。今後ビューは注文あり + 今日（注文なしでも表示）
+  const visibleDays = range === 'past'
+    ? calData.filter((d) => d.orders.length > 0).slice().reverse() // 新しい日付が上
+    : calData.filter((d) => d.orders.length > 0 || d.date === today)
 
   if (loading || fetching) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -246,12 +249,21 @@ function CalendarPageContent() {
         <div style={{ display:'flex', justifyContent:'space-between',
           alignItems:'center', paddingBottom:'12px' }}>
           <div>
-            <div style={{ fontSize:'14px', opacity:.85 }}>週間カレンダー</div>
+            <div style={{ fontSize:'14px', opacity:.85 }}>
+              {range === 'past' ? '過去30日' : '今後30日'}
+            </div>
             <div style={{ fontSize:'22px', fontWeight:500 }}>
               {currentTab.icon} {currentTab.label}注文
             </div>
           </div>
-          <div style={{ display:'flex', gap:'8px' }}>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            <button onClick={() => setRange(range === 'future' ? 'past' : 'future')}
+              style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
+                border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
+                color:'white', fontSize:'16px', fontWeight:500,
+                cursor:'pointer', fontFamily:'inherit' }}>
+              {range === 'future' ? '🕘 過去を見る' : '🔜 今後を見る'}
+            </button>
             <button onClick={handlePrintAll}
               style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
                 border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
@@ -294,7 +306,7 @@ function CalendarPageContent() {
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
             textAlign:'center', color:'#888780', fontSize:'18px',
             marginBottom:'12px' }}>
-            今後の注文はありません
+            {range === 'past' ? '過去30日の注文はありません' : '今後の注文はありません'}
           </div>
         ) : (
           visibleDays.map((day) => {
@@ -415,7 +427,7 @@ function CalendarPageContent() {
             boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
             <div style={{ fontWeight:500, fontSize:'20px', marginBottom:'12px',
               color:'#1A5276' }}>
-              📊 今後の商品別合計
+              📊 {range === 'past' ? '過去30日' : '今後'}の商品別合計
             </div>
             {Object.entries(totalSummary).map(([name, v]) => (
               <div key={name} style={{ display:'flex', justifyContent:'space-between',
