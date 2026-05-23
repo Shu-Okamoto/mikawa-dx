@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
@@ -14,18 +15,24 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json() as ReorderPayload
-    if (!Array.isArray(body.items)) {
-      return NextResponse.json({ error: 'items が不正です' }, { status: 400 })
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      return NextResponse.json({ success: true })
     }
 
-    await prisma.$transaction(
-      body.items.map((it) =>
-        prisma.product.update({
-          where: { id: it.id },
-          data : { displayOrder: it.displayOrder },
-        }),
+    // 1本の UPDATE ... CASE WHEN にまとめてトランザクションタイムアウトを回避
+    const cases = Prisma.join(
+      body.items.map(
+        (it) => Prisma.sql`WHEN ${it.id}::int THEN ${it.displayOrder}::int`,
       ),
+      ' ',
     )
+    const ids = Prisma.join(body.items.map((it) => it.id))
+
+    await prisma.$executeRaw`
+      UPDATE dx."Product"
+      SET "displayOrder" = CASE id ${cases} END
+      WHERE id IN (${ids})
+    `
 
     return NextResponse.json({ success: true })
   } catch (e) {
