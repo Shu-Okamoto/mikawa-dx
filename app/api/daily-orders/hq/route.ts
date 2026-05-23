@@ -24,6 +24,16 @@ function today() {
   return d
 }
 
+// 'YYYY-MM-DD' or 'YYYY/MM/DD' を 0:00 の Date に
+function parseDateParam(s: string | null): Date | null {
+  if (!s) return null
+  const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
+  if (!m) return null
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  d.setHours(0, 0, 0, 0)
+  return isNaN(d.getTime()) ? null : d
+}
+
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
   if (!user || !HQ_ROLES.has(user.role)) {
@@ -33,10 +43,11 @@ export async function GET(req: NextRequest) {
   try {
     const queryCategory = req.nextUrl.searchParams.get('category')
     const category      = categoryFromQuery(user.role, queryCategory)
+    const orderDate     = parseDateParam(req.nextUrl.searchParams.get('date')) ?? today()
 
     const orders = await prisma.dailyOrder.findMany({
       where: {
-        orderDate: today(),
+        orderDate,
         ...(category ? { product: { category } } : {}),
       },
       include: {

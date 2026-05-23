@@ -11,12 +11,22 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const category = searchParams.get('category') || '弁当'
+    const range    = searchParams.get('range') === 'past' ? 'past' : 'future'
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const end = new Date(today)
-    end.setDate(today.getDate() + 30)
+    let start: Date
+    let end  : Date
+    if (range === 'past') {
+      // 過去30日: today-30 〜 today-1
+      start = new Date(today); start.setDate(today.getDate() - 30)
+      end   = new Date(today); end.setDate(today.getDate() - 1)
+    } else {
+      // 今後30日: today 〜 today+30
+      start = new Date(today)
+      end   = new Date(today); end.setDate(today.getDate() + 30)
+    }
 
     // カテゴリに合致する商品IDを取得
     const products = await prisma.orderProduct.findMany({
@@ -28,7 +38,7 @@ export async function GET(req: NextRequest) {
     const orders = await prisma.instoreOrder.findMany({
       where: {
         status      : 'active',
-        deliveryDate: { gte: today, lte: end },
+        deliveryDate: { gte: start, lte: end },
         ...(productIds.length > 0
           ? { productId: { in: productIds } }
           : {}),
@@ -41,9 +51,10 @@ export async function GET(req: NextRequest) {
     const days: Record<string, any> = {}
     const dayNames = ['日','月','火','水','木','金','土']
 
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(today)
-      d.setDate(today.getDate() + i)
+    const dayCount = range === 'past' ? 30 : 31  // past: -30 〜 -1 / future: 0 〜 +30
+    for (let i = 0; i < dayCount; i++) {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
       const dStr = d.toISOString().split('T')[0]
       days[dStr] = {
         date  : dStr,

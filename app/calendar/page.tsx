@@ -40,6 +40,8 @@ function CalendarPageContent() {
   const [printModal, setPrintModal] = useState<CalendarDay | null>(null)
   const [toast, setToast]       = useState('')
   const [category, setCategory] = useState<CategoryKey>('弁当')
+  const [range, setRange]       = useState<'future' | 'past'>('future')
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -49,11 +51,12 @@ function CalendarPageContent() {
   const fetchCalendar = useCallback(async () => {
     if (!user) return
     setFetching(true)
-    const res  = await authFetch(`/api/calendar?category=${encodeURIComponent(category)}`)
+    const res  = await authFetch(
+      `/api/calendar?category=${encodeURIComponent(category)}&range=${range}`)
     const data = await res.json()
     setCalData(Array.isArray(data) ? data : [])
     setFetching(false)
-  }, [user, category])
+  }, [user, category, range])
 
   useEffect(() => {
     if (loading) return
@@ -203,9 +206,10 @@ function CalendarPageContent() {
   }
 
   const today = new Date().toISOString().split('T')[0]
-  const visibleDays = calData.filter((d) =>
-    d.orders.length > 0 || d.date === today
-  )
+  // 過去ビューは注文ありの日のみ。今後ビューは注文あり + 今日（注文なしでも表示）
+  const visibleDays = range === 'past'
+    ? calData.filter((d) => d.orders.length > 0).slice().reverse() // 新しい日付が上
+    : calData.filter((d) => d.orders.length > 0 || d.date === today)
 
   if (loading || fetching) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -246,12 +250,28 @@ function CalendarPageContent() {
         <div style={{ display:'flex', justifyContent:'space-between',
           alignItems:'center', paddingBottom:'12px' }}>
           <div>
-            <div style={{ fontSize:'14px', opacity:.85 }}>週間カレンダー</div>
+            <div style={{ fontSize:'14px', opacity:.85 }}>
+              {range === 'past' ? '過去30日' : '今後30日'}
+            </div>
             <div style={{ fontSize:'22px', fontWeight:500 }}>
               {currentTab.icon} {currentTab.label}注文
             </div>
           </div>
-          <div style={{ display:'flex', gap:'8px' }}>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+              style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
+                border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
+                color:'white', fontSize:'16px', fontWeight:500,
+                cursor:'pointer', fontFamily:'inherit' }}>
+              {viewMode === 'list' ? '📆 カレンダー' : '📋 リスト'}
+            </button>
+            <button onClick={() => setRange(range === 'future' ? 'past' : 'future')}
+              style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
+                border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
+                color:'white', fontSize:'16px', fontWeight:500,
+                cursor:'pointer', fontFamily:'inherit' }}>
+              {range === 'future' ? '🕘 過去を見る' : '🔜 今後を見る'}
+            </button>
             <button onClick={handlePrintAll}
               style={{ padding:'10px 14px', background:'rgba(255,255,255,.2)',
                 border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
@@ -289,12 +309,22 @@ function CalendarPageContent() {
 
       <div style={{ padding:'12px' }}>
 
+        {viewMode === 'calendar' ? (
+          <CalendarGrid
+            calData={calData}
+            range={range}
+            storeClass={storeClass}
+            onPrint={handlePrint}
+            today={today}
+          />
+        ) : (
+        <>
         {/* 日別カレンダー */}
         {visibleDays.length === 0 ? (
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
             textAlign:'center', color:'#888780', fontSize:'18px',
             marginBottom:'12px' }}>
-            今後の注文はありません
+            {range === 'past' ? '過去30日の注文はありません' : '今後の注文はありません'}
           </div>
         ) : (
           visibleDays.map((day) => {
@@ -409,13 +439,16 @@ function CalendarPageContent() {
           })
         )}
 
+        </>
+        )}
+
         {/* 今後の商品別合計 */}
         {Object.keys(totalSummary).length > 0 && (
           <div style={{ background:'white', borderRadius:'16px', padding:'18px 16px',
             boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
             <div style={{ fontWeight:500, fontSize:'20px', marginBottom:'12px',
               color:'#1A5276' }}>
-              📊 今後の商品別合計
+              📊 {range === 'past' ? '過去30日' : '今後'}の商品別合計
             </div>
             {Object.entries(totalSummary).map(([name, v]) => (
               <div key={name} style={{ display:'flex', justifyContent:'space-between',
@@ -446,6 +479,143 @@ function CalendarPageContent() {
           {toast}
         </div>
       )}
+    </div>
+  )
+}
+
+function CalendarGrid({
+  calData, range, storeClass, onPrint, today,
+}: {
+  calData   : CalendarDay[]
+  range     : 'future' | 'past'
+  storeClass: (s: string) => { bg: string; color: string }
+  onPrint   : (d: CalendarDay) => void
+  today     : string
+}) {
+  if (calData.length === 0) {
+    return (
+      <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+        textAlign:'center', color:'#888780', fontSize:'16px',
+        marginBottom:'12px' }}>
+        {range === 'past' ? '過去30日の注文はありません' : '今後の注文はありません'}
+      </div>
+    )
+  }
+
+  // 日付→日データのマップ
+  const dayMap = new Map<string, CalendarDay>()
+  calData.forEach((d) => dayMap.set(d.date, d))
+
+  // 取得範囲の先頭日を含む週の日曜から、末尾日を含む週の土曜までを埋める
+  const firstStr = calData[0].date
+  const lastStr  = calData[calData.length - 1].date
+  const [fy, fm, fd] = firstStr.split('-').map(Number)
+  const [ly, lm, ld] = lastStr.split('-').map(Number)
+  const first = new Date(fy, fm - 1, fd)
+  const last  = new Date(ly, lm - 1, ld)
+
+  const gridStart = new Date(first)
+  gridStart.setDate(first.getDate() - first.getDay()) // 日曜
+  const gridEnd = new Date(last)
+  gridEnd.setDate(last.getDate() + (6 - last.getDay())) // 土曜
+
+  const days: { date: Date; dateStr: string; inRange: boolean; data?: CalendarDay }[] = []
+  const cur = new Date(gridStart)
+  while (cur <= gridEnd) {
+    const ds = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`
+    const data = dayMap.get(ds)
+    days.push({
+      date   : new Date(cur),
+      dateStr: ds,
+      inRange: data !== undefined,
+      data,
+    })
+    cur.setDate(cur.getDate() + 1)
+  }
+
+  // 週ごとに分割
+  const weeks: typeof days[] = []
+  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7))
+
+  const dayHeaders = ['日','月','火','水','木','金','土']
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginBottom:'12px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)',
+        background:'#EBF5FB', borderBottom:'1.5px solid #D6E9F5' }}>
+        {dayHeaders.map((d, i) => (
+          <div key={d} style={{ padding:'8px 4px', textAlign:'center',
+            fontSize:'13px', fontWeight:500,
+            color: i === 0 ? '#E24B4A' : i === 6 ? '#1A6FAF' : '#1A5276' }}>
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {weeks.map((week, wi) => (
+        <div key={wi} style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)',
+          borderBottom: wi < weeks.length - 1 ? '1px solid #F0ECE3' : 'none' }}>
+          {week.map((cell, ci) => {
+            const isToday = cell.dateStr === today
+            const hasOrders = cell.data?.orders?.length ?? 0
+            const dayColor = ci === 0 ? '#E24B4A' : ci === 6 ? '#1A6FAF' : '#2C2C2A'
+            const totalAmount = cell.data?.orders.reduce(
+              (s, o) => s + (o.subtotal || 0), 0) ?? 0
+
+            return (
+              <div key={cell.dateStr}
+                onClick={() => cell.data && hasOrders > 0 && onPrint(cell.data!)}
+                style={{
+                  minHeight: '100px', padding:'4px 5px',
+                  borderRight: ci < 6 ? '1px solid #F0ECE3' : 'none',
+                  background: !cell.inRange ? '#FBFAF6'
+                            : isToday ? '#FFFBE6' : 'white',
+                  opacity: cell.inRange ? 1 : .55,
+                  cursor: hasOrders > 0 ? 'pointer' : 'default',
+                  display:'flex', flexDirection:'column', gap:'2px',
+                  overflow:'hidden',
+                }}>
+                <div style={{ display:'flex', justifyContent:'space-between',
+                  alignItems:'center', marginBottom:'2px' }}>
+                  <span style={{ fontSize:'13px', fontWeight: isToday ? 600 : 500,
+                    color: dayColor }}>
+                    {cell.date.getDate()}
+                  </span>
+                  {hasOrders > 0 && (
+                    <span style={{ fontSize:'9px', padding:'1px 5px',
+                      background:'#1A5276', color:'white', borderRadius:'8px' }}>
+                      {hasOrders}
+                    </span>
+                  )}
+                </div>
+                {cell.data?.orders.slice(0, 4).map((o) => {
+                  const sc = storeClass(o.store)
+                  return (
+                    <div key={o.orderId} style={{ fontSize:'10px', lineHeight:1.3,
+                      color:'#2C2C2A', overflow:'hidden', textOverflow:'ellipsis',
+                      whiteSpace:'nowrap',
+                      borderLeft: `2px solid ${sc.color}`, paddingLeft:'4px' }}>
+                      {o.productName}({o.customerName}様)×{o.quantity}個
+                    </div>
+                  )
+                })}
+                {(cell.data?.orders.length ?? 0) > 4 && (
+                  <div style={{ fontSize:'9px', color:'#888780' }}>
+                    +{(cell.data!.orders.length - 4)}件
+                  </div>
+                )}
+                {totalAmount > 0 && (
+                  <div style={{ fontSize:'9px', color:'#1A5276', marginTop:'auto',
+                    fontWeight:500, textAlign:'right' }}>
+                    ¥{totalAmount.toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

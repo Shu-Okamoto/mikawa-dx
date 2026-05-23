@@ -6,10 +6,8 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossNav } from './_shared'
 
 interface DashboardData {
-  date       : string
-  storeStatus: { A: boolean; B: boolean; C: boolean }
-  hqStatus   : { veg: boolean; fruit: boolean; mochi: boolean }
-  sales      : Record<string, {
+  date : string
+  sales: Record<string, {
     amount: number; souzai: number; mochi: number; hana: number
     customerCount: number; staffMorning: number; staffAfternoon: number
   }>
@@ -133,16 +131,6 @@ function BossPageContent() {
     return { paths, legend, d }
   }
 
-  const kpiCard = (label: string, value: string, sub: string, ok: boolean) => (
-    <div style={{ background: ok ? '#EAF3DE' : '#F5F1EA',
-      borderRadius:'12px', padding:'12px 16px' }}>
-      <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>{label}</div>
-      <div style={{ fontSize:'18px', fontWeight:500,
-        color: ok ? '#3B6D11' : '#888780' }}>{value}</div>
-      {sub && <div style={{ fontSize:'11px', color:'#888780', marginTop:'2px' }}>{sub}</div>}
-    </div>
-  )
-
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif", background:'#F5F1EA',
       minHeight:'100vh', paddingBottom:'24px' }}>
@@ -168,25 +156,6 @@ function BossPageContent() {
       <BossNav active="/boss" />
 
       <div style={{ padding:'12px' }}>
-
-        {/* 発注状況KPI */}
-        <div style={{ background:'white', borderRadius:'16px', padding:'16px',
-          marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'14px', marginBottom:'12px' }}>
-            📦 本日の発注状況
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px',
-            marginBottom:'12px' }}>
-            {kpiCard('西店', data?.storeStatus.A ? '✅ 送信済' : '⏳ 未送信', '', !!data?.storeStatus.A)}
-            {kpiCard('南店', data?.storeStatus.B ? '✅ 送信済' : '⏳ 未送信', '', !!data?.storeStatus.B)}
-            {kpiCard('本部', data?.storeStatus.C ? '✅ 送信済' : '⏳ 未送信', '', !!data?.storeStatus.C)}
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px' }}>
-            {kpiCard('野菜発注', data?.hqStatus.veg   ? '✅ 確定済' : '⏳ 未確定', '', !!data?.hqStatus.veg)}
-            {kpiCard('果物発注', data?.hqStatus.fruit ? '✅ 確定済' : '⏳ 未確定', '', !!data?.hqStatus.fruit)}
-            {kpiCard('餅・乾物', data?.hqStatus.mochi ? '✅ 確定済' : '⏳ 未確定', '', !!data?.hqStatus.mochi)}
-          </div>
-        </div>
 
         {/* 売上実績 全項目 */}
         <div style={{ background:'white', borderRadius:'16px', padding:'16px',

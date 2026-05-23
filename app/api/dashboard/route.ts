@@ -22,22 +22,6 @@ export async function GET(req: NextRequest) {
       include: { store: true },
     })
 
-    const storeStatus = {
-      A: dailyOrders.some((o) => o.store.storeCode === 'nishi'),
-      B: dailyOrders.some((o) => o.store.storeCode === 'minami'),
-      C: dailyOrders.some((o) => o.store.storeCode === 'honbu'),
-    }
-
-    const confirmed = await prisma.confirmedOrder.findMany({
-      where: { confirmDate: orderDate },
-    })
-
-    const hqStatus = {
-      veg  : confirmed.some((c) => c.category === '野菜'),
-      fruit: confirmed.some((c) => c.category === '果物'),
-      mochi: confirmed.some((c) => c.category === '餅・乾物菓子類'),
-    }
-
     const sales = await prisma.sale.findMany({
       where  : { saleDate: orderDate },
       include: { store: true },
@@ -56,9 +40,11 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    const STORE_CODES = new Set(['nishi', 'minami'])
     const logs: { who: string; time: Date | null }[] = []
     const seenStores  = new Set<string>()
     dailyOrders.forEach((o) => {
+      if (!STORE_CODES.has(o.store.storeCode)) return
       if (!seenStores.has(o.store.storeCode)) {
         seenStores.add(o.store.storeCode)
         logs.push({
@@ -69,10 +55,8 @@ export async function GET(req: NextRequest) {
     })
 
     return NextResponse.json({
-      date  : orderDate.toISOString().split('T')[0],
-      storeStatus,
-      hqStatus,
-      sales : salesData,
+      date : orderDate.toISOString().split('T')[0],
+      sales: salesData,
       logs,
     })
   } catch (e) {

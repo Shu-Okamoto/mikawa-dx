@@ -6,6 +6,8 @@ import {
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 
+type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
+
 interface Product {
   id          : number
   productCode : string
@@ -45,9 +47,9 @@ interface SalesData {
   staffAfternoon: string
 }
 
-type Screen = 'catselect' | 'input' | 'sales' | 'submitted' | 'history' | 'history-detail'
+type Screen = 'catselect' | 'input' | 'sales' | 'submitted' | 'weekly'
 
-interface HistoryOrder {
+interface BranchOrder {
   productId  : number | string
   productName: string
   category   : string
@@ -84,24 +86,6 @@ function todayJpLabel(d: Date) {
   return `${d.getMonth() + 1}月${d.getDate()}日(${DAY_NAMES[d.getDay()]})`
 }
 
-function past7Days(): { dateStr: string; label: string }[] {
-  const out: { dateStr: string; label: string }[] = []
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(today)
-    d.setDate(today.getDate() - i)
-    const yyyy = d.getFullYear()
-    const mm   = String(d.getMonth() + 1).padStart(2, '0')
-    const dd   = String(d.getDate()).padStart(2, '0')
-    out.push({
-      dateStr: `${yyyy}-${mm}-${dd}`,
-      label  : `${d.getMonth() + 1}月${d.getDate()}日(${DAY_NAMES[d.getDay()]})`,
-    })
-  }
-  return out
-}
-
 function StorePageContent({ branch }: { branch: string }) {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'all'])
@@ -118,10 +102,6 @@ function StorePageContent({ branch }: { branch: string }) {
   const [currentCat, setCurrentCat] = useState<string>('')
   const [busy, setBusy]             = useState(false)
   const [toast, setToast]           = useState('')
-  const [historyDate, setHistoryDate]       = useState<{ dateStr: string; label: string } | null>(null)
-  const [historyOrders, setHistoryOrders]   = useState<HistoryOrder[] | null>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError]     = useState<string | null>(null)
 
   // 不正な branch / 権限なし branch を弾く
   useEffect(() => {
@@ -256,48 +236,7 @@ function StorePageContent({ branch }: { branch: string }) {
 
   const backToCatSelect = () => { setScreen('catselect'); setCurrentCat('') }
 
-  const showHistoryList = () => {
-    setHistoryDate(null)
-    setHistoryOrders(null)
-    setHistoryError(null)
-    setScreen('history')
-  }
-
-  const showHistoryDetail = async (entry: { dateStr: string; label: string }) => {
-    setHistoryDate(entry)
-    setHistoryOrders(null)
-    setHistoryError(null)
-    setHistoryLoading(true)
-    setScreen('history-detail')
-    try {
-      const res = await authFetch(`/api/daily-orders?branch=${branch}&date=${entry.dateStr}`)
-      const data = await res.json()
-      if (!res.ok) {
-        setHistoryError(data.error || '読み込みエラー')
-        setHistoryLoading(false)
-        return
-      }
-      const orders: HistoryOrder[] = (data.orders || []).map((o: any) => ({
-        productId  : o.productId,
-        productName: o.product?.productName ?? '(不明)',
-        category   : o.product?.category ?? '',
-        unit       : o.product?.unit ?? '',
-        status     : o.status || '―',
-        qty        : Number(o.requestQty) || 0,
-      }))
-      ;(data.memos || []).forEach((m: { category: string; memo: string }) => {
-        orders.push({
-          productId: `MEMO_${m.category}`, productName: m.memo, category: m.category,
-          unit: '', status: 'MEMO', qty: 0,
-        })
-      })
-      setHistoryOrders(orders)
-    } catch (e: any) {
-      setHistoryError(e?.message || '読み込みエラー')
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
+  const showWeekly = () => { setScreen('weekly') }
 
   const setStatus = (id: number | string, status: string) => {
     setOrderState((prev) => ({
@@ -446,25 +385,15 @@ function StorePageContent({ branch }: { branch: string }) {
           sentByCat={sentByCat}
           salesSent={salesSent}
           onSelect={onCatSelected}
-          onShowHistory={showHistoryList}
+          onShowWeekly={showWeekly}
         />
       )}
 
-      {screen === 'history' && (
-        <HistoryScreen
-          dates={past7Days()}
+      {screen === 'weekly' && (
+        <WeeklyScreen
+          authFetch={authFetch}
+          branch={branch}
           onBack={backToCatSelect}
-          onSelectDate={showHistoryDetail}
-        />
-      )}
-
-      {screen === 'history-detail' && historyDate && (
-        <HistoryDetailScreen
-          label={historyDate.label}
-          orders={historyOrders}
-          loading={historyLoading}
-          error={historyError}
-          onBack={showHistoryList}
         />
       )}
 
@@ -551,13 +480,13 @@ function Header({
 }
 
 function CatSelectScreen({
-  requiredCats, sentByCat, salesSent, onSelect, onShowHistory,
+  requiredCats, sentByCat, salesSent, onSelect, onShowWeekly,
 }: {
   requiredCats : string[]
   sentByCat    : Record<string, SentCategory>
   salesSent    : SentCategory | null
   onSelect     : (cat: string) => void
-  onShowHistory: () => void
+  onShowWeekly : () => void
 }) {
   const all = [...requiredCats, '実績']
   return (
@@ -605,8 +534,8 @@ function CatSelectScreen({
         )
       })}
 
-      {/* 過去の発注カード */}
-      <div onClick={onShowHistory} style={{
+      {/* 週間表示カード */}
+      <div onClick={onShowWeekly} style={{
         background  : '#FAFAFA',
         borderRadius: '16px', padding: '18px 20px',
         marginBottom: '12px',
@@ -616,10 +545,10 @@ function CatSelectScreen({
         cursor      : 'pointer',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <span style={{ fontSize: '32px' }}>📂</span>
+          <span style={{ fontSize: '32px' }}>📊</span>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>過去の発注</div>
-            <div style={{ fontSize: '12px', color: '#888780' }}>過去7日間を閲覧</div>
+            <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>週間表示</div>
+            <div style={{ fontSize: '12px', color: '#888780' }}>今週の発注状況を一覧</div>
           </div>
         </div>
         <button style={{
@@ -852,125 +781,271 @@ function BackBar({ onBack, title, backLabel = '← カテゴリ一覧' }: {
   )
 }
 
-function HistoryScreen({
-  dates, onBack, onSelectDate,
+function WeeklyScreen({
+  authFetch, branch, onBack,
 }: {
-  dates       : { dateStr: string; label: string }[]
-  onBack      : () => void
-  onSelectDate: (d: { dateStr: string; label: string }) => void
+  authFetch: AuthFetch
+  branch   : string
+  onBack   : () => void
 }) {
-  return (
-    <div>
-      <BackBar onBack={onBack} title="📂 過去の発注" />
-      <div style={{ padding: '16px' }}>
-        <div style={{ fontSize: '12px', color: '#888780', marginBottom: '12px' }}>
-          閲覧する日付を選んでください（過去7日間）
-        </div>
-        {dates.map((d) => (
-          <button key={d.dateStr}
-            onClick={() => onSelectDate(d)}
-            style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              width: '100%', padding: '14px 16px',
-              background: 'white', border: '1.5px solid #E5E1D8',
-              borderRadius: '12px', marginBottom: '8px',
-              fontSize: '14px', fontFamily: 'inherit', cursor: 'pointer',
-              textAlign: 'left', color: '#2C2C2A',
-            }}>
-            <span style={{ fontWeight: 500 }}>{d.label}</span>
-            <span style={{ color: '#888780', fontSize: '18px' }}>›</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
+  const [data, setData]     = useState<Record<string, BranchOrder[]>>({})
+  const [memos, setMemos]   = useState<Record<string, Record<string, string>>>({}) // dateStr → cat → memo
+  const [loading, setLoading] = useState(true)
+  const [activeCat, setActiveCat] = useState<string | null>(null)
 
-function HistoryDetailScreen({
-  label, orders, loading, error, onBack,
-}: {
-  label  : string
-  orders : HistoryOrder[] | null
-  loading: boolean
-  error  : string | null
-  onBack : () => void
-}) {
-  const statusColors: Record<string, string> = {
-    '〇': '#EAF3DE', '△': '#FAEEDA', '×': '#FCEBEB', '―': '#F5F1EA',
-  }
-  const statusText: Record<string, string> = {
-    '〇': '在庫なし', '△': '残り少ない', '×': '在庫あり', '―': '未入力',
-  }
+  const weekDays = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const dow = today.getDay()
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+    const out: { date: Date; dateStr: string; label: string; isToday: boolean }[] = []
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(monday)
+      d.setDate(monday.getDate() + i)
+      const yyyy = d.getFullYear()
+      const mm   = String(d.getMonth() + 1).padStart(2, '0')
+      const dd   = String(d.getDate()).padStart(2, '0')
+      out.push({
+        date   : d,
+        dateStr: `${yyyy}-${mm}-${dd}`,
+        label  : ['月','火','水','木','金','土'][i],
+        isToday: d.getTime() === today.getTime(),
+      })
+    }
+    return out
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      const results = await Promise.all(weekDays.map(async (wd) => {
+        try {
+          const res  = await authFetch(`/api/daily-orders?branch=${branch}&date=${wd.dateStr}`)
+          const json = await res.json()
+          const orders: BranchOrder[] = (json.orders ?? []).map((o: {
+            productId: number | string
+            product?: { productName?: string; category?: string; unit?: string }
+            status  : string | null
+            requestQty: number | null
+          }) => ({
+            productId  : o.productId,
+            productName: o.product?.productName ?? '(不明)',
+            category   : o.product?.category    ?? '',
+            unit       : o.product?.unit        ?? '',
+            status     : o.status || '―',
+            qty        : Number(o.requestQty) || 0,
+          }))
+          const memoMap: Record<string, string> = {}
+          ;(json.memos ?? []).forEach((m: { category: string; memo: string }) => {
+            memoMap[m.category] = m.memo
+          })
+          return { dateStr: wd.dateStr, orders, memoMap }
+        } catch {
+          return { dateStr: wd.dateStr, orders: [] as BranchOrder[], memoMap: {} as Record<string, string> }
+        }
+      }))
+      if (cancelled) return
+      const dataMap : Record<string, BranchOrder[]>                  = {}
+      const memosMap: Record<string, Record<string, string>>          = {}
+      results.forEach((r) => {
+        dataMap[r.dateStr]  = r.orders
+        memosMap[r.dateStr] = r.memoMap
+      })
+      setData(dataMap)
+      setMemos(memosMap)
+      setLoading(false)
+    }
+    run()
+    return () => { cancelled = true }
+  }, [authFetch, branch, weekDays])
+
   const catIcons: Record<string, string> = {
     '野菜': '🥬', '果物': '🍎', '餅・乾物菓子類': '🍘',
   }
 
-  // カテゴリ毎に整理
-  const byCat = new Map<string, { items: HistoryOrder[]; memo: string | null }>()
-  ;(orders || []).forEach((o) => {
-    if (!byCat.has(o.category)) byCat.set(o.category, { items: [], memo: null })
-    const bucket = byCat.get(o.category)!
-    if (o.status === 'MEMO') bucket.memo = String(o.productName)
-    else bucket.items.push(o)
+  // 商品をカテゴリ別に整理
+  const productByCat = new Map<string, Map<number | string, { name: string; unit: string }>>()
+  Object.values(data).forEach((orders) => {
+    orders.forEach((o) => {
+      if (!productByCat.has(o.category)) productByCat.set(o.category, new Map())
+      const inner = productByCat.get(o.category)!
+      if (!inner.has(o.productId)) inner.set(o.productId, { name: o.productName, unit: o.unit })
+    })
   })
+
+  const categories = Array.from(productByCat.keys())
+  const currentCat = activeCat && productByCat.has(activeCat) ? activeCat : (categories[0] ?? null)
+  const currentProducts = currentCat ? productByCat.get(currentCat) : undefined
+
+  const statusStyle = (status: string | null | undefined): { bg: string; fg: string } => {
+    if (status === '〇') return { bg: '#FCEBEB', fg: '#A32D2D' }
+    if (status === '△') return { bg: '#FAEEDA', fg: '#854F0B' }
+    if (status === '×') return { bg: '#EAF3DE', fg: '#3B6D11' }
+    return { bg: '#FAFAFA', fg: '#C0BDB8' }
+  }
+
+  const monday   = weekDays[0]?.date
+  const saturday = weekDays[weekDays.length - 1]?.date
+  const rangeText = monday && saturday
+    ? `${monday.getMonth()+1}月${monday.getDate()}日 〜 ${saturday.getMonth()+1}月${saturday.getDate()}日`
+    : ''
 
   return (
     <div>
-      <BackBar onBack={onBack} title={label} backLabel="← 日付一覧" />
-      <div style={{ padding: '16px', paddingBottom: '40px' }}>
-        {loading && <div style={{ padding: '20px', textAlign: 'center', color: '#888780' }}>読み込み中...</div>}
-        {error && (
-          <div style={{ padding: '20px', color: '#E24B4A', fontSize: '13px' }}>
-            読み込みエラー: {error}
+      <BackBar onBack={onBack} title="📊 週間表示" />
+      <div style={{ padding: '14px 16px', paddingBottom: '40px' }}>
+        <div style={{ fontSize: '13px', color: '#888780', marginBottom: '12px' }}>{rangeText}</div>
+
+        {loading && (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#888780', fontSize: '14px' }}>
+            読み込み中...
           </div>
         )}
-        {!loading && !error && byCat.size === 0 && (
+
+        {!loading && productByCat.size === 0 && (
           <div style={{ padding: '40px 20px', textAlign: 'center', color: '#888780', fontSize: '14px' }}>
-            この日の発注データはありません
+            この週の発注データはありません
           </div>
         )}
-        {!loading && !error && Array.from(byCat.entries()).map(([cat, bucket]) => (
-          <div key={cat} style={{
-            background: 'white', borderRadius: '14px', overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,.04)', marginBottom: '12px',
-          }}>
-            <div style={{
-              padding: '12px 16px', borderBottom: '1px solid #F0ECE3',
-              fontWeight: 500, fontSize: '14px',
-            }}>{(catIcons[cat] || '📦') + ' ' + cat}</div>
-            {bucket.items.map((o, i) => {
-              const s = o.status || '―'
+
+        {!loading && categories.length > 1 && (
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
+            {categories.map((cat) => {
+              const isActive = cat === currentCat
               return (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 16px', borderBottom: '1px solid #F5F1EA',
-                }}>
-                  <span style={{ fontSize: '14px', fontWeight: 500 }}>{o.productName}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{
-                      padding: '4px 10px', borderRadius: '20px', fontSize: '12px',
-                      fontWeight: 500, background: statusColors[s] ?? '#F5F1EA',
-                    }}>{s} {statusText[s] || ''}</span>
-                    {Number(o.qty) > 0 && (
-                      <span style={{ fontSize: '13px', color: '#3B6D11', fontWeight: 500 }}>
-                        {o.qty}{o.unit}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <button key={cat} onClick={() => setActiveCat(cat)}
+                  style={{
+                    padding:'8px 14px', borderRadius:'20px', fontSize:'14px',
+                    fontWeight:500, fontFamily:'inherit', cursor:'pointer',
+                    border: isActive ? '1.5px solid #3B6D11' : '1.5px solid #E5E1D8',
+                    background: isActive ? '#3B6D11' : 'white',
+                    color    : isActive ? 'white'   : '#2C2C2A',
+                  }}>
+                  {(catIcons[cat] || '📦') + ' ' + cat}
+                </button>
               )
             })}
-            {bucket.memo && (
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: '8px',
-                padding: '10px 16px', background: '#FFFBF0', whiteSpace: 'pre-wrap',
-              }}>
-                <span style={{ fontSize: '12px', color: '#888780' }}>📝</span>
-                <span style={{ fontSize: '13px', color: '#2C2C2A', flex: 1 }}>{bucket.memo}</span>
+          </div>
+        )}
+
+        {!loading && currentCat && currentProducts && (
+          <div style={{
+            background:'white', borderRadius:'14px', overflow:'hidden',
+            boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginBottom:'14px',
+          }}>
+            <div style={{
+              padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+              fontWeight:500, fontSize:'16px',
+            }}>
+              {(catIcons[currentCat] || '📦') + ' ' + currentCat}
+              <span style={{ marginLeft:'8px', fontSize:'12px', color:'#888780', fontWeight:400 }}>
+                （{currentProducts.size}品）
+              </span>
+            </div>
+
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ borderCollapse:'collapse', width:'100%', minWidth:'480px' }}>
+                <thead>
+                  <tr>
+                    <th style={{
+                      padding:'8px 10px', textAlign:'left', fontSize:'13px',
+                      color:'#888780', background:'#FAF8F3',
+                      borderBottom:'1.5px solid #F0ECE3', minWidth:'110px',
+                    }}>商品</th>
+                    {weekDays.map((wd) => (
+                      <th key={wd.dateStr} style={{
+                        padding:'8px 4px', fontSize:'12px',
+                        color: wd.isToday ? '#1A5276' : '#888780',
+                        background: wd.isToday ? '#EBF5FB' : '#FAF8F3',
+                        borderBottom:'1.5px solid #F0ECE3', textAlign:'center',
+                        whiteSpace:'nowrap',
+                      }}>
+                        <div style={{ fontSize:'14px', fontWeight:500 }}>{wd.label}</div>
+                        <div style={{ fontSize:'12px' }}>{wd.date.getMonth()+1}/{wd.date.getDate()}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(currentProducts.entries()).map(([pid, info]) => (
+                    <tr key={pid}>
+                      <td style={{
+                        padding:'8px 10px', fontWeight:500, fontSize:'16px',
+                        borderBottom:'1px solid #F5F1EA', whiteSpace:'nowrap',
+                      }}>{info.name}</td>
+                      {weekDays.map((wd) => {
+                        const order = (data[wd.dateStr] ?? []).find((o) => o.productId === pid)
+                        const status = order?.status ?? '―'
+                        const qty    = Number(order?.qty) || 0
+                        const style  = statusStyle(status)
+                        const text   = status === '―' ? '—'
+                          : status + (qty > 0 ? ` ${qty}` : '')
+                        return (
+                          <td key={wd.dateStr} style={{
+                            padding:'6px 4px', borderBottom:'1px solid #F5F1EA',
+                            borderRight:'1px solid #F5F1EA', textAlign:'center',
+                          }}>
+                            <span style={{
+                              display:'inline-block', padding:'4px 10px',
+                              borderRadius:'4px', fontSize:'18px', fontWeight:500,
+                              background: style.bg, color: style.fg, minWidth:'42px',
+                            }}>{text}</span>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* メモ行 */}
+            {weekDays.some((wd) => memos[wd.dateStr]?.[currentCat]) && (
+              <div style={{ padding:'10px 16px', background:'#FFFBF0' }}>
+                {weekDays.map((wd) => {
+                  const memo = memos[wd.dateStr]?.[currentCat]
+                  if (!memo) return null
+                  return (
+                    <div key={wd.dateStr} style={{
+                      display:'flex', gap:'10px', alignItems:'flex-start',
+                      padding:'4px 0', fontSize:'13px',
+                    }}>
+                      <span style={{ color:'#888780', minWidth:'48px' }}>
+                        {wd.date.getMonth()+1}/{wd.date.getDate()}({wd.label})
+                      </span>
+                      <span style={{ color:'#2C2C2A', flex:1, whiteSpace:'pre-wrap' }}>📝 {memo}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
-        ))}
+        )}
+
+        {!loading && (
+          <div style={{
+            display:'flex', gap:'14px', flexWrap:'wrap',
+            padding:'8px 4px', fontSize:'12px', color:'#888780',
+          }}>
+            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ padding:'2px 8px', borderRadius:'4px',
+                background:'#FCEBEB', color:'#A32D2D', fontWeight:500 }}>〇</span>
+              在庫なし
+            </span>
+            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ padding:'2px 8px', borderRadius:'4px',
+                background:'#FAEEDA', color:'#854F0B', fontWeight:500 }}>△</span>
+              残り少ない
+            </span>
+            <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ padding:'2px 8px', borderRadius:'4px',
+                background:'#EAF3DE', color:'#3B6D11', fontWeight:500 }}>×</span>
+              在庫あり
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

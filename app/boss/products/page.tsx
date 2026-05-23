@@ -5,15 +5,16 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav, Toast, useToast, inputStyle } from '../_shared'
 
 interface Product {
-  id         : number
-  productCode: string
-  productName: string
-  category   : string
-  unit       : string
-  weeklyAvg  : number
-  vendorId   : number | null
-  vendorName : string | null
-  isActive   : boolean
+  id          : number
+  productCode : string
+  productName : string
+  category    : string
+  unit        : string
+  weeklyAvg   : number
+  vendorId    : number | null
+  vendorName  : string | null
+  isActive    : boolean
+  displayOrder: number
 }
 
 interface Vendor {
@@ -53,6 +54,11 @@ function ProductsContent() {
   const [draft, setDraft]     = useState<Draft>(EMPTY_DRAFT)
   const [saving, setSaving]   = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [activeCat, setActiveCat] = useState<string>(CATEGORIES[0])
+  const [showInactive, setShowInactive] = useState(true)
+  const [dragId, setDragId]   = useState<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)
+  const [reordering, setReordering] = useState(false)
 
   const fetchAll = useCallback(async () => {
     if (!user) return
@@ -60,8 +66,15 @@ function ProductsContent() {
       authFetch('/api/boss/products'),
       authFetch('/api/boss/vendors'),
     ])
-    setItems(await pRes.json())
-    setVendors(await vRes.json())
+    const pData = await pRes.json()
+    const vData = await vRes.json()
+    if (!Array.isArray(pData)) {
+      showToast('商品の取得に失敗: ' + (pData?.error ?? '不明'))
+      setItems([])
+    } else {
+      setItems(pData)
+    }
+    setVendors(Array.isArray(vData) ? vData : [])
   }, [user])
 
   useEffect(() => {
@@ -128,11 +141,59 @@ function ProductsContent() {
   if (loading) return <Loading />
   if (error) return <ErrorBox msg={error} />
 
-  const byCategory = new Map<string, Product[]>()
-  for (const p of items) {
-    const arr = byCategory.get(p.category) ?? []
-    arr.push(p)
-    byCategory.set(p.category, arr)
+  const counts: Record<string, number> = {}
+  CATEGORIES.forEach((c) => { counts[c] = items.filter((p) => p.category === c).length })
+
+  // 表示は現在のカテゴリに固定。displayOrder で並び替え（同値は productCode で安定化）
+  const visible = items
+    .filter((p) => p.category === activeCat)
+    .filter((p) => showInactive ? true : p.isActive)
+    .slice()
+    .sort((a, b) => {
+      if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder
+      return a.productCode.localeCompare(b.productCode)
+    })
+
+  const persistOrder = async (orderedIds: number[]) => {
+    setReordering(true)
+    // ローカル更新（楽観的）
+    const idToOrder = new Map(orderedIds.map((id, i) => [id, i + 1]))
+    setItems((prev) => prev.map((p) =>
+      idToOrder.has(p.id) ? { ...p, displayOrder: idToOrder.get(p.id)! } : p))
+
+    const payload = orderedIds.map((id, i) => ({ id, displayOrder: i + 1 }))
+    const res  = await authFetch('/api/boss/products/reorder', {
+      method: 'POST',
+      body  : JSON.stringify({ items: payload }),
+    })
+    const data = await res.json()
+    setReordering(false)
+    if (!data.success) {
+      showToast('並び替えの保存に失敗: ' + (data.error ?? '不明'))
+      fetchAll()
+    }
+  }
+
+  const moveRow = (id: number, direction: -1 | 1) => {
+    const ids = visible.map((p) => p.id)
+    const from = ids.indexOf(id)
+    const to   = from + direction
+    if (from < 0 || to < 0 || to >= ids.length) return
+    ;[ids[from], ids[to]] = [ids[to], ids[from]]
+    persistOrder(ids)
+  }
+
+  const handleDrop = (targetId: number) => {
+    if (dragId == null || dragId === targetId) return
+    const ids = visible.map((p) => p.id)
+    const from = ids.indexOf(dragId)
+    const to   = ids.indexOf(targetId)
+    if (from < 0 || to < 0) return
+    ids.splice(from, 1)
+    ids.splice(to, 0, dragId)
+    setDragId(null)
+    setDragOverId(null)
+    persistOrder(ids)
   }
 
   return (
@@ -163,73 +224,146 @@ function ProductsContent() {
             saving={saving} isNew />
         )}
 
-        {Array.from(byCategory.entries()).map(([cat, list]) => (
-          <div key={cat} style={{ marginBottom:'12px',
-            background:'white', borderRadius:'16px', overflow:'hidden',
-            boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-            <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
-              fontWeight:500, fontSize:'14px', background:'#FBF8F2' }}>
-              {cat}（{list.length}品）
-            </div>
-            {list.map((p, idx) => (
-              <div key={p.id}>
-                {editing === p.id ? (
-                  <div style={{ padding:'12px 16px',
-                    borderBottom: idx < list.length-1 ? '1px solid #F5F1EA' : 'none',
-                    background:'#FAFAFA' }}>
-                    <ProductForm draft={draft} vendors={vendors}
-                      onChange={setDraft} onSubmit={() => submit(false)}
-                      onCancel={cancelEdit} saving={saving} />
+        {/* カテゴリタブ */}
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
+          {CATEGORIES.map((cat) => {
+            const active = activeCat === cat
+            return (
+              <button key={cat} onClick={() => setActiveCat(cat)}
+                style={{
+                  padding:'8px 14px', borderRadius:'20px', fontSize:'13px',
+                  fontWeight:500, fontFamily:'inherit', cursor:'pointer',
+                  border: active ? '1.5px solid #3B6D11' : '1.5px solid #E5E1D8',
+                  background: active ? '#3B6D11' : 'white',
+                  color    : active ? 'white'   : '#2C2C2A',
+                }}>
+                {cat}（{counts[cat] ?? 0}）
+              </button>
+            )
+          })}
+        </div>
+
+        {/* オプション */}
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center',
+          marginBottom:'10px', padding:'8px 12px', background:'white',
+          borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+          <span style={{ fontSize:'12px', color:'#888780' }}>
+            ⋮⋮ をドラッグ または ▲▼ で並び替え（カテゴリ内のみ）
+          </span>
+          {reordering && (
+            <span style={{ fontSize:'11px', color:'#3B6D11' }}>保存中...</span>
+          )}
+          <label style={{ display:'flex', alignItems:'center', gap:'6px',
+            fontSize:'12px', color:'#888780', cursor:'pointer', marginLeft:'auto' }}>
+            <input type="checkbox" checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)} />
+            無効も表示
+          </label>
+        </div>
+
+        <div style={{ marginBottom:'12px', background:'white', borderRadius:'16px',
+          overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+          <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+            fontWeight:500, fontSize:'14px', background:'#FBF8F2' }}>
+            {activeCat}（{visible.length}品）
+          </div>
+          {visible.map((p, idx) => (
+            <div key={p.id}>
+              {editing === p.id ? (
+                <div style={{ padding:'12px 16px',
+                  borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
+                  background:'#FAFAFA' }}>
+                  <ProductForm draft={draft} vendors={vendors}
+                    onChange={setDraft} onSubmit={() => submit(false)}
+                    onCancel={cancelEdit} saving={saving} />
+                </div>
+              ) : (
+                <div
+                  onDragOver={(e) => {
+                    if (dragId == null || dragId === p.id) return
+                    e.preventDefault()
+                    if (dragOverId !== p.id) setDragOverId(p.id)
+                  }}
+                  onDragLeave={() => { if (dragOverId === p.id) setDragOverId(null) }}
+                  onDrop={() => handleDrop(p.id)}
+                  style={{ padding:'12px 16px',
+                  borderBottom: idx < visible.length-1 ? '1px solid #F5F1EA' : 'none',
+                  display:'flex', justifyContent:'space-between',
+                  alignItems:'center', opacity: p.isActive ? (dragId === p.id ? .4 : 1) : .5,
+                  background: dragOverId === p.id ? '#FAFEF6' : 'transparent',
+                  borderTop: dragOverId === p.id ? '2px solid #639922' : undefined }}>
+                  <div
+                    draggable
+                    onDragStart={(e) => {
+                      setDragId(p.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                      // ドラッグ画像をテキストにするため Firefox 対応
+                      e.dataTransfer.setData('text/plain', String(p.id))
+                    }}
+                    onDragEnd={() => { setDragId(null); setDragOverId(null) }}
+                    title="ドラッグして並び替え"
+                    style={{ fontSize:'18px', color:'#A8A69E', cursor:'grab',
+                      padding:'4px 8px', userSelect:'none', marginRight:'4px' }}>
+                    ⋮⋮
                   </div>
-                ) : (
-                  <div style={{ padding:'12px 16px',
-                    borderBottom: idx < list.length-1 ? '1px solid #F5F1EA' : 'none',
-                    display:'flex', justifyContent:'space-between',
-                    alignItems:'center', opacity: p.isActive ? 1 : .5 }}>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:'14px', fontWeight:500, color:'#2C2C2A' }}>
-                        {p.productName}
-                        {!p.isActive && (
-                          <span style={{ fontSize:'10px', marginLeft:'6px',
-                            background:'#E5E1D8', padding:'1px 6px',
-                            borderRadius:'8px', color:'#888780' }}>無効</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize:'11px', color:'#888780', marginTop:'2px' }}>
-                        {p.productCode} / {p.unit} / 先週平均 {p.weeklyAvg}
-                        {p.vendorName && ` / ${p.vendorName}`}
-                      </div>
-                    </div>
-                    <div style={{ display:'flex', gap:'4px' }}>
-                      <button onClick={() => startEdit(p)}
-                        style={{ padding:'6px 12px', background:'white',
-                          border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                          fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
-                        編集
-                      </button>
-                      {p.isActive && (
-                        <button onClick={() => deactivate(p.id)}
-                          style={{ padding:'6px 12px', background:'white',
-                            border:'1.5px solid #E5E1D8', borderRadius:'8px',
-                            fontSize:'12px', cursor:'pointer', fontFamily:'inherit',
-                            color:'#E24B4A' }}>
-                          無効化
-                        </button>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'2px',
+                    marginRight:'10px' }}>
+                    <button onClick={() => moveRow(p.id, -1)}
+                      disabled={idx === 0 || reordering}
+                      style={{ padding:'2px 6px', border:'1.5px solid #E5E1D8',
+                        borderRadius:'6px', background:'white', cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                        fontSize:'11px', color: idx === 0 ? '#D9D5CC' : '#2C2C2A',
+                        fontFamily:'inherit', lineHeight:1 }}>▲</button>
+                    <button onClick={() => moveRow(p.id, 1)}
+                      disabled={idx === visible.length - 1 || reordering}
+                      style={{ padding:'2px 6px', border:'1.5px solid #E5E1D8',
+                        borderRadius:'6px', background:'white',
+                        cursor: idx === visible.length - 1 ? 'not-allowed' : 'pointer',
+                        fontSize:'11px',
+                        color: idx === visible.length - 1 ? '#D9D5CC' : '#2C2C2A',
+                        fontFamily:'inherit', lineHeight:1 }}>▼</button>
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:'14px', fontWeight:500, color:'#2C2C2A' }}>
+                      {p.productName}
+                      {!p.isActive && (
+                        <span style={{ fontSize:'10px', marginLeft:'6px',
+                          background:'#E5E1D8', padding:'1px 6px',
+                          borderRadius:'8px', color:'#888780' }}>無効</span>
                       )}
                     </div>
+                    <div style={{ fontSize:'11px', color:'#888780', marginTop:'2px' }}>
+                      {p.productCode} / {p.unit} / 先週平均 {p.weeklyAvg}
+                      {p.vendorName && ` / ${p.vendorName}`}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        ))}
-
-        {items.length === 0 && !showAdd && (
-          <div style={{ background:'white', borderRadius:'16px', padding:'24px',
-            textAlign:'center', color:'#888780', fontSize:'14px' }}>
-            商品がまだ登録されていません
-          </div>
-        )}
+                  <div style={{ display:'flex', gap:'4px' }}>
+                    <button onClick={() => startEdit(p)}
+                      style={{ padding:'6px 12px', background:'white',
+                        border:'1.5px solid #E5E1D8', borderRadius:'8px',
+                        fontSize:'12px', cursor:'pointer', fontFamily:'inherit' }}>
+                      編集
+                    </button>
+                    {p.isActive && (
+                      <button onClick={() => deactivate(p.id)}
+                        style={{ padding:'6px 12px', background:'white',
+                          border:'1.5px solid #E5E1D8', borderRadius:'8px',
+                          fontSize:'12px', cursor:'pointer', fontFamily:'inherit',
+                          color:'#E24B4A' }}>
+                        無効化
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {visible.length === 0 && (
+            <div style={{ padding:'24px', textAlign:'center', color:'#888780', fontSize:'13px' }}>
+              該当する商品がありません
+            </div>
+          )}
+        </div>
       </div>
 
       <Toast text={toast} />

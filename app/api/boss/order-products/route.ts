@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const products = await prisma.orderProduct.findMany({
-      orderBy: [{ category: 'asc' }, { productCode: 'asc' }],
+      orderBy: [{ category: 'asc' }, { displayOrder: 'asc' }, { productCode: 'asc' }],
     })
     return NextResponse.json(products.map((p) => ({
       id           : p.id,
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       availableDays: p.availableDays,
       isActive     : p.isActive,
       memo         : p.memo,
+      displayOrder : p.displayOrder,
     })))
   } catch (e) {
     console.error(e)
