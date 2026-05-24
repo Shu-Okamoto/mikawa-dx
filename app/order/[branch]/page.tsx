@@ -50,7 +50,7 @@ type EditDraft = {
 
 type Screen = 'list' | 'date' | 'product' | 'form' | 'complete'
 
-const PURPOSES = ['贈答用','自家用','法事','その他']
+const PURPOSES = ['自家用','会議','法事','スポーツ','お年寄り','子供','袋付き']
 const DELIVERY_TIMES = [
   '9:00','9:30','10:00','10:30','11:00','11:30',
   '12:00','12:30','13:00','13:30','14:00','14:30',
@@ -412,15 +412,53 @@ function OrderPageContent({ branch }: { branch: string }) {
                   <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'4px' }}>
                     {o.customerName} 様 / {o.phone}
                   </div>
-                  <div style={{ fontSize:'15px', color:'#888780', marginBottom:'4px' }}>
-                    {o.deliveryAddress} {o.deliveryTime}
+                  <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'4px',
+                    display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
+                    {o.deliveryAddress === '来店' ? (
+                      <span style={{ padding:'2px 10px', borderRadius:'10px',
+                        background:'#EBF5FB', color:'#1A5276', fontWeight:500,
+                        fontSize:'13px' }}>来店</span>
+                    ) : (
+                      <>
+                        <span style={{ padding:'2px 10px', borderRadius:'10px',
+                          background:'#FCEBDC', color:'#854F0B', fontWeight:500,
+                          fontSize:'13px' }}>配達</span>
+                        <span>{o.deliveryAddress}</span>
+                        {o.deliveryTime && (
+                          <span style={{ color:'#888780' }}>{o.deliveryTime}</span>
+                        )}
+                      </>
+                    )}
                   </div>
-                  <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'10px' }}>
+                  <div style={{ fontSize:'15px', color:'#2C2C2A', marginBottom:'6px' }}>
                     単価{Number(o.price || 0).toLocaleString()}円
                     ×{Number(o.quantity || 0)}個
                     <span style={{ color:'#888780' }}>
                       {' / '}合計{(Number(o.price || 0) * Number(o.quantity || 0)).toLocaleString()}円
                     </span>
+                  </div>
+                  {o.purpose && (
+                    <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'3px' }}>
+                      <span style={{ color:'#A8A69E' }}>用途: </span>{o.purpose}
+                    </div>
+                  )}
+                  {o.okazu && (
+                    <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'3px' }}>
+                      <span style={{ color:'#A8A69E' }}>おかず: </span>{o.okazu}
+                    </div>
+                  )}
+                  {o.notes && (
+                    <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'3px' }}>
+                      <span style={{ color:'#A8A69E' }}>備考: </span>{o.notes}
+                    </div>
+                  )}
+                  <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'3px' }}>
+                    <span style={{ color:'#A8A69E' }}>領収書: </span>
+                    {o.receipt === 'yes' ? 'あり' : 'なし'}
+                  </div>
+                  <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'10px' }}>
+                    <span style={{ color:'#A8A69E' }}>宛名: </span>
+                    {o.receiptName ? o.receiptName : '宛名なし'}
                   </div>
                   <div style={{ display:'flex', gap:'8px' }}>
                     <button onClick={() => openEdit(o)}
