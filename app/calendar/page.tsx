@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { themeForStoreName } from '@/lib/storeColors'
 
 interface CalendarDay {
   date  : string
@@ -85,10 +86,8 @@ function CalendarPageContent() {
     if (!w) { showToast('ポップアップをブロックされました'); return }
 
     const storeColor = (store: string) => {
-      if (store === '西店') return { bg:'#EAF3DE', color:'#3B6D11' }
-      if (store === '南店') return { bg:'#FBEAF0', color:'#72243E' }
-      if (store === '本部') return { bg:'#F3E5F5', color:'#6A1B9A' }
-      return { bg:'#F3E5F5', color:'#6A1B9A' }
+      const t = themeForStoreName(store)
+      return { bg: t.bg, color: t.text }
     }
 
     const rows = day.orders.map((o) => {
@@ -199,10 +198,8 @@ function CalendarPageContent() {
   }
 
   const storeClass = (store: string) => {
-    if (store === '西店') return { bg:'#EAF3DE', color:'#3B6D11' }
-    if (store === '南店') return { bg:'#FBEAF0', color:'#72243E' }
-    if (store === '本部') return { bg:'#F3E5F5', color:'#6A1B9A' }
-    return { bg:'#F3E5F5', color:'#6A1B9A' }
+    const t = themeForStoreName(store)
+    return { bg: t.bg, color: t.text }
   }
 
   const today = new Date().toISOString().split('T')[0]
