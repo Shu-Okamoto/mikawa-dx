@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         ...(category ? { category } : {}),
         ...(dayName ? { availableDays: { contains: dayName } } : {}),
       },
-      orderBy: { productCode: 'asc' },
+      orderBy: [{ displayOrder: 'asc' }, { productCode: 'asc' }],
     })
 
     return NextResponse.json(products.map((p) => ({
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
       price        : Number(p.price),
       availableDays: p.availableDays,
       memo         : p.memo,
+      lateOrderOk  : p.lateOrderOk,
     })))
   } catch (e) {
     console.error(e)
