@@ -452,13 +452,15 @@ function OrderPageContent({ branch }: { branch: string }) {
                       <span style={{ color:'#A8A69E' }}>備考: </span>{o.notes}
                     </div>
                   )}
-                  <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'3px' }}>
+                  <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'10px' }}>
                     <span style={{ color:'#A8A69E' }}>領収書: </span>
                     {o.receipt === 'yes' ? 'あり' : 'なし'}
-                  </div>
-                  <div style={{ fontSize:'14px', color:'#5F5E5A', marginBottom:'10px' }}>
-                    <span style={{ color:'#A8A69E' }}>宛名: </span>
-                    {o.receiptName ? o.receiptName : '宛名なし'}
+                    {o.receipt === 'yes' && (
+                      <>
+                        <span style={{ color:'#A8A69E', marginLeft:'12px' }}>宛名: </span>
+                        {o.receiptName ? o.receiptName : 'なし'}
+                      </>
+                    )}
                   </div>
                   <div style={{ display:'flex', gap:'8px' }}>
                     <button onClick={() => openEdit(o)}
