@@ -14,6 +14,7 @@ interface OrderProduct {
   isActive     : boolean
   memo         : string | null
   displayOrder : number
+  lateOrderOk  : boolean
 }
 
 const CATEGORY_SUGGESTIONS = ['弁当', 'おにぎり', '惣菜', '寿司', '法事', 'その他']
@@ -27,6 +28,7 @@ type Draft = {
   availableDays: string[]
   memo         : string
   isActive     : boolean
+  lateOrderOk  : boolean
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -37,6 +39,7 @@ const EMPTY_DRAFT: Draft = {
   availableDays: [],
   memo         : '',
   isActive     : true,
+  lateOrderOk  : false,
 }
 
 function OrderProductsContent() {
@@ -80,6 +83,7 @@ function OrderProductsContent() {
       availableDays: p.availableDays ? p.availableDays.split(',').filter(Boolean) : [],
       memo         : p.memo ?? '',
       isActive     : p.isActive,
+      lateOrderOk  : !!p.lateOrderOk,
     })
   }
 
@@ -96,6 +100,7 @@ function OrderProductsContent() {
       availableDays: draft.availableDays.join(','),
       memo         : draft.memo.trim() || null,
       isActive     : draft.isActive,
+      lateOrderOk  : draft.lateOrderOk,
     }
     const res  = await authFetch('/api/boss/order-products', {
       method: isNew ? 'POST' : 'PATCH',
@@ -457,10 +462,16 @@ function ProductForm({
           style={inputStyle()} placeholder="(任意)" />
       </Field>
       <label style={{ display:'flex', alignItems:'center', gap:'8px',
-        fontSize:'13px', marginBottom:'12px', cursor:'pointer' }}>
+        fontSize:'13px', marginBottom:'8px', cursor:'pointer' }}>
         <input type="checkbox" checked={draft.isActive}
           onChange={(e) => onChange({ ...draft, isActive: e.target.checked })} />
         有効
+      </label>
+      <label style={{ display:'flex', alignItems:'center', gap:'8px',
+        fontSize:'13px', marginBottom:'12px', cursor:'pointer' }}>
+        <input type="checkbox" checked={draft.lateOrderOk}
+          onChange={(e) => onChange({ ...draft, lateOrderOk: e.target.checked })} />
+        前営業日17時注文OK（通常は前々営業日12時締切）
       </label>
       <div style={{ display:'flex', gap:'8px' }}>
         <button onClick={onCancel}

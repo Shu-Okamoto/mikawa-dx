@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
       isActive     : p.isActive,
       memo         : p.memo,
       displayOrder : p.displayOrder,
+      lateOrderOk  : p.lateOrderOk,
     })))
   } catch (e) {
     console.error(e)
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
         availableDays: d.availableDays ?? '',
         memo         : d.memo ?? null,
         isActive     : d.isActive ?? true,
+        lateOrderOk  : !!d.lateOrderOk,
       },
     })
     return NextResponse.json({ success: true, id: product.id })
@@ -93,6 +95,7 @@ export async function PATCH(req: NextRequest) {
         ...(d.availableDays !== undefined ? { availableDays: d.availableDays } : {}),
         ...(d.memo          !== undefined ? { memo: d.memo } : {}),
         ...(d.isActive      !== undefined ? { isActive: d.isActive } : {}),
+        ...(d.lateOrderOk   !== undefined ? { lateOrderOk: !!d.lateOrderOk } : {}),
       },
     })
     return NextResponse.json({ success: true })

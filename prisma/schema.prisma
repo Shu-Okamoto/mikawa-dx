@@ -68,6 +68,7 @@ model OrderProduct {
   availableDays String
   isActive      Boolean        @default(true)
   displayOrder  Int            @default(0)
+  lateOrderOk   Boolean        @default(false)
   memo          String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @default(now()) @updatedAt

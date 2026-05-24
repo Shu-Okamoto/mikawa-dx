@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Suspense, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForBranch } from '@/lib/storeColors'
+import { canOrderFor } from '@/lib/orderDeadline'
 
 interface OrderProduct {
   id           : number
@@ -12,6 +13,7 @@ interface OrderProduct {
   category     : string
   price        : number
   availableDays: string
+  lateOrderOk  : boolean
 }
 
 interface InstoreOrder {
@@ -162,7 +164,12 @@ function OrderPageContent({ branch }: { branch: string }) {
       `/api/order-products?deliveryDate=${encodeURIComponent(date)}`,
     )
     const data = await res.json()
-    setProducts(Array.isArray(data) ? data : [])
+    // 締切過ぎの商品は非表示
+    const now = new Date()
+    const filtered = Array.isArray(data)
+      ? data.filter((p: OrderProduct) => canOrderFor(date, !!p.lateOrderOk, now))
+      : []
+    setProducts(filtered)
     setQuantities({})
     setScreen('product')
   }
