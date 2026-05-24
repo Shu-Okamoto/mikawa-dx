@@ -588,21 +588,25 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
     let cancelled = false
     const fetchAll = async () => {
       setLoading(true)
+      const from = weekDays[0]?.dateStr
+      const to   = weekDays[weekDays.length - 1]?.dateStr
       const catParam = queryCategory ? `&category=${queryCategory}` : ''
-      const results = await Promise.all(weekDays.map(async (wd) => {
-        try {
-          const res  = await authFetch(`/api/daily-orders/hq?date=${wd.dateStr}${catParam}`)
-          const json = await res.json()
-          return [wd.dateStr, (json.items ?? []) as ProductSummary[]] as const
-        } catch {
-          return [wd.dateStr, [] as ProductSummary[]] as const
+      try {
+        const res  = await authFetch(`/api/daily-orders/hq?from=${from}&to=${to}${catParam}`)
+        const json = await res.json()
+        if (cancelled) return
+        const map: Record<string, ProductSummary[]> = {}
+        if (json.days) {
+          Object.entries(json.days as Record<string, { items: ProductSummary[] }>).forEach(
+            ([k, v]) => { map[k] = v.items ?? [] },
+          )
         }
-      }))
-      if (cancelled) return
-      const map: Record<string, ProductSummary[]> = {}
-      results.forEach(([k, v]) => { map[k] = v })
-      setData(map)
-      setLoading(false)
+        setData(map)
+      } catch {
+        if (!cancelled) setData({})
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     fetchAll()
     return () => { cancelled = true }

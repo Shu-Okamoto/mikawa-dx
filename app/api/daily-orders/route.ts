@@ -16,6 +16,10 @@ function today() {
   return d
 }
 
+function toDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 // "YYYY-MM-DD" を UTC 00:00 の Date に変換。書式不正なら null。
 function parseDateParam(s: string | null): Date | null {
   if (!s) return null
@@ -26,7 +30,8 @@ function parseDateParam(s: string | null): Date | null {
 }
 
 // 発注データ取得
-// - ?date=YYYY-MM-DD: その日付の発注（過去閲覧用）。未指定なら今日。
+// - 単一日: ?date=YYYY-MM-DD（未指定なら今日）→ { orders, memos }
+// - 範囲  : ?from=YYYY-MM-DD&to=YYYY-MM-DD  → { days: { dateStr: { orders, memos } } }
 // - ?category=...   : カテゴリ絞り込み
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
@@ -34,9 +39,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
   }
 
-  const branch   = req.nextUrl.searchParams.get('branch')
-  const category = req.nextUrl.searchParams.get('category') || undefined
+  const branch    = req.nextUrl.searchParams.get('branch')
+  const category  = req.nextUrl.searchParams.get('category') || undefined
   const dateParam = req.nextUrl.searchParams.get('date')
+  const fromParam = req.nextUrl.searchParams.get('from')
+  const toParam   = req.nextUrl.searchParams.get('to')
+
   if (!branch || !STORE_BRANCHES.has(branch)) {
     return NextResponse.json({ error: 'branch が不正です' }, { status: 400 })
   }
@@ -46,12 +54,61 @@ export async function GET(req: NextRequest) {
   if (category && !VALID_CATEGORIES.has(category)) {
     return NextResponse.json({ error: 'category が不正です' }, { status: 400 })
   }
-  const targetDate = dateParam ? parseDateParam(dateParam) : today()
-  if (!targetDate) {
-    return NextResponse.json({ error: 'date が不正です (YYYY-MM-DD)' }, { status: 400 })
-  }
 
   try {
+    // 範囲指定
+    if (fromParam && toParam) {
+      const from = parseDateParam(fromParam)
+      const to   = parseDateParam(toParam)
+      if (!from || !to) {
+        return NextResponse.json({ error: 'from/to が不正です (YYYY-MM-DD)' }, { status: 400 })
+      }
+      const start = from <= to ? from : to
+      const end   = from <= to ? to   : from
+
+      const [orders, allMemos] = await Promise.all([
+        prisma.dailyOrder.findMany({
+          where: {
+            orderDate: { gte: start, lte: end },
+            store    : { storeCode: branch },
+            ...(category ? { product: { category } } : {}),
+          },
+          include: { product: true },
+        }),
+        prisma.orderCategoryMemo.findMany({
+          where: {
+            orderDate: { gte: start, lte: end },
+            store    : { storeCode: branch },
+            ...(category ? { category } : {}),
+          },
+        }),
+      ])
+
+      // 日付ごとに分配
+      const days: Record<string, { orders: typeof orders; memos: { category: string; memo: string }[] }> = {}
+      const cur = new Date(start)
+      while (cur <= end) {
+        days[toDateKey(cur)] = { orders: [], memos: [] }
+        cur.setDate(cur.getDate() + 1)
+      }
+      orders.forEach((o) => {
+        const key = toDateKey(new Date(o.orderDate))
+        if (days[key]) days[key].orders.push(o)
+      })
+      allMemos.forEach((m) => {
+        const key = toDateKey(new Date(m.orderDate))
+        if (days[key]) days[key].memos.push({ category: m.category, memo: m.memo })
+      })
+
+      return NextResponse.json({ days })
+    }
+
+    // 単一日（既存の互換形式）
+    const targetDate = dateParam ? parseDateParam(dateParam) : today()
+    if (!targetDate) {
+      return NextResponse.json({ error: 'date が不正です (YYYY-MM-DD)' }, { status: 400 })
+    }
+
     const orders = await prisma.dailyOrder.findMany({
       where: {
         orderDate: targetDate,
