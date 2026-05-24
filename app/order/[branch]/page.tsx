@@ -138,6 +138,7 @@ function OrderPageContent({ branch }: { branch: string }) {
     for (let i = 1; i <= 30; i++) {
       const d = new Date()
       d.setDate(d.getDate() + i)
+      if (d.getDay() === 0) continue // 日曜は除外
       const str = d.getFullYear() + '/' +
         ('0'+(d.getMonth()+1)).slice(-2) + '/' +
         ('0'+d.getDate()).slice(-2)
