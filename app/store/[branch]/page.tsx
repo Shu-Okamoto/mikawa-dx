@@ -820,42 +820,49 @@ function WeeklyScreen({
     let cancelled = false
     const run = async () => {
       setLoading(true)
-      const results = await Promise.all(weekDays.map(async (wd) => {
-        try {
-          const res  = await authFetch(`/api/daily-orders?branch=${branch}&date=${wd.dateStr}`)
-          const json = await res.json()
-          const orders: BranchOrder[] = (json.orders ?? []).map((o: {
+      const from = weekDays[0]?.dateStr
+      const to   = weekDays[weekDays.length - 1]?.dateStr
+      try {
+        const res  = await authFetch(`/api/daily-orders?branch=${branch}&from=${from}&to=${to}`)
+        const json = await res.json()
+        if (cancelled) return
+
+        const dataMap : Record<string, BranchOrder[]>         = {}
+        const memosMap: Record<string, Record<string, string>> = {}
+
+        const days = json.days as Record<string, {
+          orders: {
             productId: number | string
             product?: { productName?: string; category?: string; unit?: string }
             status  : string | null
             requestQty: number | null
-          }) => ({
-            productId  : o.productId,
-            productName: o.product?.productName ?? '(不明)',
-            category   : o.product?.category    ?? '',
-            unit       : o.product?.unit        ?? '',
-            status     : o.status || '―',
-            qty        : Number(o.requestQty) || 0,
-          }))
-          const memoMap: Record<string, string> = {}
-          ;(json.memos ?? []).forEach((m: { category: string; memo: string }) => {
-            memoMap[m.category] = m.memo
+          }[]
+          memos: { category: string; memo: string }[]
+        }> | undefined
+
+        if (days) {
+          Object.entries(days).forEach(([dateStr, day]) => {
+            dataMap[dateStr] = day.orders.map((o) => ({
+              productId  : o.productId,
+              productName: o.product?.productName ?? '(不明)',
+              category   : o.product?.category    ?? '',
+              unit       : o.product?.unit        ?? '',
+              status     : o.status || '―',
+              qty        : Number(o.requestQty) || 0,
+            }))
+            const memoMap: Record<string, string> = {}
+            day.memos.forEach((m) => { memoMap[m.category] = m.memo })
+            memosMap[dateStr] = memoMap
           })
-          return { dateStr: wd.dateStr, orders, memoMap }
-        } catch {
-          return { dateStr: wd.dateStr, orders: [] as BranchOrder[], memoMap: {} as Record<string, string> }
         }
-      }))
-      if (cancelled) return
-      const dataMap : Record<string, BranchOrder[]>                  = {}
-      const memosMap: Record<string, Record<string, string>>          = {}
-      results.forEach((r) => {
-        dataMap[r.dateStr]  = r.orders
-        memosMap[r.dateStr] = r.memoMap
-      })
-      setData(dataMap)
-      setMemos(memosMap)
-      setLoading(false)
+
+        setData(dataMap)
+        setMemos(memosMap)
+      } catch {
+        if (!cancelled) { setData({}); setMemos({}) }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     run()
     return () => { cancelled = true }
