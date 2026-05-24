@@ -431,10 +431,16 @@ function CalendarPageContent() {
                             <span><span style={{ color:'#A8A69E' }}>おかず: </span>
                               {o.okazu}</span>
                           )}
-                          <span><span style={{ color:'#A8A69E' }}>領収書: </span>
-                            {o.receipt === 'yes' ? 'あり' : 'なし'}</span>
-                          <span><span style={{ color:'#A8A69E' }}>宛名: </span>
-                            {o.receiptName ? o.receiptName : '宛名なし'}</span>
+                          <span style={{ gridColumn:'1/-1' }}>
+                            <span style={{ color:'#A8A69E' }}>領収書: </span>
+                            {o.receipt === 'yes' ? 'あり' : 'なし'}
+                            {o.receipt === 'yes' && (
+                              <>
+                                <span style={{ color:'#A8A69E', marginLeft:'12px' }}>宛名: </span>
+                                {o.receiptName ? o.receiptName : 'なし'}
+                              </>
+                            )}
+                          </span>
                           {o.notes && (
                             <span style={{ gridColumn:'1/-1' }}>
                               <span style={{ color:'#A8A69E' }}>備考: </span>
