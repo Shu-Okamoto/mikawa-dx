@@ -5,6 +5,7 @@ import {
 } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { themeForBranch, type StoreTheme } from '@/lib/storeColors'
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
 
@@ -377,7 +378,8 @@ function StorePageContent({ branch }: { branch: string }) {
       fontFamily: FONT_STACK, background: '#F5F1EA',
       minHeight: '100vh', paddingBottom: '40px', color: '#2C2C2A',
     }}>
-      <Header dateLabel={dateLabel} nameLabel={`${branchLabel} · ${user?.name ?? ''}`} onLogout={logout} />
+      <Header dateLabel={dateLabel} nameLabel={`${branchLabel} · ${user?.name ?? ''}`}
+        onLogout={logout} theme={themeForBranch(branch)} />
 
       {screen === 'catselect' && (
         <CatSelectScreen
@@ -454,11 +456,11 @@ function StorePageContent({ branch }: { branch: string }) {
 // ====================================================================
 
 function Header({
-  dateLabel, nameLabel, onLogout,
-}: { dateLabel: string; nameLabel: string; onLogout: () => void }) {
+  dateLabel, nameLabel, onLogout, theme,
+}: { dateLabel: string; nameLabel: string; onLogout: () => void; theme: StoreTheme }) {
   return (
     <div style={{
-      background: 'linear-gradient(135deg,#3B6D11,#639922)',
+      background: `linear-gradient(135deg,${theme.from},${theme.to})`,
       color: 'white', padding: '20px 16px 16px',
       position: 'sticky', top: 0, zIndex: 10,
     }}>

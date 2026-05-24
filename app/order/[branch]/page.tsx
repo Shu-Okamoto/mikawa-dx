@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { themeForBranch } from '@/lib/storeColors'
 
 interface OrderProduct {
   id           : number
@@ -347,12 +348,7 @@ function OrderPageContent({ branch }: { branch: string }) {
     </div>
   )
 
-  const BRANCH_THEMES: Record<string, { from: string; to: string; accent: string }> = {
-    nishi : { from: '#3B6D11', to: '#639922', accent: '#3B6D11' },
-    minami: { from: '#72243E', to: '#A93226', accent: '#72243E' },
-    honbu : { from: '#6A1B9A', to: '#8E44AD', accent: '#6A1B9A' },
-  }
-  const theme       = BRANCH_THEMES[branch] ?? BRANCH_THEMES.minami
+  const theme       = themeForBranch(branch)
   const headerStyle = () => ({
     background: `linear-gradient(135deg,${theme.from},${theme.to})`,
     color: 'white', padding: '20px 16px 16px',
