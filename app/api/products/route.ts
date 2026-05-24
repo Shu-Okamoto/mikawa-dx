@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         ...(category ? { category } : {}),
       },
       include: { vendor: true },
-      orderBy: { productCode: 'asc' },
+      orderBy: [{ category: 'asc' }, { displayOrder: 'asc' }, { productCode: 'asc' }],
     })
 
     return NextResponse.json(products)
