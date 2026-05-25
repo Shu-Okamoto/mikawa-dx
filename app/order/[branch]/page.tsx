@@ -75,7 +75,12 @@ function canRoleAccessBranch(role: string, branch: string): boolean {
 
 function OrderPageContent({ branch }: { branch: string }) {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'])
+  const { user, loading, error, authFetch, logout } = useAuth(
+    ['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'],
+    { autoLoginRole: VALID_BRANCHES.has(branch)
+        ? (branch === 'honbu' ? 'hq1' : branch)
+        : undefined },
+  )
   const [screen, setScreen]         = useState<Screen>('list')
   const [orders, setOrders]         = useState<InstoreOrder[]>([])
   const [products, setProducts]     = useState<OrderProduct[]>([])
@@ -375,6 +380,11 @@ function OrderPageContent({ branch }: { branch: string }) {
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>惣菜注文受付</div>
                 <div style={{ fontSize:'20px', fontWeight:500 }}>{branchLabel}</div>
+                {user?.name && (
+                  <div style={{ fontSize:'12px', opacity:.85, marginTop:'2px' }}>
+                    {user.name}
+                  </div>
+                )}
               </div>
               <div style={{ display:'flex', gap:'8px' }}>
                 <button onClick={() => setScreen('date')}

@@ -12,7 +12,10 @@ export interface AuthUser {
   category : string
 }
 
-export function useAuth(requiredRole?: string | string[]) {
+export function useAuth(
+  requiredRole?: string | string[],
+  options?: { autoLoginRole?: string },
+) {
   const router                = useRouter()
   const searchParams          = useSearchParams()
   const [user, setUser]       = useState<AuthUser | null>(null)
@@ -23,6 +26,7 @@ export function useAuth(requiredRole?: string | string[]) {
   const allowedKey = Array.isArray(requiredRole)
     ? requiredRole.join(',')
     : (requiredRole ?? '')
+  const autoLoginRole = options?.autoLoginRole ?? ''
 
   useEffect(() => {
     const lineUserId  = searchParams.get('lineUserId')
@@ -33,6 +37,31 @@ export function useAuth(requiredRole?: string | string[]) {
       if (!requiredRole) return true
       const allowed = Array.isArray(requiredRole) ? requiredRole : [requiredRole]
       return allowed.includes(role)
+    }
+
+    const doAutoLogin = (role: string) => {
+      fetch('/api/auth/role', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ role }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.token) {
+            setError(data.error || '自動ログインに失敗しました')
+            setLoading(false)
+            return
+          }
+          localStorage.setItem('token', data.token)
+          localStorage.setItem('user',  JSON.stringify(data.user))
+          setToken(data.token)
+          setUser(data.user)
+          setLoading(false)
+        })
+        .catch(() => {
+          setError('サーバーエラーが発生しました')
+          setLoading(false)
+        })
     }
 
     if (lineUserId) {
@@ -74,6 +103,11 @@ export function useAuth(requiredRole?: string | string[]) {
     if (storedToken && storedUser) {
       const parsedUser = JSON.parse(storedUser) as AuthUser
       if (!checkRole(parsedUser.role)) {
+        // ロールが合わない: autoLoginRole が指定されていれば自動で再ログイン
+        if (autoLoginRole) {
+          doAutoLogin(autoLoginRole)
+          return
+        }
         setError('この画面へのアクセス権限がありません')
         setLoading(false)
         return
@@ -84,9 +118,15 @@ export function useAuth(requiredRole?: string | string[]) {
       return
     }
 
+    // 未ログイン: autoLoginRole が指定されていれば自動ログイン、なければ入り口へ
+    if (autoLoginRole) {
+      doAutoLogin(autoLoginRole)
+      return
+    }
+
     router.push('/')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowedKey])
+  }, [allowedKey, autoLoginRole])
 
   // 参照を毎レンダー安定化させる。これがないと呼び出し側の useEffect 依存が
   // 毎レンダー変化し、fetch が再発火して直前の入力状態が上書きされる。
