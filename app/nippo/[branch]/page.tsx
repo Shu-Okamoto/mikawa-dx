@@ -6,6 +6,8 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForBranch } from '@/lib/storeColors'
 
 type Weather = 'sunny' | 'cloudy' | 'rainy' | 'snowy'
+type EntryType = 'plan' | 'actual'
+type ShiftPattern = 'first' | 'last' | 'through'
 
 interface Store {
   id  : number
@@ -13,9 +15,30 @@ interface Store {
   slug: string
 }
 
+interface Staff {
+  id        : number
+  name      : string
+  role      : string
+  sort_order: number
+}
+
+interface ShiftItem {
+  // 一意キー（負数: 新規ローカル）
+  uid              : number
+  staffId          : number | null
+  staffNameManual  : string | null
+  entryType        : EntryType
+  pattern          : ShiftPattern | null
+  startTime        : string | null  // 'HH:MM'
+  endTime          : string | null
+  breakMinutes     : number
+  breakStart       : string | null
+  breakEnd         : string | null
+}
+
 interface ReportState {
   weather       : Weather | null
-  salesForecast : string  // input string
+  salesForecast : string
   salesActual   : string
   customerCount : string
   sozaiZan      : string
@@ -42,6 +65,43 @@ const WEATHER_OPTIONS: { value: Weather; icon: string; label: string }[] = [
   { value: 'snowy',  icon: '❄️', label: '雪' },
 ]
 
+const PATTERN_TIMES: Record<ShiftPattern, { start: string; end: string; defaultBreak: number }> = {
+  first:   { start: '09:00', end: '13:00', defaultBreak: 0 },
+  last:    { start: '13:00', end: '17:00', defaultBreak: 0 },
+  through: { start: '09:00', end: '17:00', defaultBreak: 60 },
+}
+const PATTERN_LABEL: Record<ShiftPattern, string> = {
+  first: '前半', last: '後半', through: '通し',
+}
+
+let uidCounter = -1
+const nextUid = () => uidCounter--
+
+function parseHM(t: string | null | undefined): number | null {
+  if (!t) return null
+  const m = /^(\d{1,2}):(\d{2})/.exec(t)
+  if (!m) return null
+  const h = Number(m[1]); const min = Number(m[2])
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null
+  return h * 60 + min
+}
+
+function shiftMinutes(s: ShiftItem): number {
+  let startMin: number | null = null
+  let endMin: number | null = null
+  let breakMin = 0
+  if (s.entryType === 'plan' && s.pattern) {
+    const p = PATTERN_TIMES[s.pattern]
+    startMin = parseHM(p.start); endMin = parseHM(p.end)
+    breakMin = s.breakMinutes || p.defaultBreak
+  } else {
+    startMin = parseHM(s.startTime); endMin = parseHM(s.endTime)
+    breakMin = s.breakMinutes || 0
+  }
+  if (startMin == null || endMin == null || endMin <= startMin) return 0
+  return Math.max(0, endMin - startMin - breakMin)
+}
+
 function NippoContent({ branch }: { branch: string }) {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(
@@ -49,13 +109,16 @@ function NippoContent({ branch }: { branch: string }) {
     { autoLoginRole: VALID_BRANCHES.has(branch) ? branch : undefined },
   )
 
-  const [store, setStore]       = useState<Store | null>(null)
-  const [report, setReport]     = useState<ReportState>(EMPTY_REPORT)
-  const [savedAt, setSavedAt]   = useState<string | null>(null)
-  const [dirty, setDirty]       = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [fetching, setFetching] = useState(true)
-  const [toast, setToast]       = useState('')
+  const [store, setStore]         = useState<Store | null>(null)
+  const [staffList, setStaffList] = useState<Staff[]>([])
+  const [report, setReport]       = useState<ReportState>(EMPTY_REPORT)
+  const [shifts, setShifts]       = useState<ShiftItem[]>([])
+  const [shiftTab, setShiftTab]   = useState<EntryType>('actual')
+  const [savedAt, setSavedAt]     = useState<string | null>(null)
+  const [dirty, setDirty]         = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [fetching, setFetching]   = useState(true)
+  const [toast, setToast]         = useState('')
 
   const theme = themeForBranch(branch)
   const branchLabel = BRANCH_LABEL[branch] ?? branch
@@ -74,6 +137,8 @@ function NippoContent({ branch }: { branch: string }) {
     if (!res.ok) { showToast('読み込みエラー: ' + (data.error ?? '不明')); return }
 
     setStore(data.store)
+    setStaffList(data.staffList ?? [])
+
     if (data.report) {
       setReport({
         weather       : data.report.weather,
@@ -90,7 +155,28 @@ function NippoContent({ branch }: { branch: string }) {
         const d = new Date(data.report.updated_at)
         setSavedAt(d.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' }))
       }
+    } else {
+      setReport(EMPTY_REPORT)
     }
+
+    const loadedShifts: ShiftItem[] = (data.shifts ?? []).map((s: {
+      id: number; staff_id: number | null; staff_name_manual: string | null;
+      entry_type: EntryType; pattern: ShiftPattern | null;
+      start_time: string | null; end_time: string | null;
+      break_minutes: number; break_start: string | null; break_end: string | null
+    }) => ({
+      uid              : s.id,
+      staffId          : s.staff_id,
+      staffNameManual  : s.staff_name_manual,
+      entryType        : s.entry_type,
+      pattern          : s.pattern,
+      startTime        : s.start_time ? s.start_time.slice(0,5) : null,
+      endTime          : s.end_time   ? s.end_time.slice(0,5)   : null,
+      breakMinutes     : s.break_minutes ?? 0,
+      breakStart       : s.break_start ? s.break_start.slice(0,5) : null,
+      breakEnd         : s.break_end   ? s.break_end.slice(0,5)   : null,
+    }))
+    setShifts(loadedShifts)
     setDirty(false)
   }, [user, branch, authFetch])
 
@@ -98,13 +184,50 @@ function NippoContent({ branch }: { branch: string }) {
     if (!loading && !error) fetchData()
   }, [loading, error, fetchData])
 
-  // 不正な branch チェック
   useEffect(() => {
     if (!VALID_BRANCHES.has(branch)) router.replace('/')
   }, [branch, router])
 
   const update = <K extends keyof ReportState>(key: K, v: ReportState[K]) => {
     setReport((prev) => ({ ...prev, [key]: v }))
+    setDirty(true)
+  }
+
+  const addShiftFromStaff = (staffId: number) => {
+    if (shifts.some((s) => s.entryType === shiftTab && s.staffId === staffId)) return
+    setShifts((prev) => [...prev, {
+      uid: nextUid(),
+      staffId, staffNameManual: null,
+      entryType: shiftTab,
+      pattern: shiftTab === 'plan' ? 'through' : null,
+      startTime: shiftTab === 'actual' ? '09:00' : null,
+      endTime  : shiftTab === 'actual' ? '17:00' : null,
+      breakMinutes: 0, breakStart: null, breakEnd: null,
+    }])
+    setDirty(true)
+  }
+
+  const addShiftManual = (name: string) => {
+    if (!name.trim()) return
+    setShifts((prev) => [...prev, {
+      uid: nextUid(),
+      staffId: null, staffNameManual: name.trim(),
+      entryType: shiftTab,
+      pattern: shiftTab === 'plan' ? 'through' : null,
+      startTime: shiftTab === 'actual' ? '09:00' : null,
+      endTime  : shiftTab === 'actual' ? '17:00' : null,
+      breakMinutes: 0, breakStart: null, breakEnd: null,
+    }])
+    setDirty(true)
+  }
+
+  const updateShift = (uid: number, patch: Partial<ShiftItem>) => {
+    setShifts((prev) => prev.map((s) => s.uid === uid ? { ...s, ...patch } : s))
+    setDirty(true)
+  }
+
+  const removeShift = (uid: number) => {
+    setShifts((prev) => prev.filter((s) => s.uid !== uid))
     setDirty(true)
   }
 
@@ -125,6 +248,17 @@ function NippoContent({ branch }: { branch: string }) {
       reportText    : report.reportText,
       kizuki        : report.kizuki,
       bikou         : report.bikou,
+      shifts: shifts.map((s) => ({
+        staffId         : s.staffId,
+        staffNameManual : s.staffNameManual,
+        entryType       : s.entryType,
+        pattern         : s.pattern,
+        startTime       : s.startTime,
+        endTime         : s.endTime,
+        breakMinutes    : s.breakMinutes,
+        breakStart      : s.breakStart,
+        breakEnd        : s.breakEnd,
+      })),
     }
     const res  = await authFetch(`/api/nippo/today/${branch}`, {
       method: 'POST',
@@ -136,14 +270,22 @@ function NippoContent({ branch }: { branch: string }) {
     setDirty(false)
     setSavedAt(new Date().toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' }))
     showToast('保存しました')
+    // 保存後に再読込してidを更新（再保存時のキー整合のため）
+    fetchData()
   }
 
-  // 客単価計算
   const customerCountNum = parseInt(report.customerCount, 10)
   const salesActualNum   = parseInt(report.salesActual, 10)
   const tanka = customerCountNum > 0 && salesActualNum > 0
     ? Math.round(salesActualNum / customerCountNum)
     : null
+
+  // 実績シフトの合計時間
+  const totalActualMin = shifts.filter((s) => s.entryType === 'actual')
+    .reduce((sum, s) => sum + shiftMinutes(s), 0)
+  const totalActualH = totalActualMin / 60
+  const ninjibai = (totalActualH > 0 && salesActualNum > 0)
+    ? Math.round(salesActualNum / totalActualH) : null
 
   if (loading) return <Loading />
   if (error)   return <ErrorBox msg={error} onTop={() => router.push('/')} />
@@ -152,11 +294,16 @@ function NippoContent({ branch }: { branch: string }) {
   const dateStr = `${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日`
   const dowName = ['日','月','火','水','木','金','土'][today.getDay()]
 
+  const visibleShifts = shifts.filter((s) => s.entryType === shiftTab)
+  const usedStaffIds = visibleShifts
+    .map((s) => s.staffId)
+    .filter((x): x is number => x !== null)
+  const availableStaff = staffList.filter((s) => !usedStaffIds.includes(s.id))
+
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
       background:'#F5F1EA', minHeight:'100vh', paddingBottom:'90px', color:'#2C2C2A' }}>
 
-      {/* ヘッダー */}
       <div style={{ background:`linear-gradient(135deg,${theme.from},${theme.to})`,
         color:'white', padding:'20px 16px 16px',
         position:'sticky', top:0, zIndex:10 }}>
@@ -190,16 +337,12 @@ function NippoContent({ branch }: { branch: string }) {
       ) : (
       <div style={{ padding:'12px' }}>
 
-        {/* ひとこと（日報本文） */}
         <Card title="📝 ひとこと">
           <textarea value={report.reportText}
             onChange={(e) => update('reportText', e.target.value)}
-            rows={3}
-            placeholder="本日のひとこと"
-            style={textareaStyle} />
+            rows={3} placeholder="本日のひとこと" style={textareaStyle} />
         </Card>
 
-        {/* 天気 */}
         <Card title="🌤 天気">
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px' }}>
             {WEATHER_OPTIONS.map((w) => {
@@ -223,7 +366,6 @@ function NippoContent({ branch }: { branch: string }) {
           </div>
         </Card>
 
-        {/* 売上 */}
         <Card title="💰 売上">
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
             <NumField label="売上予測（前年）" unit="円"
@@ -241,7 +383,74 @@ function NippoContent({ branch }: { branch: string }) {
           </div>
         </Card>
 
-        {/* 残数 */}
+        {/* シフト */}
+        <Card title="👥 シフト">
+          <div style={{ display:'flex', gap:'6px', marginBottom:'12px' }}>
+            {(['plan','actual'] as EntryType[]).map((t) => {
+              const on = shiftTab === t
+              return (
+                <button key={t} onClick={() => setShiftTab(t)}
+                  style={{
+                    flex:1, padding:'10px',
+                    border: on ? `2px solid ${theme.accent}` : '1.5px solid #E5E1D8',
+                    background: on ? theme.accent : 'white',
+                    color: on ? 'white' : '#2C2C2A',
+                    borderRadius:'8px', fontSize:'14px', fontWeight:500,
+                    cursor:'pointer', fontFamily:'inherit',
+                  }}>
+                  {t === 'plan' ? '予定' : '実績'}
+                </button>
+              )
+            })}
+          </div>
+
+          {visibleShifts.length === 0 && (
+            <div style={{ padding:'16px', textAlign:'center', color:'#888780',
+              fontSize:'13px', border:'1.5px dashed #E5E1D8', borderRadius:'10px',
+              marginBottom:'10px' }}>
+              ↓ スタッフを追加してください
+            </div>
+          )}
+
+          {visibleShifts.map((s) => {
+            const name = s.staffId
+              ? (staffList.find((x) => x.id === s.staffId)?.name ?? '(不明)')
+              : (s.staffNameManual ?? '(未設定)')
+            return (
+              <ShiftRow key={s.uid} shift={s} name={name} theme={theme}
+                onChange={(p) => updateShift(s.uid, p)}
+                onDelete={() => removeShift(s.uid)} />
+            )
+          })}
+
+          <AddStaffRow availableStaff={availableStaff}
+            onAddFromMaster={addShiftFromStaff}
+            onAddManual={addShiftManual} />
+
+          {shiftTab === 'actual' && (
+            <div style={{ marginTop:'12px', padding:'10px 12px',
+              background:'#FBF8F2', borderRadius:'8px',
+              display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+              <span style={{ fontSize:'12px', color:'#888780' }}>総実働時間</span>
+              <span style={{ fontSize:'18px', fontWeight:600, color: theme.text }}>
+                {totalActualH.toFixed(1)}<span style={{ fontSize:'11px', marginLeft:'2px' }}>h</span>
+              </span>
+            </div>
+          )}
+          {shiftTab === 'actual' && ninjibai != null && (
+            <div style={{ marginTop:'6px', padding:'10px 12px',
+              background:'#FBF8F2', borderRadius:'8px',
+              display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+              <span style={{ fontSize:'12px', color:'#888780' }}>
+                人時売 ＝ ¥{salesActualNum.toLocaleString('ja-JP')} ÷ {totalActualH.toFixed(1)}h
+              </span>
+              <span style={{ fontSize:'16px', fontWeight:600, color: theme.text }}>
+                ¥{ninjibai.toLocaleString('ja-JP')}<span style={{ fontSize:'11px', marginLeft:'2px' }}>/h</span>
+              </span>
+            </div>
+          )}
+        </Card>
+
         <Card title="📦 残数（14時時点）">
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
             <NumField label="惣菜残" unit="点"
@@ -253,27 +462,20 @@ function NippoContent({ branch }: { branch: string }) {
           </div>
         </Card>
 
-        {/* 気づき */}
         <Card title="💡 気づき">
           <textarea value={report.kizuki}
             onChange={(e) => update('kizuki', e.target.value)}
-            rows={3}
-            placeholder="気づいたこと"
-            style={textareaStyle} />
+            rows={3} placeholder="気づいたこと" style={textareaStyle} />
         </Card>
 
-        {/* 備考 */}
         <Card title="🗒 備考">
           <textarea value={report.bikou}
             onChange={(e) => update('bikou', e.target.value)}
-            rows={3}
-            placeholder="その他メモ"
-            style={textareaStyle} />
+            rows={3} placeholder="その他メモ" style={textareaStyle} />
         </Card>
       </div>
       )}
 
-      {/* 保存ボタン（固定フッター） */}
       <div style={{ position:'fixed', bottom:0, left:0, right:0,
         padding:'12px 16px 20px', background:'white',
         borderTop:'1px solid #E5E1D8', zIndex:10,
@@ -307,6 +509,153 @@ function NippoContent({ branch }: { branch: string }) {
   )
 }
 
+function ShiftRow({ shift, name, theme, onChange, onDelete }: {
+  shift   : ShiftItem
+  name    : string
+  theme   : { accent: string; bg: string; text: string }
+  onChange: (p: Partial<ShiftItem>) => void
+  onDelete: () => void
+}) {
+  return (
+    <div style={{ padding:'10px 12px', marginBottom:'8px',
+      background:'#FBF8F2', borderRadius:'10px',
+      border:'1px solid #F0ECE3' }}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'8px' }}>
+        <span style={{ fontWeight:500, fontSize:'15px' }}>{name}</span>
+        <button onClick={onDelete}
+          style={{ padding:'4px 10px', background:'white',
+            border:'1.5px solid #E5E1D8', borderRadius:'8px',
+            fontSize:'11px', color:'#E24B4A',
+            cursor:'pointer', fontFamily:'inherit' }}>
+          削除
+        </button>
+      </div>
+
+      {shift.entryType === 'plan' ? (
+        <div style={{ display:'flex', gap:'6px' }}>
+          {(['first','last','through'] as ShiftPattern[]).map((p) => {
+            const on = shift.pattern === p
+            return (
+              <button key={p} onClick={() => onChange({ pattern: p })}
+                style={{
+                  flex:1, padding:'8px',
+                  border: on ? `2px solid ${theme.accent}` : '1.5px solid #E5E1D8',
+                  background: on ? theme.bg : 'white',
+                  color: on ? theme.text : '#2C2C2A',
+                  borderRadius:'8px', fontSize:'13px', fontWeight:500,
+                  cursor:'pointer', fontFamily:'inherit',
+                }}>
+                {PATTERN_LABEL[p]}
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px' }}>
+          <TimeField label="開始" value={shift.startTime ?? ''}
+            onChange={(v) => onChange({ startTime: v || null })} />
+          <TimeField label="終了" value={shift.endTime ?? ''}
+            onChange={(v) => onChange({ endTime: v || null })} />
+          <div>
+            <div style={{ fontSize:'11px', color:'#888780', marginBottom:'2px' }}>休憩(分)</div>
+            <input type="number" inputMode="numeric"
+              value={shift.breakMinutes || ''}
+              onChange={(e) => onChange({ breakMinutes: parseInt(e.target.value, 10) || 0 })}
+              style={{ width:'100%', padding:'8px',
+                border:'1.5px solid #E5E1D8', borderRadius:'8px',
+                fontSize:'14px', fontFamily:'inherit',
+                textAlign:'center', boxSizing:'border-box' }} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TimeField({ label, value, onChange }: {
+  label: string; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <div style={{ fontSize:'11px', color:'#888780', marginBottom:'2px' }}>{label}</div>
+      <input type="time" value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width:'100%', padding:'8px',
+          border:'1.5px solid #E5E1D8', borderRadius:'8px',
+          fontSize:'14px', fontFamily:'inherit',
+          textAlign:'center', boxSizing:'border-box' }} />
+    </div>
+  )
+}
+
+function AddStaffRow({ availableStaff, onAddFromMaster, onAddManual }: {
+  availableStaff : Staff[]
+  onAddFromMaster: (id: number) => void
+  onAddManual    : (name: string) => void
+}) {
+  const [manualMode, setManualMode] = useState(false)
+  const [manualName, setManualName] = useState('')
+
+  if (manualMode) {
+    return (
+      <div style={{ display:'flex', gap:'6px', padding:'10px',
+        background:'#FAFAFA', borderRadius:'8px' }}>
+        <input type="text" value={manualName}
+          placeholder="氏名"
+          onChange={(e) => setManualName(e.target.value)}
+          style={{ flex:1, padding:'8px',
+            border:'1.5px solid #E5E1D8', borderRadius:'8px',
+            fontSize:'14px', fontFamily:'inherit', boxSizing:'border-box' }} />
+        <button onClick={() => {
+          if (manualName.trim()) {
+            onAddManual(manualName)
+            setManualName(''); setManualMode(false)
+          }
+        }}
+          style={{ padding:'8px 14px', background:'#2C2C2A',
+            color:'white', border:'none', borderRadius:'8px',
+            fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+          追加
+        </button>
+        <button onClick={() => { setManualMode(false); setManualName('') }}
+          style={{ padding:'8px 12px', background:'white',
+            border:'1.5px solid #E5E1D8', borderRadius:'8px',
+            fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+          戻る
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display:'flex', gap:'6px', padding:'10px',
+      background:'#FAFAFA', borderRadius:'8px' }}>
+      <select defaultValue=""
+        onChange={(e) => {
+          const v = e.target.value
+          if (v) { onAddFromMaster(Number(v)); e.target.value = '' }
+        }}
+        style={{ flex:1, padding:'8px',
+          border:'1.5px solid #E5E1D8', borderRadius:'8px',
+          fontSize:'14px', fontFamily:'inherit',
+          background:'white', boxSizing:'border-box' }}>
+        <option value="">＋ スタッフを追加...</option>
+        {availableStaff.map((s) => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+      <button onClick={() => setManualMode(true)}
+        style={{ padding:'8px 12px', background:'white',
+          border:'1.5px solid #E5E1D8', borderRadius:'8px',
+          fontSize:'13px', cursor:'pointer', fontFamily:'inherit',
+          whiteSpace:'nowrap' }}>
+        手入力
+      </button>
+    </div>
+  )
+}
+
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ background:'white', borderRadius:'14px', overflow:'hidden',
@@ -328,13 +677,11 @@ function NumField({ label, unit, value, onChange, readOnly }: {
       <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
         <input type={readOnly ? 'text' : 'number'}
           inputMode={readOnly ? 'text' : 'numeric'}
-          value={value}
-          readOnly={readOnly}
+          value={value} readOnly={readOnly}
           onChange={(e) => onChange(e.target.value)}
           style={{ flex:1, padding:'10px',
             border:'1.5px solid #E5E1D8', borderRadius:'8px',
-            fontSize:'16px', fontFamily:'inherit',
-            textAlign:'right',
+            fontSize:'16px', fontFamily:'inherit', textAlign:'right',
             background: readOnly ? '#FAFAFA' : 'white',
             color: readOnly ? '#888780' : '#2C2C2A',
             boxSizing:'border-box' }} />
