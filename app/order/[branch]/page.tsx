@@ -380,6 +380,11 @@ function OrderPageContent({ branch }: { branch: string }) {
               <div>
                 <div style={{ fontSize:'11px', opacity:.8 }}>惣菜注文受付</div>
                 <div style={{ fontSize:'20px', fontWeight:500 }}>{branchLabel}</div>
+                {user?.name && (
+                  <div style={{ fontSize:'12px', opacity:.85, marginTop:'2px' }}>
+                    {user.name}
+                  </div>
+                )}
               </div>
               <div style={{ display:'flex', gap:'8px' }}>
                 <button onClick={() => setScreen('date')}

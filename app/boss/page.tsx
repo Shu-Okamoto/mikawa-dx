@@ -142,7 +142,9 @@ function BossPageContent() {
           <div>
             <div style={{ fontSize:'11px', opacity:.8 }}>経営ダッシュボード</div>
             <div style={{ fontSize:'20px', fontWeight:500 }}>📊 社長画面</div>
-            <div style={{ fontSize:'12px', opacity:.7, marginTop:'2px' }}>{dateStr}</div>
+            <div style={{ fontSize:'12px', opacity:.7, marginTop:'2px' }}>
+              {dateStr}{user?.name ? ` · ${user.name}` : ''}
+            </div>
           </div>
           <button onClick={logout}
             style={{ padding:'8px 14px', background:'rgba(255,255,255,.2)',

@@ -253,6 +253,11 @@ function CalendarPageContent() {
             <div style={{ fontSize:'22px', fontWeight:500 }}>
               {currentTab.icon} {currentTab.label}注文
             </div>
+            {user?.name && (
+              <div style={{ fontSize:'12px', opacity:.85, marginTop:'2px' }}>
+                {user.name}
+              </div>
+            )}
           </div>
           <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
             <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
