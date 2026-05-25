@@ -75,7 +75,12 @@ function canRoleAccessBranch(role: string, branch: string): boolean {
 
 function OrderPageContent({ branch }: { branch: string }) {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'])
+  const { user, loading, error, authFetch, logout } = useAuth(
+    ['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'],
+    { autoLoginRole: VALID_BRANCHES.has(branch)
+        ? (branch === 'honbu' ? 'hq1' : branch)
+        : undefined },
+  )
   const [screen, setScreen]         = useState<Screen>('list')
   const [orders, setOrders]         = useState<InstoreOrder[]>([])
   const [products, setProducts]     = useState<OrderProduct[]>([])

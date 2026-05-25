@@ -89,7 +89,10 @@ function todayJpLabel(d: Date) {
 
 function StorePageContent({ branch }: { branch: string }) {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'all'])
+  const { user, loading, error, authFetch, logout } = useAuth(
+    ['nishi', 'minami', 'all'],
+    { autoLoginRole: VALID_BRANCHES.has(branch) ? branch : undefined },
+  )
 
   const [products, setProducts]     = useState<Product[]>([])
   const [orderState, setOrderState] = useState<Record<number | string, OrderState>>({})
