@@ -245,6 +245,7 @@ function OrderPageContent({ branch }: { branch: string }) {
           deliveryDate   : selectedDate,
           productId      : p.id > 0 ? p.id : null,
           productName    : p.productName,
+          category       : p.category || null,
           quantity       : quantities[p.id],
           price          : Number(p.price) || 0,
           customerName,
