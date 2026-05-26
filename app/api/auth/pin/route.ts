@@ -17,12 +17,23 @@ export async function POST(req: NextRequest) {
     if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
       return NextResponse.json({ error: 'PINは4桁の数字で入力してください' }, { status: 400 })
     }
+    const configured: string[] = []
     for (const { env, role } of PIN_MAP) {
-      const expected = process.env[env]
-      if (expected && pin === expected) {
+      const expected = process.env[env]?.trim()
+      if (!expected) continue
+      configured.push(env)
+      if (pin === expected) {
         return NextResponse.json({ role })
       }
     }
+    if (configured.length === 0) {
+      console.error('[auth/pin] No PIN env vars configured')
+      return NextResponse.json(
+        { error: 'PIN環境変数が未設定です（再デプロイ要）' },
+        { status: 500 }
+      )
+    }
+    console.warn('[auth/pin] PIN mismatch. Configured:', configured.join(','))
     return NextResponse.json({ error: 'PINが正しくありません' }, { status: 401 })
   } catch {
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
