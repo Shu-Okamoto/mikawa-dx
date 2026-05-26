@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type RoleKey = 'nishi' | 'minami' | 'hq1' | 'hq2' | 'hq3' | 'all'
+type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all'
 
 type Entry = {
   role     : RoleKey
@@ -18,6 +18,7 @@ const PIN_ROLE_KEY = 'pinRole'
 const roleHome: Record<RoleKey, string> = {
   nishi : '/store/nishi',
   minami: '/store/minami',
+  honbu : '/store/honbu',
   hq1   : '/hq',
   hq2   : '/hq',
   hq3   : '/hq',
@@ -30,7 +31,7 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     rows: [[
       { role: 'nishi',  path: '/store/nishi',  label: '西店' },
       { role: 'minami', path: '/store/minami', label: '南店' },
-      { role: 'hq1',    path: '/store/honbu',  label: '本部' },
+      { role: 'honbu',  path: '/store/honbu',  label: '本部' },
     ]],
   },
   {
@@ -38,7 +39,7 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     rows: [[
       { role: 'nishi',  path: '/order/nishi',  label: '西店' },
       { role: 'minami', path: '/order/minami', label: '南店' },
-      { role: 'hq1',    path: '/order/honbu',  label: '本部' },
+      { role: 'honbu',  path: '/order/honbu',  label: '本部' },
     ]],
   },
   {
@@ -78,6 +79,8 @@ function canAccess(pinRole: RoleKey, entry: Entry): boolean {
     return entry.role === 'nishi' || (entry.role === 'all' && entry.path === '/calendar')
   if (pinRole === 'minami')
     return entry.role === 'minami' || (entry.role === 'all' && entry.path === '/calendar')
+  if (pinRole === 'honbu')
+    return entry.role === 'honbu' || (entry.role === 'all' && entry.path === '/calendar')
   // hq1 / hq2 / hq3 はそれぞれのロールに完全一致するボタンのみ
   return entry.role === pinRole
 }
@@ -103,8 +106,9 @@ export default function HomePage() {
       } catch { /* 壊れた値は無視 */ }
     }
     const saved = sessionStorage.getItem(PIN_ROLE_KEY)
-    if (saved === 'nishi' || saved === 'minami' || saved === 'hq1' ||
-        saved === 'hq2'   || saved === 'hq3'    || saved === 'all') {
+    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
+        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
+        saved === 'all') {
       setPinRole(saved)
     }
     setHydrated(true)

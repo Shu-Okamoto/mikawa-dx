@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-type PinRole = 'nishi' | 'minami' | 'hq1' | 'hq2' | 'hq3' | 'all'
+type PinRole = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all'
 
 const PIN_MAP: { env: string; role: PinRole }[] = [
   { env: 'PIN_NISHI',  role: 'nishi'  },
   { env: 'PIN_MINAMI', role: 'minami' },
+  { env: 'PIN_HONBU',  role: 'honbu'  },
   { env: 'PIN_HQ1',    role: 'hq1'    },
   { env: 'PIN_HQ2',    role: 'hq2'    },
   { env: 'PIN_HQ3',    role: 'hq3'    },

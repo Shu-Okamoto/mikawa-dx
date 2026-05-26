@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import prisma from '@/lib/prisma'
 
-const ALLOWED_ROLES = ['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'] as const
+const ALLOWED_ROLES = ['nishi', 'minami', 'honbu', 'hq1', 'hq2', 'hq3', 'all'] as const
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,6 +17,15 @@ export async function POST(req: NextRequest) {
       include: { store: true },
       orderBy: { id: 'asc' },
     })
+
+    // honbu ユーザー未登録なら hq1 で代行
+    if (!user && role === 'honbu') {
+      user = await prisma.user.findFirst({
+        where  : { role: 'hq1', isActive: true },
+        include: { store: true },
+        orderBy: { id: 'asc' },
+      })
+    }
 
     // 該当 role が未登録なら all で代行（all は全ページ閲覧可）
     if (!user && role !== 'all') {
