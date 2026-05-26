@@ -43,6 +43,7 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {}
     if (body.quantity        !== undefined) data.quantity        = body.quantity
+    if (body.price           !== undefined) data.price           = body.price
     if (body.customerName    !== undefined) data.customerName    = body.customerName
     if (body.phone           !== undefined) data.phone           = body.phone
     if (body.deliveryAddress !== undefined) data.deliveryAddress = body.deliveryAddress

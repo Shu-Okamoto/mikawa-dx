@@ -34,14 +34,17 @@ export async function GET(req: NextRequest) {
     })
     const productIds = products.map((p: any) => p.id)
 
-    // 注文データ取得
+    // 注文データ取得（マスタ品 OR カスタム品で当該カテゴリのもの）
     const orders = await prisma.instoreOrder.findMany({
       where: {
         status      : 'active',
         deliveryDate: { gte: start, lte: end },
-        ...(productIds.length > 0
-          ? { productId: { in: productIds } }
-          : {}),
+        OR: [
+          ...(productIds.length > 0
+            ? [{ productId: { in: productIds } }]
+            : []),
+          { productId: null, category },
+        ],
       },
       include : { store: true, product: true },
       orderBy : { deliveryDate: 'asc' },
@@ -67,7 +70,7 @@ export async function GET(req: NextRequest) {
     orders.forEach((o: any) => {
       const dStr     = o.deliveryDate.toISOString().split('T')[0]
       const qty      = Number(o.quantity)
-      const price    = o.product ? Number(o.product.price) : 0
+      const price    = Number(o.price) || (o.product ? Number(o.product.price) : 0)
       const subtotal = price * qty
       if (days[dStr]) {
         days[dStr].orders.push({

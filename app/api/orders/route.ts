@@ -56,8 +56,9 @@ export async function GET(req: NextRequest) {
       deliveryDate   : o.deliveryDate,
       productId      : o.productId,
       productName    : o.productName,
+      category       : o.category ?? o.product?.category ?? null,
       quantity       : Number(o.quantity),
-      price          : o.product ? Number(o.product.price) : 0,
+      price          : Number(o.price) || (o.product ? Number(o.product.price) : 0),
       customerName   : o.customerName,
       phone          : o.phone,
       deliveryAddress: o.deliveryAddress,
@@ -110,7 +111,9 @@ export async function POST(req: NextRequest) {
       '_' + store.storeCode + '_' +
       ('0' + now.getHours()).slice(-2) +
       ('0' + now.getMinutes()).slice(-2) +
-      ('0' + now.getSeconds()).slice(-2)
+      ('0' + now.getSeconds()).slice(-2) +
+      ('00' + now.getMilliseconds()).slice(-3) +
+      Math.random().toString(36).slice(2, 6)
 
     const deliveryDate = new Date(data.deliveryDate)
     deliveryDate.setHours(0, 0, 0, 0)
@@ -123,7 +126,9 @@ export async function POST(req: NextRequest) {
         storeId        : store.id,
         productId      : data.productId || null,
         productName    : data.productName,
+        category       : data.category || null,
         quantity       : data.quantity,
+        price          : data.price ?? 0,
         customerName   : data.customerName,
         phone          : data.phone,
         deliveryAddress: data.deliveryAddress,

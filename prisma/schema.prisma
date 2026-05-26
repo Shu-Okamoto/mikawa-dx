@@ -143,7 +143,9 @@ model InstoreOrder {
   product         OrderProduct? @relation(fields: [productId], references: [id])
   productId       Int?
   productName     String
+  category        String?
   quantity        Decimal
+  price           Decimal       @default(0)
   customerName    String
   phone           String
   deliveryAddress String

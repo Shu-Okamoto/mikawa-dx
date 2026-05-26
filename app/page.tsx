@@ -38,6 +38,13 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     ]],
   },
   {
+    title: '📝 日報',
+    rows: [[
+      { role: 'nishi',  path: '/nippo/nishi',  label: '西店' },
+      { role: 'minami', path: '/nippo/minami', label: '南店' },
+    ]],
+  },
+  {
     title: '週間カレンダー',
     rows: [[
       { role: 'all', path: '/calendar', label: '共通' },
