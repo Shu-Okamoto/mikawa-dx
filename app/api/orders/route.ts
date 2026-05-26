@@ -110,7 +110,9 @@ export async function POST(req: NextRequest) {
       '_' + store.storeCode + '_' +
       ('0' + now.getHours()).slice(-2) +
       ('0' + now.getMinutes()).slice(-2) +
-      ('0' + now.getSeconds()).slice(-2)
+      ('0' + now.getSeconds()).slice(-2) +
+      ('00' + now.getMilliseconds()).slice(-3) +
+      Math.random().toString(36).slice(2, 6)
 
     const deliveryDate = new Date(data.deliveryDate)
     deliveryDate.setHours(0, 0, 0, 0)
