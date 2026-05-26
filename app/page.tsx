@@ -42,9 +42,9 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     title: '📝 日報',
     rows: [[
       { role: 'nishi',  label: '西店',
-        path: 'https://nippo-system-blue.vercel.app/store/nishi/today',  external: true },
+        path: 'https://nippo.satonoaji-mikawa.net/store/nishi/today',  external: true },
       { role: 'minami', label: '南店',
-        path: 'https://nippo-system-blue.vercel.app/store/minami/today', external: true },
+        path: 'https://nippo.satonoaji-mikawa.net/store/minami/today', external: true },
     ]],
   },
   {
