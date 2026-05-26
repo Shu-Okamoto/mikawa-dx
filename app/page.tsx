@@ -24,14 +24,15 @@ const roleHome: Record<RoleKey, string> = {
 
 const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
-    title: '在庫発注',
+    title: '🥬 在庫発注',
     rows: [[
       { role: 'nishi',  path: '/store/nishi',  label: '西店' },
       { role: 'minami', path: '/store/minami', label: '南店' },
+      { role: 'hq1',    path: '/store/honbu',  label: '本部' },
     ]],
   },
   {
-    title: '弁当餅注文',
+    title: '🍱 弁当餅注文',
     rows: [[
       { role: 'nishi',  path: '/order/nishi',  label: '西店' },
       { role: 'minami', path: '/order/minami', label: '南店' },
@@ -48,23 +49,24 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     ]],
   },
   {
-    title: '週間カレンダー',
+    title: '📅 週間カレンダー',
     rows: [[
-      { role: 'all', path: '/calendar', label: '共通' },
+      { role: 'all', path: '/calendar', label: '注文リスト' },
     ]],
   },
   {
     title: '管理',
-    rows: [
-      [
-        { role: 'hq1', path: '/hq', label: '野菜発注調整' },
-        { role: 'hq2', path: '/hq', label: '果物発注調整' },
-        { role: 'hq3', path: '/hq', label: '菓子類発注調整' },
-      ],
-      [
-        { role: 'all', path: '/boss', label: 'ダッシュボード' },
-      ],
-    ],
+    rows: [[
+      { role: 'hq1', path: '/hq', label: '野菜発注調整' },
+      { role: 'hq2', path: '/hq', label: '果物発注調整' },
+      { role: 'hq3', path: '/hq', label: '菓子類発注調整' },
+    ]],
+  },
+  {
+    title: '分析・システム',
+    rows: [[
+      { role: 'all', path: '/boss', label: 'ダッシュボード' },
+    ]],
   },
 ]
 
