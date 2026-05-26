@@ -162,36 +162,36 @@ export default function HomePage() {
       fontFamily    : "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
       padding       : '24px',
     }}>
-      <div style={{ textAlign: 'center', width: '100%', maxWidth: '420px' }}>
+      <div style={{ textAlign: 'center', width: '100%', maxWidth: '480px' }}>
 
-        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🥬</div>
-        <h1 style={{ fontSize: '22px', fontWeight: 500, color: '#2C2C2A',
+        <div style={{ fontSize: '60px', marginBottom: '16px' }}>🥬</div>
+        <h1 style={{ fontSize: '28px', fontWeight: 500, color: '#2C2C2A',
           marginBottom: '8px' }}>
           里の味みかわ
         </h1>
-        <p style={{ fontSize: '14px', color: '#888780', marginBottom: '32px' }}>
+        <p style={{ fontSize: '17px', color: '#888780', marginBottom: '32px' }}>
           業務管理システム
         </p>
 
         <div style={{
           background  : 'white',
           borderRadius: '16px',
-          padding     : '20px',
+          padding     : '24px',
           boxShadow   : '0 2px 8px rgba(0,0,0,.04)',
           textAlign   : 'left',
         }}>
-          <p style={{ fontSize: '13px', color: '#888780', marginBottom: '16px',
+          <p style={{ fontSize: '16px', color: '#888780', marginBottom: '20px',
             textAlign: 'center' }}>
             入りたい画面を選んでください
           </p>
 
           {entryGroups.map((group) => (
-            <div key={group.title} style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#888780',
-                marginBottom: '6px' }}>{group.title}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div key={group.title} style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '15px', color: '#888780',
+                marginBottom: '8px' }}>{group.title}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {group.rows.map((row, rowIdx) => (
-                  <div key={rowIdx} style={{ display: 'flex', gap: '8px' }}>
+                  <div key={rowIdx} style={{ display: 'flex', gap: '10px' }}>
                     {row.map((entry) => {
                       const key = `${entry.role}:${entry.path}`
                       const isBusy = busy === key
@@ -206,13 +206,13 @@ export default function HomePage() {
                           style={{
                             flex        : '1 1 0',
                             minWidth    : '0',
-                            padding     : '10px 12px',
+                            padding     : '14px 14px',
                             border      : '1px solid #D9D5CC',
                             borderRadius: '10px',
                             background  : !allowed ? '#EFEAE0'
                                         : isBusy   ? '#EFEAE0' : 'white',
                             color       : !allowed ? '#B8B5AC' : '#2C2C2A',
-                            fontSize    : '13px',
+                            fontSize    : '17px',
                             cursor      : disabled ? 'not-allowed' : 'pointer',
                             opacity     : !allowed ? 0.55
                                         : (busy && !isBusy) ? 0.5 : 1,
@@ -229,7 +229,7 @@ export default function HomePage() {
           ))}
 
           {error && (
-            <p style={{ fontSize: '12px', color: '#E24B4A', marginTop: '12px',
+            <p style={{ fontSize: '15px', color: '#E24B4A', marginTop: '12px',
               textAlign: 'center' }}>
               {error}
             </p>
@@ -238,13 +238,13 @@ export default function HomePage() {
           <button
             onClick={resetPin}
             style={{
-              marginTop : '12px',
+              marginTop : '16px',
               width     : '100%',
-              padding   : '8px',
+              padding   : '10px',
               border    : 'none',
               background: 'transparent',
               color     : '#888780',
-              fontSize  : '11px',
+              fontSize  : '14px',
               cursor    : 'pointer',
               textDecoration: 'underline',
             }}
@@ -253,7 +253,7 @@ export default function HomePage() {
           </button>
         </div>
 
-        <p style={{ fontSize: '11px', color: '#A8A69E', marginTop: '24px' }}>
+        <p style={{ fontSize: '13px', color: '#A8A69E', marginTop: '24px' }}>
           © 2026 里の味みかわ
         </p>
       </div>
@@ -317,26 +317,26 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
       fontFamily    : "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
       padding       : '24px',
     }}>
-      <div style={{ textAlign: 'center', width: '100%', maxWidth: '320px' }}>
-        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
-        <h1 style={{ fontSize: '18px', fontWeight: 500, color: '#2C2C2A',
-          marginBottom: '6px' }}>
+      <div style={{ textAlign: 'center', width: '100%', maxWidth: '360px' }}>
+        <div style={{ fontSize: '52px', marginBottom: '12px' }}>🔒</div>
+        <h1 style={{ fontSize: '24px', fontWeight: 500, color: '#2C2C2A',
+          marginBottom: '8px' }}>
           PIN を入力してください
         </h1>
-        <p style={{ fontSize: '12px', color: '#888780', marginBottom: '24px' }}>
+        <p style={{ fontSize: '16px', color: '#888780', marginBottom: '28px' }}>
           4桁の数字
         </p>
 
         <div style={{
           display       : 'flex',
           justifyContent: 'center',
-          gap           : '12px',
-          marginBottom  : '20px',
+          gap           : '14px',
+          marginBottom  : '24px',
         }}>
           {[0,1,2,3].map((i) => (
             <div key={i} style={{
-              width       : '14px',
-              height      : '14px',
+              width       : '18px',
+              height      : '18px',
               borderRadius: '50%',
               background  : i < digits.length ? '#2C2C2A' : '#D9D5CC',
             }} />
@@ -344,7 +344,7 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
         </div>
 
         {error && (
-          <p style={{ fontSize: '12px', color: '#E24B4A', marginBottom: '12px' }}>
+          <p style={{ fontSize: '15px', color: '#E24B4A', marginBottom: '14px' }}>
             {error}
           </p>
         )}
@@ -352,7 +352,7 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
         <div style={{
           display            : 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
-          gap                : '12px',
+          gap                : '14px',
         }}>
           {keys.map((k, i) => {
             if (k === '') return <div key={i} />
@@ -363,8 +363,8 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
                 onClick={() => (isBack ? back() : push(k))}
                 disabled={busy}
                 style={{
-                  padding     : '16px 0',
-                  fontSize    : '20px',
+                  padding     : '20px 0',
+                  fontSize    : '26px',
                   border      : '1px solid #D9D5CC',
                   borderRadius: '12px',
                   background  : 'white',
