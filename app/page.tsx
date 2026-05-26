@@ -57,9 +57,9 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
     title: '管理',
     rows: [[
-      { role: 'hq1', path: '/hq', label: '野菜発注調整' },
-      { role: 'hq2', path: '/hq', label: '果物発注調整' },
-      { role: 'hq3', path: '/hq', label: '菓子類発注調整' },
+      { role: 'hq1', path: '/hq', label: '野菜発注' },
+      { role: 'hq2', path: '/hq', label: '果物発注' },
+      { role: 'hq3', path: '/hq', label: '菓子類発注' },
     ]],
   },
   {
