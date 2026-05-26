@@ -246,6 +246,7 @@ function OrderPageContent({ branch }: { branch: string }) {
           productId      : p.id > 0 ? p.id : null,
           productName    : p.productName,
           quantity       : quantities[p.id],
+          price          : Number(p.price) || 0,
           customerName,
           phone,
           deliveryAddress: deliveryMode === 'visit' ? '来店' : address,
