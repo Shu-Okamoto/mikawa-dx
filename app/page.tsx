@@ -12,6 +12,8 @@ type Entry = {
   external?: boolean
 }
 
+const PIN_ROLE_KEY = 'pinRole'
+
 // 既ログイン時のデフォルト遷移先（role ごとに 1 つ）
 const roleHome: Record<RoleKey, string> = {
   nishi : '/store/nishi',
@@ -70,23 +72,53 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
   },
 ]
 
+function canAccess(pinRole: RoleKey, entry: Entry): boolean {
+  if (pinRole === 'all') return true
+  if (pinRole === 'nishi')
+    return entry.role === 'nishi' || (entry.role === 'all' && entry.path === '/calendar')
+  if (pinRole === 'minami')
+    return entry.role === 'minami' || (entry.role === 'all' && entry.path === '/calendar')
+  // hq1 / hq2 / hq3 はそれぞれのロールに完全一致するボタンのみ
+  return entry.role === pinRole
+}
+
 export default function HomePage() {
   const router = useRouter()
-  const [busy, setBusy]   = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [pinRole, setPinRole]   = useState<RoleKey | null>(null)
+  const [hydrated, setHydrated] = useState(false)
+  const [busy, setBusy]         = useState<string | null>(null)
+  const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
     const stored = localStorage.getItem('user')
-    if (!token || !stored) return
-    try {
-      const u = JSON.parse(stored) as { role: RoleKey }
-      const dest = roleHome[u.role]
-      if (dest) router.push(dest)
-    } catch {
-      // 壊れた値は無視（ボタンを表示）
+    if (token && stored) {
+      try {
+        const u = JSON.parse(stored) as { role: RoleKey }
+        const dest = roleHome[u.role]
+        if (dest) {
+          router.push(dest)
+          return
+        }
+      } catch { /* 壊れた値は無視 */ }
     }
+    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
+    if (saved === 'nishi' || saved === 'minami' || saved === 'hq1' ||
+        saved === 'hq2'   || saved === 'hq3'    || saved === 'all') {
+      setPinRole(saved)
+    }
+    setHydrated(true)
   }, [router])
+
+  const onPinVerified = (role: RoleKey) => {
+    sessionStorage.setItem(PIN_ROLE_KEY, role)
+    setPinRole(role)
+  }
+
+  const resetPin = () => {
+    sessionStorage.removeItem(PIN_ROLE_KEY)
+    setPinRole(null)
+  }
 
   const login = async (entry: Entry) => {
     if (entry.external) {
@@ -116,6 +148,9 @@ export default function HomePage() {
       setBusy(null)
     }
   }
+
+  if (!hydrated) return null
+  if (!pinRole) return <PinPad onVerified={onPinVerified} />
 
   return (
     <div style={{
@@ -160,22 +195,27 @@ export default function HomePage() {
                     {row.map((entry) => {
                       const key = `${entry.role}:${entry.path}`
                       const isBusy = busy === key
+                      const allowed = canAccess(pinRole, entry)
+                      const disabled = !allowed || !!busy
                       return (
                         <button
                           key={key}
-                          onClick={() => login(entry)}
-                          disabled={!!busy}
+                          onClick={() => allowed && login(entry)}
+                          disabled={disabled}
+                          title={allowed ? undefined : '権限がありません'}
                           style={{
                             flex        : '1 1 0',
                             minWidth    : '0',
                             padding     : '10px 12px',
                             border      : '1px solid #D9D5CC',
                             borderRadius: '10px',
-                            background  : isBusy ? '#EFEAE0' : 'white',
-                            color       : '#2C2C2A',
+                            background  : !allowed ? '#EFEAE0'
+                                        : isBusy   ? '#EFEAE0' : 'white',
+                            color       : !allowed ? '#B8B5AC' : '#2C2C2A',
                             fontSize    : '13px',
-                            cursor      : busy ? 'not-allowed' : 'pointer',
-                            opacity     : busy && !isBusy ? 0.5 : 1,
+                            cursor      : disabled ? 'not-allowed' : 'pointer',
+                            opacity     : !allowed ? 0.55
+                                        : (busy && !isBusy) ? 0.5 : 1,
                           }}
                         >
                           {isBusy ? '...' : entry.label}
@@ -194,11 +234,149 @@ export default function HomePage() {
               {error}
             </p>
           )}
+
+          <button
+            onClick={resetPin}
+            style={{
+              marginTop : '12px',
+              width     : '100%',
+              padding   : '8px',
+              border    : 'none',
+              background: 'transparent',
+              color     : '#888780',
+              fontSize  : '11px',
+              cursor    : 'pointer',
+              textDecoration: 'underline',
+            }}
+          >
+            別のPINで入り直す
+          </button>
         </div>
 
         <p style={{ fontSize: '11px', color: '#A8A69E', marginTop: '24px' }}>
           © 2026 里の味みかわ
         </p>
+      </div>
+    </div>
+  )
+}
+
+function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
+  const [digits, setDigits] = useState<string>('')
+  const [error, setError]   = useState<string | null>(null)
+  const [busy, setBusy]     = useState(false)
+
+  const verify = async (pin: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/auth/pin', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ pin }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.role) {
+        setError(data.error || 'PINが正しくありません')
+        setDigits('')
+        setBusy(false)
+        return
+      }
+      onVerified(data.role as RoleKey)
+    } catch {
+      setError('サーバーエラーが発生しました')
+      setDigits('')
+      setBusy(false)
+    }
+  }
+
+  const push = (d: string) => {
+    if (busy) return
+    if (digits.length >= 4) return
+    const next = digits + d
+    setDigits(next)
+    setError(null)
+    if (next.length === 4) verify(next)
+  }
+
+  const back = () => {
+    if (busy) return
+    setDigits((s) => s.slice(0, -1))
+    setError(null)
+  }
+
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫']
+
+  return (
+    <div style={{
+      minHeight     : '100vh',
+      display       : 'flex',
+      alignItems    : 'center',
+      justifyContent: 'center',
+      background    : '#F5F1EA',
+      fontFamily    : "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
+      padding       : '24px',
+    }}>
+      <div style={{ textAlign: 'center', width: '100%', maxWidth: '320px' }}>
+        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
+        <h1 style={{ fontSize: '18px', fontWeight: 500, color: '#2C2C2A',
+          marginBottom: '6px' }}>
+          PIN を入力してください
+        </h1>
+        <p style={{ fontSize: '12px', color: '#888780', marginBottom: '24px' }}>
+          4桁の数字
+        </p>
+
+        <div style={{
+          display       : 'flex',
+          justifyContent: 'center',
+          gap           : '12px',
+          marginBottom  : '20px',
+        }}>
+          {[0,1,2,3].map((i) => (
+            <div key={i} style={{
+              width       : '14px',
+              height      : '14px',
+              borderRadius: '50%',
+              background  : i < digits.length ? '#2C2C2A' : '#D9D5CC',
+            }} />
+          ))}
+        </div>
+
+        {error && (
+          <p style={{ fontSize: '12px', color: '#E24B4A', marginBottom: '12px' }}>
+            {error}
+          </p>
+        )}
+
+        <div style={{
+          display            : 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap                : '12px',
+        }}>
+          {keys.map((k, i) => {
+            if (k === '') return <div key={i} />
+            const isBack = k === '⌫'
+            return (
+              <button
+                key={i}
+                onClick={() => (isBack ? back() : push(k))}
+                disabled={busy}
+                style={{
+                  padding     : '16px 0',
+                  fontSize    : '20px',
+                  border      : '1px solid #D9D5CC',
+                  borderRadius: '12px',
+                  background  : 'white',
+                  color       : '#2C2C2A',
+                  cursor      : busy ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {k}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
