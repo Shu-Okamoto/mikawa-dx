@@ -90,6 +90,9 @@ function OrderPageContent({ branch }: { branch: string }) {
 
   const [selectedDate, setSelectedDate]       = useState('')
   const [quantities, setQuantities]           = useState<Record<number, number>>({})
+  const [customProducts, setCustomProducts]   = useState<OrderProduct[]>([])
+  const [customModal, setCustomModal]         =
+    useState<{ name: string; price: string; qty: number } | null>(null)
   const [form, setForm] = useState({
     customerName: '',
     phone       : '',
@@ -176,7 +179,29 @@ function OrderPageContent({ branch }: { branch: string }) {
       : []
     setProducts(filtered)
     setQuantities({})
+    setCustomProducts([])
     setScreen('product')
+  }
+
+  const addCustomProduct = () => {
+    if (!customModal) return
+    const name  = customModal.name.trim()
+    if (!name) { showToast('商品名を入力してください'); return }
+    const price = parseInt(customModal.price, 10) || 0
+    const qty   = customModal.qty > 0 ? customModal.qty : 1
+    const id    = -Date.now()
+    setCustomProducts((prev) => [...prev, {
+      id,
+      productCode  : '',
+      productName  : name,
+      category     : 'カスタム',
+      price,
+      availableDays: '',
+      lateOrderOk  : false,
+    }])
+    setQuantities((q) => ({ ...q, [id]: qty }))
+    setCustomModal(null)
+    showToast(name + ' を追加しました')
   }
 
   const handleSubmit = async () => {
@@ -206,7 +231,8 @@ function OrderPageContent({ branch }: { branch: string }) {
       }
     }
 
-    const orderItems = products.filter((p) => (quantities[p.id] || 0) > 0)
+    const allItems   = [...products, ...customProducts]
+    const orderItems = allItems.filter((p) => (quantities[p.id] || 0) > 0)
     if (orderItems.length === 0) { showToast('商品を選択してください'); return }
 
     setSubmitting(true)
@@ -217,7 +243,7 @@ function OrderPageContent({ branch }: { branch: string }) {
         body  : JSON.stringify({
           branch,
           deliveryDate   : selectedDate,
-          productId      : p.id,
+          productId      : p.id > 0 ? p.id : null,
           productName    : p.productName,
           quantity       : quantities[p.id],
           customerName,
@@ -560,78 +586,104 @@ function OrderPageContent({ branch }: { branch: string }) {
           </div>
 
           <div style={{ padding:'12px' }}>
-            {products.length === 0 ? (
-              <div style={{ background:'white', borderRadius:'16px', padding:'40px',
-                textAlign:'center', color:'#888780', fontSize:'14px' }}>
-                この日に注文できる商品がありません
-              </div>
-            ) : (
+            {(() => {
+              const allProducts = [...products, ...customProducts]
+              return (
               <>
-                <div style={{ background:'white', borderRadius:'16px',
-                  overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)',
-                  marginBottom:'12px' }}>
-                  {products.map((p, idx) => {
-                    const qty = quantities[p.id] || 0
-                    return (
-                    <div key={p.id} style={{ padding:'14px 16px',
-                      borderBottom: idx < products.length-1
-                        ? '1px solid #F5F1EA' : 'none',
-                      display:'flex', justifyContent:'space-between',
-                      alignItems:'center' }}>
-                      <div>
-                        <div style={{ fontSize:'20px', fontWeight:500 }}>
-                          {p.productName}
+                {allProducts.length === 0 ? (
+                  <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+                    textAlign:'center', color:'#888780', fontSize:'14px',
+                    marginBottom:'12px' }}>
+                    この日に注文できる商品がありません
+                  </div>
+                ) : (
+                  <div style={{ background:'white', borderRadius:'16px',
+                    overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)',
+                    marginBottom:'12px' }}>
+                    {allProducts.map((p, idx) => {
+                      const qty       = quantities[p.id] || 0
+                      const isCustom  = p.id < 0
+                      return (
+                      <div key={p.id} style={{ padding:'14px 16px',
+                        borderBottom: idx < allProducts.length-1
+                          ? '1px solid #F5F1EA' : 'none',
+                        display:'flex', justifyContent:'space-between',
+                        alignItems:'center' }}>
+                        <div>
+                          <div style={{ fontSize:'20px', fontWeight:500,
+                            display:'flex', alignItems:'center', gap:'8px' }}>
+                            {p.productName}
+                            {isCustom && (
+                              <span style={{ fontSize:'11px', fontWeight:500,
+                                padding:'2px 8px', borderRadius:'8px',
+                                background:'#FBF8F2', color:'#888780',
+                                border:'1px solid #E5E1D8' }}>マスタ外</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize:'15px', color:'#888780' }}>
+                            ¥{Number(p.price).toLocaleString()}
+                          </div>
                         </div>
-                        <div style={{ fontSize:'15px', color:'#888780' }}>
-                          ¥{Number(p.price).toLocaleString()}
+                        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                          <button onClick={() => setQuantities({
+                            ...quantities,
+                            [p.id]: Math.max(0, qty - 1)
+                          })}
+                            style={{ width:'36px', height:'36px', borderRadius:'50%',
+                              border:'1.5px solid #E5E1D8', background:'white',
+                              fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
+                            -
+                          </button>
+                          <span style={{ minWidth:'28px', textAlign:'center',
+                            fontSize:'20px', fontWeight:500 }}>
+                            {qty}
+                          </span>
+                          <button onClick={() => setQuantities({
+                            ...quantities,
+                            [p.id]: qty + 1
+                          })}
+                            style={{ width:'36px', height:'36px', borderRadius:'50%',
+                              border: qty > 0 ? '1.5px solid #72243E' : '1.5px solid #E5E1D8',
+                              background: qty > 0 ? '#72243E' : 'white',
+                              color: qty > 0 ? 'white' : '#2C2C2A',
+                              fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
+                            +
+                          </button>
                         </div>
                       </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                        <button onClick={() => setQuantities({
-                          ...quantities,
-                          [p.id]: Math.max(0, qty - 1)
-                        })}
-                          style={{ width:'36px', height:'36px', borderRadius:'50%',
-                            border:'1.5px solid #E5E1D8', background:'white',
-                            fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
-                          -
-                        </button>
-                        <span style={{ minWidth:'28px', textAlign:'center',
-                          fontSize:'20px', fontWeight:500 }}>
-                          {qty}
-                        </span>
-                        <button onClick={() => setQuantities({
-                          ...quantities,
-                          [p.id]: qty + 1
-                        })}
-                          style={{ width:'36px', height:'36px', borderRadius:'50%',
-                            border: qty > 0 ? '1.5px solid #72243E' : '1.5px solid #E5E1D8',
-                            background: qty > 0 ? '#72243E' : 'white',
-                            color: qty > 0 ? 'white' : '#2C2C2A',
-                            fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  )})}
-                </div>
+                    )})}
+                  </div>
+                )}
 
                 <button
-                  onClick={() => {
-                    if (products.filter((p) => (quantities[p.id]||0) > 0).length === 0) {
-                      showToast('商品を選択してください')
-                      return
-                    }
-                    setScreen('form')
-                  }}
-                  style={{ width:'100%', padding:'16px', background:'#72243E',
-                    color:'white', border:'none', borderRadius:'12px',
-                    fontSize:'20px', fontWeight:500, cursor:'pointer',
-                    fontFamily:'inherit' }}>
-                  お客様情報を入力する
+                  onClick={() => setCustomModal({ name:'', price:'', qty:1 })}
+                  style={{ width:'100%', padding:'12px', background:'white',
+                    color:'#888780', border:'1.5px dashed #D6D2C7',
+                    borderRadius:'12px', fontSize:'15px',
+                    cursor:'pointer', fontFamily:'inherit',
+                    marginBottom:'12px' }}>
+                  ＋ 商品を追加（マスタ外）
                 </button>
+
+                {allProducts.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (allProducts.filter((p) => (quantities[p.id]||0) > 0).length === 0) {
+                        showToast('商品を選択してください')
+                        return
+                      }
+                      setScreen('form')
+                    }}
+                    style={{ width:'100%', padding:'16px', background:'#72243E',
+                      color:'white', border:'none', borderRadius:'12px',
+                      fontSize:'20px', fontWeight:500, cursor:'pointer',
+                      fontFamily:'inherit' }}>
+                    お客様情報を入力する
+                  </button>
+                )}
               </>
-            )}
+              )
+            })()}
           </div>
         </>
       )}
@@ -852,6 +904,7 @@ function OrderPageContent({ branch }: { branch: string }) {
                 receipt:'no', receiptName:'', purposes:[], okazu:'', notes:'',
               })
               setQuantities({})
+              setCustomProducts([])
             }}
               style={{ padding:'16px 32px', background:'#72243E',
                 color:'white', border:'none', borderRadius:'12px',
@@ -1125,6 +1178,92 @@ function OrderPageContent({ branch }: { branch: string }) {
                   fontSize:'14px', fontWeight:500, cursor:'pointer',
                   fontFamily:'inherit' }}>
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* カスタム商品 追加モーダル */}
+      {customModal && (
+        <div style={{ position:'fixed', inset:0,
+          background:'rgba(0,0,0,.5)', zIndex:200,
+          display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'white', borderRadius:'16px',
+            padding:'24px', margin:'20px', maxWidth:'360px', width:'100%' }}>
+            <div style={{ fontSize:'18px', fontWeight:500, marginBottom:'16px' }}>
+              商品を追加
+            </div>
+
+            <div style={{ marginBottom:'12px' }}>
+              <div style={{ fontSize:'13px', color:'#888780', marginBottom:'4px' }}>
+                商品名 <span style={{ color:'#E24B4A' }}>必須</span>
+              </div>
+              <input type="text" value={customModal.name}
+                onChange={(e) => setCustomModal({ ...customModal, name: e.target.value })}
+                placeholder="例: 松花堂弁当"
+                style={{ width:'100%', padding:'12px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'16px', fontFamily:'inherit', boxSizing:'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom:'12px' }}>
+              <div style={{ fontSize:'13px', color:'#888780', marginBottom:'4px' }}>
+                単価（円）
+              </div>
+              <input type="number" inputMode="numeric"
+                value={customModal.price}
+                onChange={(e) => setCustomModal({ ...customModal, price: e.target.value })}
+                placeholder="0"
+                style={{ width:'100%', padding:'12px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'16px', fontFamily:'inherit', textAlign:'right',
+                  boxSizing:'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom:'20px' }}>
+              <div style={{ fontSize:'13px', color:'#888780', marginBottom:'4px' }}>
+                数量
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:'14px' }}>
+                <button onClick={() => setCustomModal({
+                  ...customModal, qty: Math.max(1, customModal.qty - 1),
+                })}
+                  style={{ width:'40px', height:'40px', borderRadius:'50%',
+                    border:'1.5px solid #E5E1D8', background:'white',
+                    fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
+                  -
+                </button>
+                <span style={{ minWidth:'32px', textAlign:'center',
+                  fontSize:'20px', fontWeight:500 }}>
+                  {customModal.qty}
+                </span>
+                <button onClick={() => setCustomModal({
+                  ...customModal, qty: customModal.qty + 1,
+                })}
+                  style={{ width:'40px', height:'40px', borderRadius:'50%',
+                    border:'1.5px solid #72243E', background:'#72243E',
+                    color:'white', fontSize:'20px',
+                    cursor:'pointer', fontFamily:'inherit' }}>
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display:'flex', gap:'10px' }}>
+              <button onClick={() => setCustomModal(null)}
+                style={{ flex:1, padding:'12px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  background:'white', fontSize:'15px',
+                  cursor:'pointer', fontFamily:'inherit' }}>
+                キャンセル
+              </button>
+              <button onClick={addCustomProduct}
+                style={{ flex:1, padding:'12px',
+                  background:'#72243E', color:'white', border:'none',
+                  borderRadius:'10px', fontSize:'15px', fontWeight:500,
+                  cursor:'pointer', fontFamily:'inherit' }}>
+                追加する
               </button>
             </div>
           </div>
