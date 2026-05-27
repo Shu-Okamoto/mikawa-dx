@@ -88,7 +88,6 @@ function canAccess(pinRole: RoleKey, entry: Entry): boolean {
 export default function HomePage() {
   const router = useRouter()
   const [pinRole, setPinRole]   = useState<RoleKey | null>(null)
-  const [hydrated, setHydrated] = useState(false)
   const [busy, setBusy]         = useState<string | null>(null)
   const [error, setError]       = useState<string | null>(null)
 
@@ -111,7 +110,6 @@ export default function HomePage() {
         saved === 'all') {
       setPinRole(saved)
     }
-    setHydrated(true)
   }, [router])
 
   const onPinVerified = (role: RoleKey) => {
@@ -153,7 +151,6 @@ export default function HomePage() {
     }
   }
 
-  if (!hydrated) return null
   if (!pinRole) return <PinPad onVerified={onPinVerified} />
 
   return (
