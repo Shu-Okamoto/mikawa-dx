@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
-type Granularity = 'year' | 'month' | 'week'
+type Granularity = 'year' | 'month' | 'week' | 'day'
 
 interface Bucket {
   amount       : number
@@ -60,6 +60,7 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
   if (g === 'year')  date.setFullYear(date.getFullYear() + dir)
   if (g === 'month') date.setMonth(date.getMonth() + dir)
   if (g === 'week')  date.setDate(date.getDate() + 7 * dir)
+  if (g === 'day')   date.setDate(date.getDate() + dir)
   const yy = date.getFullYear()
   const mm = String(date.getMonth() + 1).padStart(2, '0')
   const dd = String(date.getDate()).padStart(2, '0')
@@ -139,13 +140,17 @@ function AnalyticsContent() {
           <div style={{ display:'flex', gap:'6px', flexWrap:'wrap',
             marginBottom:'12px' }}>
             {([
-              ['year' , '年'],
-              ['month', '月'],
+              ['day'  , '今日'],
               ['week' , '週'],
+              ['month', '月'],
+              ['year' , '年'],
             ] as const).map(([key, label]) => {
               const active = granularity === key
               return (
-                <button key={key} onClick={() => setGranularity(key)}
+                <button key={key} onClick={() => {
+                  setGranularity(key)
+                  if (key === 'day') setRef(todayYmd())
+                }}
                   style={{
                     padding:'8px 16px', borderRadius:'20px', fontSize:'15px',
                     fontWeight:500, fontFamily:'inherit', cursor:'pointer',
@@ -155,13 +160,6 @@ function AnalyticsContent() {
                   }}>{label}</button>
               )
             })}
-            <button onClick={() => setRef(todayYmd())}
-              style={{ padding:'8px 14px', borderRadius:'20px', fontSize:'14px',
-                fontFamily:'inherit', cursor:'pointer',
-                border:'1.5px solid #E5E1D8', background:'#F5F1EA',
-                color:'#2C2C2A', marginLeft:'auto' }}>
-              今日
-            </button>
           </div>
 
           <div style={{ display:'flex', alignItems:'center', gap:'8px',
@@ -205,7 +203,8 @@ function AnalyticsContent() {
           )}
         </div>
 
-        {/* 曜日別グラフ */}
+        {/* 曜日別グラフ (日粒度では非表示) */}
+        {granularity !== 'day' && (
         <div style={{ background:'white', borderRadius:'16px', padding:'16px',
           boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
           <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
@@ -229,6 +228,7 @@ function AnalyticsContent() {
             </>
           )}
         </div>
+        )}
 
       </div>
     </div>
@@ -302,6 +302,14 @@ function PeriodPicker({ granularity, ref_, onChange }: {
           <option key={yy} value={yy}>{yy}年</option>
         ))}
       </select>
+    )
+  }
+
+  if (granularity === 'day') {
+    return (
+      <input type="date" value={ref_}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        style={pickerStyle} />
     )
   }
 
