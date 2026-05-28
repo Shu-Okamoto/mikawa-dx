@@ -226,8 +226,6 @@ function AnalyticsContent() {
                 <DowBarChart key={s} name={s}
                   entries={reorderDow(data?.dow?.byStore[s] ?? emptyDow())} />
               ))}
-              <DowBarChart name="🧮 2店合計"
-                entries={reorderDow(sumDow(STORES.map((s) => data?.dow?.byStore[s] ?? emptyDow())))} />
             </>
           )}
         </div>
@@ -242,23 +240,6 @@ function emptyDow(): DowEntry[] {
     dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
     totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
   }))
-}
-
-function sumDow(arrs: DowEntry[][]): DowEntry[] {
-  const out = emptyDow()
-  arrs.forEach((arr) => {
-    arr.forEach((e) => {
-      const t = out[e.dow]
-      t.days = Math.max(t.days, e.days)
-      t.totalAmount += e.totalAmount
-      t.avgAmount   += e.avgAmount
-      t.avgSouzai   += e.avgSouzai
-      t.avgMochi    += e.avgMochi
-      t.avgHana     += e.avgHana
-      t.avgCustomer += e.avgCustomer
-    })
-  })
-  return out
 }
 
 function Legend() {
@@ -357,7 +338,6 @@ const pickerStyle: React.CSSProperties = {
 
 function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
   const maxAmount = Math.max(...entries.map((e) => e.avgAmount), 1)
-  const chartHeight = 180
 
   const seg = (e: DowEntry) => ({
     souzai: e.avgSouzai,
@@ -371,64 +351,70 @@ function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
       <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
         marginBottom:'8px' }}>{name}</div>
 
-      <div style={{ display:'grid',
-        gridTemplateColumns:'repeat(7, 1fr)', gap:'6px',
-        alignItems:'end', height: chartHeight + 'px',
-        padding:'4px 4px 0', background:'#FAFAFA', borderRadius:'8px' }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:'6px',
+        padding:'10px', background:'#FAFAFA', borderRadius:'8px' }}>
         {entries.map((e) => {
           const total = e.avgAmount
-          const barHeight = total > 0 ? (total / maxAmount) * (chartHeight - 24) : 0
-          const segs = seg(e)
-          return (
-            <div key={e.dow} style={{ display:'flex', flexDirection:'column',
-              alignItems:'stretch', height:'100%' }}>
-              <div style={{ flex:1, display:'flex', alignItems:'flex-end' }}>
-                <div style={{ width:'100%', height: barHeight + 'px',
-                  display:'flex', flexDirection:'column-reverse',
-                  borderRadius:'4px', overflow:'hidden',
-                  background: total > 0 ? '#EEE' : 'transparent' }}>
-                  {SEGMENTS.map((s) => {
-                    const v = segs[s.key]
-                    if (v <= 0 || total <= 0) return null
-                    const pct  = (v / total) * 100
-                    const segH = (v / total) * barHeight
-                    return (
-                      <div key={s.key}
-                        title={`${s.label} ¥${v.toLocaleString()} (${pct.toFixed(0)}%)`}
-                        style={{ height: segH + 'px',
-                          background: s.color,
-                          display:'flex', alignItems:'center',
-                          justifyContent:'center',
-                          color:'white', fontSize:'10px', fontWeight:500,
-                          lineHeight:1, overflow:'hidden' }}>
-                        {segH >= 16 ? `${pct.toFixed(0)}%` : ''}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* 曜日ラベル + 金額 */}
-      <div style={{ display:'grid',
-        gridTemplateColumns:'repeat(7, 1fr)', gap:'6px',
-        marginTop:'6px', padding:'0 4px' }}>
-        {entries.map((e) => {
+          const widthPct = total > 0 ? (total / maxAmount) * 100 : 0
           const labelColor = e.dow === 0 ? '#E24B4A' :
                               e.dow === 6 ? '#1A6FAF' : '#2C2C2A'
+          const segs = seg(e)
           return (
-            <div key={e.dow} style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'13px', fontWeight:500,
-                color: labelColor }}>{e.label}</div>
-              <div style={{ fontSize:'11px', color:'#2C2C2A',
-                fontWeight:500, marginTop:'2px' }}>
-                {e.days > 0 ? '¥' + e.avgAmount.toLocaleString() : '—'}
+            <div key={e.dow} style={{ display:'flex', alignItems:'center',
+              gap:'8px' }}>
+              {/* 曜日 */}
+              <div style={{ width:'28px', fontSize:'14px', fontWeight:600,
+                color: labelColor, textAlign:'center', flexShrink:0 }}>
+                {e.label}
               </div>
-              <div style={{ fontSize:'10px', color:'#888780' }}>
-                {e.days > 0 ? `${e.avgCustomer}人 · ${e.days}日` : ''}
+
+              {/* バー本体 */}
+              <div style={{ flex:1, position:'relative', height:'28px',
+                background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>
+                {total > 0 && (
+                  <div style={{ position:'absolute', left:0, top:0, bottom:0,
+                    width: widthPct + '%', display:'flex',
+                    borderRadius:'4px', overflow:'hidden' }}>
+                    {SEGMENTS.map((s) => {
+                      const v = segs[s.key]
+                      if (v <= 0) return null
+                      const pct = (v / total) * 100
+                      return (
+                        <div key={s.key}
+                          title={`${s.label} ¥${v.toLocaleString()} (${pct.toFixed(0)}%)`}
+                          style={{ width: pct + '%', background: s.color,
+                            display:'flex', alignItems:'center',
+                            justifyContent:'center',
+                            color:'white', fontSize:'11px', fontWeight:600,
+                            overflow:'hidden' }}>
+                          {pct >= 12 ? `${pct.toFixed(0)}%` : ''}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {/* 金額ラベル（バー右端の外側または内側） */}
+                <div style={{ position:'absolute', top:0, bottom:0,
+                  left: widthPct > 60 ? '6px' : (widthPct + 1) + '%',
+                  display:'flex', alignItems:'center',
+                  fontSize:'12px', fontWeight:600,
+                  color: widthPct > 60 ? 'white' : '#2C2C2A',
+                  textShadow: widthPct > 60
+                    ? '0 1px 2px rgba(0,0,0,.25)' : 'none',
+                  pointerEvents:'none', whiteSpace:'nowrap' }}>
+                  {total > 0 ? '¥' + Math.round(total).toLocaleString() : '—'}
+                </div>
+              </div>
+
+              {/* 営業日数・客数 */}
+              <div style={{ width:'70px', fontSize:'11px', color:'#888780',
+                textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
+                {e.days > 0 ? (
+                  <>
+                    <div>{e.avgCustomer}人</div>
+                    <div>{e.days}日</div>
+                  </>
+                ) : '—'}
               </div>
             </div>
           )
