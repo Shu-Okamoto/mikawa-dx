@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useModalBackButton } from '@/lib/hooks/useModalBackButton'
 import { themeForBranch } from '@/lib/storeColors'
 import { canOrderFor } from '@/lib/orderDeadline'
 
@@ -200,7 +201,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       lateOrderOk  : false,
     }])
     setQuantities((q) => ({ ...q, [id]: qty }))
-    setCustomModal(null)
+    closeCustomModal()
     showToast(name + ' を追加しました')
   }
 
@@ -291,10 +292,14 @@ function OrderPageContent({ branch }: { branch: string }) {
     })
   }
 
-  const closeEdit = () => {
+  const closeEdit = useModalBackButton(!!editing, () => {
     setEditing(null)
     setEditDraft(null)
-  }
+  })
+
+  const closeCustomModal = useModalBackButton(!!customModal, () => {
+    setCustomModal(null)
+  })
 
   const submitEdit = async () => {
     if (!editing || !editDraft) return
@@ -1281,7 +1286,7 @@ function OrderPageContent({ branch }: { branch: string }) {
             </div>
 
             <div style={{ display:'flex', gap:'10px' }}>
-              <button onClick={() => setCustomModal(null)}
+              <button onClick={closeCustomModal}
                 style={{ flex:1, padding:'12px',
                   border:'1.5px solid #E5E1D8', borderRadius:'10px',
                   background:'white', fontSize:'15px',
