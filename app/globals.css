@@ -20,3 +20,11 @@ body {
   font-family: var(--font-app);
   color-scheme: light;
 }
+
+/* 古いブラウザでネイティブのセレクト表示を強制（Tailwind v4の
+   preflightが appearance を上書きするため、明示的に戻す） */
+select {
+  appearance: auto;
+  -webkit-appearance: auto;
+  -moz-appearance: auto;
+}
