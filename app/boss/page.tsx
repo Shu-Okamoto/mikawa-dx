@@ -140,16 +140,16 @@ function BossPageContent() {
         color:'white', padding:'20px 16px 16px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
-            <div style={{ fontSize:'11px', opacity:.8 }}>経営ダッシュボード</div>
-            <div style={{ fontSize:'20px', fontWeight:500 }}>📊 社長画面</div>
-            <div style={{ fontSize:'12px', opacity:.7, marginTop:'2px' }}>
+            <div style={{ fontSize:'13px', opacity:.8 }}>経営ダッシュボード</div>
+            <div style={{ fontSize:'24px', fontWeight:500 }}>📊 社長画面</div>
+            <div style={{ fontSize:'14px', opacity:.7, marginTop:'2px' }}>
               {dateStr}{user?.name ? ` · ${user.name}` : ''}
             </div>
           </div>
           <button onClick={logout}
-            style={{ padding:'8px 14px', background:'rgba(255,255,255,.2)',
+            style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
               border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-              color:'white', fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+              color:'white', fontSize:'15px', cursor:'pointer', fontFamily:'inherit' }}>
             終了する
           </button>
         </div>
@@ -162,7 +162,7 @@ function BossPageContent() {
         {/* 売上実績 全項目 */}
         <div style={{ background:'white', borderRadius:'16px', padding:'16px',
           marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'14px', marginBottom:'12px' }}>
+          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'12px' }}>
             💰 本日の売上実績
           </div>
           {stores.map((s) => {
@@ -170,11 +170,11 @@ function BossPageContent() {
             return (
               <div key={s} style={{ marginBottom:'12px', paddingBottom:'12px',
                 borderBottom:'1px solid #F5F1EA' }}>
-                <div style={{ fontSize:'13px', fontWeight:500, color:'#2C2C2A',
+                <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
                   marginBottom:'6px' }}>{s}</div>
                 {d ? (
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
-                    gap:'4px', fontSize:'12px' }}>
+                    gap:'4px', fontSize:'14px' }}>
                     <FullStat label="売上金額" value={'¥' + d.amount.toLocaleString()} />
                     <FullStat label="客数"     value={d.customerCount + '人'} />
                     <FullStat label="惣菜売上" value={'¥' + d.souzai.toLocaleString()} />
@@ -188,22 +188,22 @@ function BossPageContent() {
                     {d.notes && (
                       <div style={{ gridColumn:'1 / -1', padding:'6px 8px',
                         background:'#FAFAFA', borderRadius:'6px',
-                        fontSize:'11px', color:'#555' }}>
+                        fontSize:'13px', color:'#555' }}>
                         📝 {d.notes}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div style={{ fontSize:'12px', color:'#888780' }}>未入力</div>
+                  <div style={{ fontSize:'14px', color:'#888780' }}>未入力</div>
                 )}
               </div>
             )
           })}
           <div style={{ marginBottom:'8px' }}>
-            <div style={{ fontSize:'13px', fontWeight:500, color:'#2C2C2A',
+            <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
               marginBottom:'6px' }}>🧮 2店合計</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
-              gap:'4px', fontSize:'12px' }}>
+              gap:'4px', fontSize:'14px' }}>
               <FullStat label="売上金額" value={'¥' + totalAmount.toLocaleString()} />
               <FullStat label="客数"     value={totalCust + '人'} />
               <FullStat label="惣菜売上" value={'¥' + totalSouzai.toLocaleString()} />
@@ -266,14 +266,14 @@ function BossPageContent() {
               if (!chartData) return (
                 <div key={name} style={{ textAlign:'center', padding:'20px',
                   background:'#F5F1EA', borderRadius:'12px' }}>
-                  <div style={{ fontSize:'13px', fontWeight:500, marginBottom:'8px' }}>{name}</div>
-                  <div style={{ fontSize:'12px', color:'#888780' }}>未入力</div>
+                  <div style={{ fontSize:'15px', fontWeight:500, marginBottom:'8px' }}>{name}</div>
+                  <div style={{ fontSize:'14px', color:'#888780' }}>未入力</div>
                 </div>
               )
 
               return (
                 <div key={name} style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:'13px', fontWeight:500, marginBottom:'8px' }}>{name}</div>
+                  <div style={{ fontSize:'15px', fontWeight:500, marginBottom:'8px' }}>{name}</div>
                   <svg width="160" height="160" viewBox="0 0 160 160"
                     style={{ maxWidth:'100%' }}>
                     <g dangerouslySetInnerHTML={{ __html: chartData.paths }} />
@@ -298,14 +298,14 @@ function BossPageContent() {
         {/* 入力ログ */}
         <div style={{ background:'white', borderRadius:'16px', padding:'16px',
           boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'14px', marginBottom:'12px' }}>
+          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'12px' }}>
             📋 本日の入力状況
           </div>
           {data?.logs && data.logs.length > 0 ? (
             data.logs.map((log, i) => (
               <div key={i} style={{ display:'flex', justifyContent:'space-between',
                 padding:'8px 0', borderBottom:'1px solid #F5F1EA',
-                fontSize:'13px' }}>
+                fontSize:'15px' }}>
                 <span style={{ fontWeight:500 }}>{log.who}</span>
                 <span style={{ color:'#888780' }}>
                   {log.time ? new Date(log.time).toLocaleTimeString('ja-JP',
@@ -314,7 +314,7 @@ function BossPageContent() {
               </div>
             ))
           ) : (
-            <div style={{ color:'#888780', fontSize:'13px', textAlign:'center',
+            <div style={{ color:'#888780', fontSize:'15px', textAlign:'center',
               padding:'16px' }}>
               本日の入力はまだありません
             </div>

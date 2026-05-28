@@ -17,16 +17,16 @@ export function BossHeader({
       <div style={{ display:'flex', justifyContent:'space-between',
         alignItems:'center' }}>
         <div>
-          <div style={{ fontSize:'11px', opacity:.8 }}>管理</div>
-          <div style={{ fontSize:'20px', fontWeight:500 }}>{title}</div>
+          <div style={{ fontSize:'13px', opacity:.8 }}>管理</div>
+          <div style={{ fontSize:'24px', fontWeight:500 }}>{title}</div>
           {subtitle && (
-            <div style={{ fontSize:'12px', opacity:.7, marginTop:'2px' }}>{subtitle}</div>
+            <div style={{ fontSize:'14px', opacity:.7, marginTop:'2px' }}>{subtitle}</div>
           )}
         </div>
         <button onClick={onLogout}
-          style={{ padding:'8px 14px', background:'rgba(255,255,255,.2)',
+          style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
             border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
-            color:'white', fontSize:'13px', cursor:'pointer',
+            color:'white', fontSize:'15px', cursor:'pointer',
             fontFamily:'inherit' }}>
           終了する
         </button>
@@ -38,6 +38,7 @@ export function BossHeader({
 const NAV_ITEMS = [
   { href: '/boss',                 label: '📊 ダッシュボード' },
   { href: '/boss/analytics',       label: '📈 売上分析' },
+  { href: '/boss/analytics/labor', label: '⏱ 人時売' },
   { href: '/boss/users',           label: '👥 ユーザー' },
   { href: '/boss/products',        label: '🥬 商品' },
   { href: '/boss/order-products',  label: '🍱 オリジナル商品' },
@@ -54,10 +55,10 @@ export function BossNav({ active }: { active: string }) {
         const isCurrent = n.href === active
         return (
           <a key={n.href} href={n.href}
-            style={{ padding:'8px 14px',
+            style={{ padding:'10px 16px',
               background: isCurrent ? '#3B6D11' : '#F5F1EA',
               color     : isCurrent ? 'white'   : '#2C2C2A',
-              borderRadius:'10px', fontSize:'13px',
+              borderRadius:'10px', fontSize:'15px',
               textDecoration:'none', whiteSpace:'nowrap',
               fontFamily:'inherit', fontWeight: isCurrent ? 500 : 400 }}>
             {n.label}
@@ -74,7 +75,7 @@ export function Toast({ text }: { text: string }) {
     <div style={{ position:'fixed', bottom:'24px', left:'50%',
       transform:'translateX(-50%)',
       background:'rgba(44,44,42,.9)', color:'white',
-      padding:'10px 20px', borderRadius:'20px', fontSize:'13px',
+      padding:'12px 22px', borderRadius:'20px', fontSize:'15px',
       zIndex:100, whiteSpace:'nowrap' }}>
       {text}
     </div>
@@ -92,9 +93,9 @@ export function useToast() {
 
 export function inputStyle(extra: React.CSSProperties = {}): React.CSSProperties {
   return {
-    width:'100%', padding:'8px 10px',
+    width:'100%', padding:'10px 12px',
     border:'1.5px solid #E5E1D8', borderRadius:'8px',
-    fontSize:'14px', fontFamily:'inherit',
+    fontSize:'15px', fontFamily:'inherit',
     boxSizing:'border-box',
     ...extra,
   }
