@@ -67,7 +67,9 @@ function rangeFor(granularity: Granularity, ref: Date): {
   }
   if (granularity === 'week') {
     const start = new Date(ref)
-    start.setDate(ref.getDate() - ref.getDay()) // Sunday
+    // 月曜始まり: Sun(0)→-6, Mon(1)→0, Tue(2)→-1, ...
+    const offset = (ref.getDay() + 6) % 7
+    start.setDate(ref.getDate() - offset)
     const end   = new Date(start)
     end.setDate(start.getDate() + 7)
     const endI  = new Date(end.getTime() - 86400000)

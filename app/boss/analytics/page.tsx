@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
-type Granularity = 'year' | 'month' | 'week' | 'day'
+type Granularity = 'year' | 'month' | 'week'
 
 interface Bucket {
   amount       : number
@@ -60,11 +60,31 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
   if (g === 'year')  date.setFullYear(date.getFullYear() + dir)
   if (g === 'month') date.setMonth(date.getMonth() + dir)
   if (g === 'week')  date.setDate(date.getDate() + 7 * dir)
-  if (g === 'day')   date.setDate(date.getDate() + dir)
   const yy = date.getFullYear()
   const mm = String(date.getMonth() + 1).padStart(2, '0')
   const dd = String(date.getDate()).padStart(2, '0')
   return `${yy}-${mm}-${dd}`
+}
+
+function weekStartOf(ref: string): string {
+  const [y, m, d] = ref.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  const offset = (date.getDay() + 6) % 7 // 月曜始まり
+  date.setDate(date.getDate() - offset)
+  const yy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+// 表示順: 月→日 (JS getDay基準で 1,2,3,4,5,6,0)
+const DOW_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
+
+function reorderDow(entries: DowEntry[]): DowEntry[] {
+  return DOW_DISPLAY_ORDER.map((i) => entries[i] ?? {
+    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
+    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+  })
 }
 
 function AnalyticsContent() {
@@ -122,7 +142,6 @@ function AnalyticsContent() {
               ['year' , '年'],
               ['month', '月'],
               ['week' , '週'],
-              ['day'  , '日'],
             ] as const).map(([key, label]) => {
               const active = granularity === key
               return (
@@ -156,6 +175,13 @@ function AnalyticsContent() {
             <button onClick={() => setRef(shiftRef(ref, granularity, 1))}
               style={navBtn}>›</button>
           </div>
+
+          {/* 粒度ごとのピッカー */}
+          <div style={{ marginTop:'12px', display:'flex',
+            justifyContent:'center' }}>
+            <PeriodPicker granularity={granularity} ref_={ref}
+              onChange={setRef} />
+          </div>
         </div>
 
         {/* 売上合計 */}
@@ -172,43 +198,39 @@ function AnalyticsContent() {
               {STORES.map((s) => (
                 <StoreBucket key={s} name={s}
                   bucket={data?.total.byStore[s] ??
-                    { amount:0, souzai:0, mochi:0, hana:0, customerCount:0, days:0 }}
-                  granularity={granularity} />
+                    { amount:0, souzai:0, mochi:0, hana:0, customerCount:0, days:0 }} />
               ))}
-              <StoreBucket name="🧮 2店合計" bucket={totalAll}
-                granularity={granularity} />
+              <StoreBucket name="🧮 2店合計" bucket={totalAll} />
             </>
           )}
         </div>
 
         {/* 曜日別グラフ */}
-        {granularity !== 'day' && (
-          <div style={{ background:'white', borderRadius:'16px', padding:'16px',
-            boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-            <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
-              📊 曜日別 1日平均売上
-            </div>
-            <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
-              ※ {data?.label} 内の各曜日の1日あたり平均
-            </div>
-
-            <Legend />
-
-            {fetching ? (
-              <div style={{ padding:'24px', textAlign:'center',
-                color:'#888780', fontSize:'15px' }}>読み込み中...</div>
-            ) : (
-              <>
-                {STORES.map((s) => (
-                  <DowBarChart key={s} name={s}
-                    entries={data?.dow?.byStore[s] ?? emptyDow()} />
-                ))}
-                <DowBarChart name="🧮 2店合計"
-                  entries={sumDow(STORES.map((s) => data?.dow?.byStore[s] ?? emptyDow()))} />
-              </>
-            )}
+        <div style={{ background:'white', borderRadius:'16px', padding:'16px',
+          boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
+            📊 曜日別 1日平均売上
           </div>
-        )}
+          <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
+            ※ {data?.label} 内の各曜日の1日あたり平均
+          </div>
+
+          <Legend />
+
+          {fetching ? (
+            <div style={{ padding:'24px', textAlign:'center',
+              color:'#888780', fontSize:'15px' }}>読み込み中...</div>
+          ) : (
+            <>
+              {STORES.map((s) => (
+                <DowBarChart key={s} name={s}
+                  entries={reorderDow(data?.dow?.byStore[s] ?? emptyDow())} />
+              ))}
+              <DowBarChart name="🧮 2店合計"
+                entries={reorderDow(sumDow(STORES.map((s) => data?.dow?.byStore[s] ?? emptyDow())))} />
+            </>
+          )}
+        </div>
 
       </div>
     </div>
@@ -254,10 +276,7 @@ function Legend() {
   )
 }
 
-function StoreBucket({ name, bucket, granularity }: {
-  name: string; bucket: Bucket; granularity: Granularity
-}) {
-  const showAverage = granularity !== 'day'
+function StoreBucket({ name, bucket }: { name: string; bucket: Bucket }) {
   return (
     <div style={{ marginBottom:'12px', paddingBottom:'12px',
       borderBottom:'1px solid #F5F1EA' }}>
@@ -275,17 +294,65 @@ function StoreBucket({ name, bucket, granularity }: {
         <Stat label="花売上"   value={'¥' + bucket.hana.toLocaleString()} />
         <Stat label="客単価"   value={bucket.customerCount > 0
           ? '¥' + Math.round(bucket.amount / bucket.customerCount).toLocaleString() : '—'} />
-        {showAverage && (
-          <>
-            <Stat label="日商平均" value={bucket.days > 0
-              ? '¥' + Math.round(bucket.amount / bucket.days).toLocaleString() : '—'} />
-            <Stat label="日次客数" value={bucket.days > 0
-              ? Math.round(bucket.customerCount / bucket.days) + '人' : '—'} />
-          </>
-        )}
+        <Stat label="日商平均" value={bucket.days > 0
+          ? '¥' + Math.round(bucket.amount / bucket.days).toLocaleString() : '—'} />
+        <Stat label="日次客数" value={bucket.days > 0
+          ? Math.round(bucket.customerCount / bucket.days) + '人' : '—'} />
       </div>
     </div>
   )
+}
+
+function PeriodPicker({ granularity, ref_, onChange }: {
+  granularity: Granularity
+  ref_       : string
+  onChange   : (r: string) => void
+}) {
+  const [y, m] = ref_.split('-').map(Number)
+
+  if (granularity === 'year') {
+    const currentYear = new Date().getFullYear()
+    const years: number[] = []
+    for (let yy = currentYear + 1; yy >= 2020; yy--) years.push(yy)
+    return (
+      <select value={y} onChange={(e) => onChange(`${e.target.value}-01-01`)}
+        style={pickerStyle}>
+        {years.map((yy) => (
+          <option key={yy} value={yy}>{yy}年</option>
+        ))}
+      </select>
+    )
+  }
+
+  if (granularity === 'month') {
+    const value = `${y}-${String(m).padStart(2, '0')}`
+    return (
+      <input type="month" value={value}
+        onChange={(e) => {
+          if (!e.target.value) return
+          onChange(e.target.value + '-01')
+        }}
+        style={pickerStyle} />
+    )
+  }
+
+  // week: 開始日を表示するdate input
+  const weekStart = weekStartOf(ref_)
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+      <span style={{ fontSize:'13px', color:'#888780' }}>週開始(月)</span>
+      <input type="date" value={weekStart}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        style={pickerStyle} />
+    </div>
+  )
+}
+
+const pickerStyle: React.CSSProperties = {
+  padding:'10px 14px', fontSize:'15px',
+  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+  background:'white', fontFamily:'inherit',
+  color:'#2C2C2A', cursor:'pointer',
 }
 
 function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
