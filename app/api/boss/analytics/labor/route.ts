@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
         )::float AS sales_actual
       FROM member_day md
       LEFT JOIN nippo.staff  s  ON s.id  = md.staff_id
-      LEFT JOIN nippo.stores st ON st.id = md.store_id
+      JOIN nippo.stores st ON st.id = md.store_id AND st.is_active = true
       GROUP BY md.staff_id, s.name, md.staff_name_manual, md.store_id, st.name,
                to_char(md.report_date, 'YYYY-MM')
       ORDER BY st.name, staff_name, month
