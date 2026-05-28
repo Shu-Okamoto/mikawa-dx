@@ -379,42 +379,40 @@ function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
                       const v = segs[s.key]
                       if (v <= 0) return null
                       const pct = (v / total) * 100
+                      const segWidthPx = (pct / 100) * widthPct
+                      // セグメントが十分広いとき (>=8% of full chart width) のみ金額表示
+                      const showLabel = segWidthPx >= 8
                       return (
                         <div key={s.key}
-                          title={`${s.label} ¥${v.toLocaleString()} (${pct.toFixed(0)}%)`}
+                          title={`${s.label} ¥${Math.round(v).toLocaleString()} (${pct.toFixed(0)}%)`}
                           style={{ width: pct + '%', background: s.color,
                             display:'flex', alignItems:'center',
                             justifyContent:'center',
                             color:'white', fontSize:'11px', fontWeight:600,
-                            overflow:'hidden' }}>
-                          {pct >= 12 ? `${pct.toFixed(0)}%` : ''}
+                            overflow:'hidden', whiteSpace:'nowrap' }}>
+                          {showLabel ? '¥' + Math.round(v).toLocaleString() : ''}
                         </div>
                       )
                     })}
                   </div>
                 )}
-                {/* 金額ラベル（バー右端の外側または内側） */}
-                <div style={{ position:'absolute', top:0, bottom:0,
-                  left: widthPct > 60 ? '6px' : (widthPct + 1) + '%',
-                  display:'flex', alignItems:'center',
-                  fontSize:'12px', fontWeight:600,
-                  color: widthPct > 60 ? 'white' : '#2C2C2A',
-                  textShadow: widthPct > 60
-                    ? '0 1px 2px rgba(0,0,0,.25)' : 'none',
-                  pointerEvents:'none', whiteSpace:'nowrap' }}>
-                  {total > 0 ? '¥' + Math.round(total).toLocaleString() : '—'}
-                </div>
               </div>
 
-              {/* 営業日数・客数 */}
-              <div style={{ width:'70px', fontSize:'11px', color:'#888780',
+              {/* 右側: 売上合計平均 + 平均客数 */}
+              <div style={{ width:'92px', fontSize:'12px',
                 textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
                 {e.days > 0 ? (
                   <>
-                    <div>{e.avgCustomer}人</div>
-                    <div>{e.days}日</div>
+                    <div style={{ fontWeight:600, color:'#2C2C2A' }}>
+                      ¥{Math.round(total).toLocaleString()}
+                    </div>
+                    <div style={{ color:'#888780', fontSize:'11px' }}>
+                      {e.avgCustomer}人 · {e.days}日
+                    </div>
                   </>
-                ) : '—'}
+                ) : (
+                  <span style={{ color:'#888780' }}>—</span>
+                )}
               </div>
             </div>
           )
