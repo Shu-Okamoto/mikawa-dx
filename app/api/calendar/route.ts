@@ -13,20 +13,18 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get('category') || '弁当'
     const range    = searchParams.get('range') === 'past' ? 'past' : 'future'
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    let start: Date
-    let end  : Date
-    if (range === 'past') {
-      // 過去30日: today-30 〜 today-1
-      start = new Date(today); start.setDate(today.getDate() - 30)
-      end   = new Date(today); end.setDate(today.getDate() - 1)
-    } else {
-      // 今後30日: today 〜 today+30
-      start = new Date(today)
-      end   = new Date(today); end.setDate(today.getDate() + 30)
+    // JSTで今日(YYYY-MM-DD)を求めて以降の日付計算を進める
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
+    const addDays = (s: string, n: number): string => {
+      const d = new Date(s + 'T00:00:00.000Z')
+      d.setUTCDate(d.getUTCDate() + n)
+      return d.toISOString().split('T')[0]
     }
+
+    const startStr = range === 'past' ? addDays(todayStr, -30) : todayStr
+    const endStr   = range === 'past' ? addDays(todayStr, -1)  : addDays(todayStr, 30)
+    const start = new Date(startStr + 'T00:00:00.000Z')
+    const end   = new Date(endStr   + 'T23:59:59.999Z')
 
     // カテゴリに合致する商品IDを取得
     const products = await prisma.orderProduct.findMany({
@@ -56,13 +54,12 @@ export async function GET(req: NextRequest) {
 
     const dayCount = range === 'past' ? 30 : 31  // past: -30 〜 -1 / future: 0 〜 +30
     for (let i = 0; i < dayCount; i++) {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
-      const dStr = d.toISOString().split('T')[0]
+      const dStr = addDays(startStr, i)
+      const [y, m, d] = dStr.split('-').map(Number)
+      const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
       days[dStr] = {
         date  : dStr,
-        label : (d.getMonth()+1) + '月' + d.getDate() +
-                '日(' + dayNames[d.getDay()] + ')',
+        label : `${m}月${d}日(${dayNames[dow]})`,
         orders: [],
       }
     }
