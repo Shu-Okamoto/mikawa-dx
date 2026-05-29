@@ -7,7 +7,7 @@ const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
 
 function canAccessBranch(role: string, branch: string): boolean {
   if (role === 'all') return true
-  if (branch === 'honbu') return HQ_ROLES.has(role)
+  if (branch === 'honbu') return role === 'honbu' || HQ_ROLES.has(role)
   return role === branch
 }
 
