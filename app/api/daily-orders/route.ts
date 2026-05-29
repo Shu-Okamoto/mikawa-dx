@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
-const STORE_BRANCHES = new Set(['nishi', 'minami'])
+const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const VALID_CATEGORIES = new Set(['野菜', '果物', '餅・乾物菓子類'])
 
 function canAccessBranch(role: string, branch: string): boolean {
