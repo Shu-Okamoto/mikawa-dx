@@ -70,17 +70,15 @@ const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
 
 function canRoleAccessBranch(role: string, branch: string): boolean {
   if (role === 'all') return true
-  if (branch === 'honbu') return HQ_ROLES.has(role)
+  if (branch === 'honbu') return role === 'honbu' || HQ_ROLES.has(role)
   return role === branch
 }
 
 function OrderPageContent({ branch }: { branch: string }) {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(
-    ['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'],
-    { autoLoginRole: VALID_BRANCHES.has(branch)
-        ? (branch === 'honbu' ? 'hq1' : branch)
-        : undefined },
+    ['nishi', 'minami', 'honbu', 'hq1', 'hq2', 'hq3', 'all'],
+    { autoLoginRole: VALID_BRANCHES.has(branch) ? branch : undefined },
   )
   const [screen, setScreen]         = useState<Screen>('list')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
