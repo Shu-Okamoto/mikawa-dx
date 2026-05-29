@@ -193,6 +193,9 @@ export function useAuth(arg?: UseAuthArg, legacyOptions?: LegacyOptions) {
   }, [router])
 
   const logout = useCallback(() => {
+    // 「終了する」: localStorage の認証情報のみクリア。sessionStorage の
+    // pinRole は残してエントリ選択画面に戻れるようにする。
+    // (別ロールに切り替えたい時は「別のPINで入り直す」を使う)
     clearStoredAuth()
     router.push('/')
   }, [router])

@@ -93,6 +93,18 @@ export default function HomePage() {
   const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
+    // PIN を入力済み(=sessionStorage に pinRole)ならエントリ選択画面を
+    // 必ず表示する。これがないと、PINロール+残存トークンの組み合わせで
+    // 意図せず roleHome (例: /boss) にリダイレクトされてしまう。
+    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
+    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
+        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
+        saved === 'all') {
+      setPinRole(saved)
+      return
+    }
+    // PIN 未入力でログイン済み(ブックマーク/外部リンク等)はロール別
+    // ホームに案内する。
     const token = localStorage.getItem('token')
     const stored = localStorage.getItem('user')
     if (token && stored) {
@@ -104,12 +116,6 @@ export default function HomePage() {
           return
         }
       } catch { /* 壊れた値は無視 */ }
-    }
-    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
-    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
-        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
-        saved === 'all') {
-      setPinRole(saved)
     }
   }, [router])
 
