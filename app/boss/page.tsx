@@ -44,7 +44,7 @@ function BossPageContent() {
       let totalHana   = 0
       let totalCust   = 0
       stores.forEach((s) => {
-        const d = data?.sales[s]
+        const d = data?.sales?.[s]
         if (d) {
           totalAmount += d.amount
           totalSouzai += d.souzai
@@ -97,7 +97,7 @@ function BossPageContent() {
 
       const charts: Record<string, ReturnType<typeof buildChart>> = {}
       stores.forEach((s) => {
-        const d = data?.sales[s]
+        const d = data?.sales?.[s]
         if (d) charts[s] = buildChart(d)
       })
       charts['合計'] = buildChart({
@@ -177,7 +177,7 @@ function BossPageContent() {
             💰 本日の売上実績
           </div>
           {stores.map((s) => {
-            const d = data?.sales[s] as any
+            const d = data?.sales?.[s] as DashboardData['sales'][string] & { notes?: string } | undefined
             return (
               <div key={s} style={{ marginBottom:'12px', paddingBottom:'12px',
                 borderBottom:'1px solid #F5F1EA' }}>
