@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForBranch, type StoreTheme } from '@/lib/storeColors'
+import { HONBU_TRUSTED_REFERRERS } from '@/lib/trusted-referrers'
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
 
@@ -92,7 +93,12 @@ function StorePageContent({ branch }: { branch: string }) {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(
     ['nishi', 'minami', 'honbu', 'all'],
-    { autoLoginRole: VALID_BRANCHES.has(branch) ? branch : undefined },
+    {
+      autoLoginRole   : VALID_BRANCHES.has(branch) ? branch : undefined,
+      // honbu のみ、信頼ホスト(惣菜システム等)からの遷移は
+      // PIN/既存トークンを無視して honbu で自動ログイン。
+      trustedReferrers: branch === 'honbu' ? HONBU_TRUSTED_REFERRERS : undefined,
+    },
   )
 
   const [products, setProducts]     = useState<Product[]>([])
