@@ -35,7 +35,7 @@ const CATEGORY_TABS: { key: CategoryKey; label: string; icon: string }[] = [
 
 function CalendarPageContent() {
   const router = useRouter()
-  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all'])
+  const { user, loading, error, authFetch, logout } = useAuth(['nishi', 'minami', 'honbu', 'hq1', 'hq2', 'hq3', 'all'])
   const [calData, setCalData]   = useState<CalendarDay[]>([])
   const [fetching, setFetching] = useState(true)
   const [printModal, setPrintModal] = useState<CalendarDay | null>(null)

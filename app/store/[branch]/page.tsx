@@ -61,10 +61,11 @@ interface BranchOrder {
 
 const FONT_STACK = "'BIZ UDPGothic', -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif"
 
-const VALID_BRANCHES = new Set(['nishi', 'minami'])
+const VALID_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const BRANCH_LABELS: Record<string, string> = {
   nishi : '西店',
   minami: '南店',
+  honbu : '本部',
 }
 
 const CAT_ICONS: Record<string, string> = {
@@ -90,7 +91,7 @@ function todayJpLabel(d: Date) {
 function StorePageContent({ branch }: { branch: string }) {
   const router = useRouter()
   const { user, loading, error, authFetch, logout } = useAuth(
-    ['nishi', 'minami', 'all'],
+    ['nishi', 'minami', 'honbu', 'all'],
     { autoLoginRole: VALID_BRANCHES.has(branch) ? branch : undefined },
   )
 
