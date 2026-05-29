@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         name     : user.name,
       },
       process.env.JWT_SECRET!,
-      { expiresIn: '12h' }
+      { expiresIn: '7d' }
     )
 
     return NextResponse.json({

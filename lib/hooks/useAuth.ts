@@ -12,6 +12,17 @@ export interface AuthUser {
   category : string
 }
 
+function isTokenExpired(token: string | null): boolean {
+  if (!token) return true
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1])) as { exp?: number }
+    if (typeof payload.exp !== 'number') return false
+    return payload.exp * 1000 < Date.now()
+  } catch {
+    return true
+  }
+}
+
 export function useAuth(
   requiredRole?: string | string[],
   options?: { autoLoginRole?: string },
@@ -140,7 +151,9 @@ export function useAuth(
         ...(options.headers || {}),
       },
     })
-    if (res.status === 401) {
+    // 401 はトークンが本当に期限切れ/不正な場合のみログアウト扱いにする。
+    // 期限内なら一時的なサーバーエラーの可能性が高いので localStorage は消さない。
+    if (res.status === 401 && isTokenExpired(storedToken)) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       router.push('/')
