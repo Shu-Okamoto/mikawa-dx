@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AuthUser,
-  clearAllAuthState,
   clearStoredAuth,
   getStoredAuth,
   isTokenExpired,
@@ -194,11 +193,10 @@ export function useAuth(arg?: UseAuthArg, legacyOptions?: LegacyOptions) {
   }, [router])
 
   const logout = useCallback(() => {
-    // 「終了する」: localStorage の認証情報 + sessionStorage の PIN ロールを
-    // まとめてリセット。PIN ロールが残ると、エントリ選択画面で別ロールの
-    // ボタンが押せる/ホームの自動遷移と組み合わさって意図しないページ
-    // (例: pinRole=all のまま /boss にリダイレクト) に流れることがある。
-    clearAllAuthState()
+    // 「終了する」: localStorage の認証情報のみクリア。sessionStorage の
+    // pinRole は残してエントリ選択画面に戻れるようにする。
+    // (別ロールに切り替えたい時は「別のPINで入り直す」を使う)
+    clearStoredAuth()
     router.push('/')
   }, [router])
 

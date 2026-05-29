@@ -11,7 +11,6 @@ export interface AuthUser {
 
 const TOKEN_KEY = 'token'
 const USER_KEY  = 'user'
-const PIN_ROLE_KEY = 'pinRole'  // sessionStorage 側。app/page.tsx と一致させる。
 
 export function getStoredAuth(): { token: string; user: AuthUser } | null {
   if (typeof window === 'undefined') return null
@@ -33,16 +32,6 @@ export function setStoredAuth(token: string, user: AuthUser): void {
 export function clearStoredAuth(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
-}
-
-// 「終了する」相当: トークンに加え、PINロール選択もリセット。
-// これがないと sessionStorage の pinRole が残り、エントリ画面が中途半端な
-// 状態で表示されたり、認証が消える前後で意図しない遷移が発生する。
-export function clearAllAuthState(): void {
-  clearStoredAuth()
-  if (typeof window !== 'undefined') {
-    sessionStorage.removeItem(PIN_ROLE_KEY)
-  }
 }
 
 // JWT の payload から exp(秒)を取り出す。トークンが壊れていれば null。
