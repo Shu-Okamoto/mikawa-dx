@@ -3,15 +3,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --font-app: var(--font-biz-udp), 'BIZ UDPGothic', -apple-system,
-              'Hiragino Sans', 'Yu Gothic', sans-serif;
+  --font-app: -apple-system, BlinkMacSystemFont, 'Hiragino Sans',
+              'Yu Gothic', 'Noto Sans CJK JP', sans-serif;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-app);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body {
@@ -19,4 +19,12 @@ body {
   color: var(--foreground);
   font-family: var(--font-app);
   color-scheme: light;
+}
+
+/* 古いブラウザでネイティブのセレクト表示を強制（Tailwind v4の
+   preflightが appearance を上書きするため、明示的に戻す） */
+select {
+  appearance: auto;
+  -webkit-appearance: auto;
+  -moz-appearance: auto;
 }

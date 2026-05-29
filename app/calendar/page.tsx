@@ -202,7 +202,7 @@ function CalendarPageContent() {
     return { bg: t.bg, color: t.text }
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
   // 過去ビューは注文ありの日のみ。今後ビューは注文あり + 今日（注文なしでも表示）
   const visibleDays = range === 'past'
     ? calData.filter((d) => d.orders.length > 0).slice().reverse() // 新しい日付が上

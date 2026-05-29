@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useModalBackButton } from '@/lib/hooks/useModalBackButton'
 import { themeForBranch } from '@/lib/storeColors'
 import { canOrderFor } from '@/lib/orderDeadline'
 
@@ -50,7 +51,7 @@ type EditDraft = {
   notes          : string
 }
 
-type Screen = 'list' | 'date' | 'product' | 'form' | 'complete'
+type Screen = 'list' | 'date' | 'category' | 'product' | 'form' | 'complete'
 
 const PURPOSES = ['自家用','会議','法事','スポーツ','お年寄り','子供','袋付き']
 const DELIVERY_TIMES = [
@@ -82,6 +83,7 @@ function OrderPageContent({ branch }: { branch: string }) {
         : undefined },
   )
   const [screen, setScreen]         = useState<Screen>('list')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [orders, setOrders]         = useState<InstoreOrder[]>([])
   const [products, setProducts]     = useState<OrderProduct[]>([])
   const [availDates, setAvailDates] = useState<{ value: string; label: string }[]>([])
@@ -180,7 +182,8 @@ function OrderPageContent({ branch }: { branch: string }) {
     setProducts(filtered)
     setQuantities({})
     setCustomProducts([])
-    setScreen('product')
+    setSelectedCategory(null)
+    setScreen('category')
   }
 
   const addCustomProduct = () => {
@@ -200,7 +203,7 @@ function OrderPageContent({ branch }: { branch: string }) {
       lateOrderOk  : false,
     }])
     setQuantities((q) => ({ ...q, [id]: qty }))
-    setCustomModal(null)
+    closeCustomModal()
     showToast(name + ' を追加しました')
   }
 
@@ -291,10 +294,14 @@ function OrderPageContent({ branch }: { branch: string }) {
     })
   }
 
-  const closeEdit = () => {
+  const closeEdit = useModalBackButton(!!editing, () => {
     setEditing(null)
     setEditDraft(null)
-  }
+  })
+
+  const closeCustomModal = useModalBackButton(!!customModal, () => {
+    setCustomModal(null)
+  })
 
   const submitEdit = async () => {
     if (!editing || !editDraft) return
@@ -569,13 +576,13 @@ function OrderPageContent({ branch }: { branch: string }) {
         </>
       )}
 
-      {/* 商品選択 */}
-      {screen === 'product' && (
+      {/* カテゴリ選択 */}
+      {screen === 'category' && (
         <>
           <div style={headerStyle()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
-                <div style={{ fontSize:'11px', opacity:.8 }}>商品を選択</div>
+                <div style={{ fontSize:'11px', opacity:.8 }}>カテゴリを選択</div>
                 <div style={{ fontSize:'20px', fontWeight:500 }}>{selectedDate}</div>
               </div>
               <button onClick={() => setScreen('date')}
@@ -591,109 +598,70 @@ function OrderPageContent({ branch }: { branch: string }) {
             {(() => {
               const allProducts = [...products, ...customProducts]
               const STD_CATS    = ['弁当', '餅']
-              const CAT_ICONS: Record<string, string> = {
-                '弁当': '🍱', '餅': '🍡',
-              }
+              const CAT_ICONS: Record<string, string> = { '弁当': '🍱', '餅': '🍡' }
               const extraCats   = Array.from(new Set(
                 allProducts.map((p) => p.category).filter(
                   (c) => c && !STD_CATS.includes(c),
                 ),
               ))
               const categories  = [...STD_CATS, ...extraCats]
-              const hasAnyQty   = allProducts.some((p) => (quantities[p.id] || 0) > 0)
+              const totalQty    = allProducts.reduce((s, p) =>
+                s + (quantities[p.id] || 0), 0)
+              const hasAnyQty   = totalQty > 0
 
               return (
               <>
-                {categories.map((cat) => {
-                  const items = allProducts.filter((p) => p.category === cat)
-                  const icon  = CAT_ICONS[cat] || '📦'
-                  return (
-                  <div key={cat} style={{ marginBottom:'12px' }}>
-                    <div style={{ fontSize:'15px', fontWeight:500,
-                      padding:'4px 4px 8px', color:'#2C2C2A',
-                      display:'flex', alignItems:'center', gap:'6px' }}>
-                      <span style={{ fontSize:'18px' }}>{icon}</span>
-                      {cat}
-                      <span style={{ fontSize:'12px', color:'#888780', fontWeight:400 }}>
-                        ({items.length}品目)
-                      </span>
-                    </div>
-
-                    <div style={{ background:'white', borderRadius:'16px',
-                      overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-                      {items.length === 0 ? (
-                        <div style={{ padding:'20px', textAlign:'center',
-                          color:'#B4B2A9', fontSize:'13px' }}>
-                          この日に注文できる{cat}はありません
-                        </div>
-                      ) : items.map((p, idx) => {
-                        const qty      = quantities[p.id] || 0
-                        const isCustom = p.id < 0
-                        return (
-                        <div key={p.id} style={{ padding:'14px 16px',
-                          borderBottom: idx < items.length-1
-                            ? '1px solid #F5F1EA' : 'none',
-                          display:'flex', justifyContent:'space-between',
-                          alignItems:'center' }}>
-                          <div>
-                            <div style={{ fontSize:'20px', fontWeight:500,
-                              display:'flex', alignItems:'center', gap:'8px' }}>
-                              {p.productName}
-                              {isCustom && (
-                                <span style={{ fontSize:'11px', fontWeight:500,
-                                  padding:'2px 8px', borderRadius:'8px',
-                                  background:'#FBF8F2', color:'#888780',
-                                  border:'1px solid #E5E1D8' }}>マスタ外</span>
-                              )}
-                            </div>
-                            <div style={{ fontSize:'15px', color:'#888780' }}>
-                              ¥{Number(p.price).toLocaleString()}
-                            </div>
-                          </div>
-                          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                            <button onClick={() => setQuantities({
-                              ...quantities,
-                              [p.id]: Math.max(0, qty - 1)
-                            })}
-                              style={{ width:'36px', height:'36px', borderRadius:'50%',
-                                border:'1.5px solid #E5E1D8', background:'white',
-                                fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
-                              -
-                            </button>
-                            <span style={{ minWidth:'28px', textAlign:'center',
-                              fontSize:'20px', fontWeight:500 }}>
-                              {qty}
-                            </span>
-                            <button onClick={() => setQuantities({
-                              ...quantities,
-                              [p.id]: qty + 1
-                            })}
-                              style={{ width:'36px', height:'36px', borderRadius:'50%',
-                                border: qty > 0 ? '1.5px solid #72243E' : '1.5px solid #E5E1D8',
-                                background: qty > 0 ? '#72243E' : 'white',
-                                color: qty > 0 ? 'white' : '#2C2C2A',
-                                fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      )})}
-                    </div>
-
-                    <button
-                      onClick={() => setCustomModal({
-                        name:'', price:'', qty:1, category: cat,
-                      })}
-                      style={{ width:'100%', padding:'10px', background:'white',
-                        color:'#888780', border:'1.5px dashed #D6D2C7',
-                        borderRadius:'10px', fontSize:'14px',
-                        cursor:'pointer', fontFamily:'inherit',
-                        marginTop:'8px' }}>
-                      ＋ {cat}を追加（マスタ外）
-                    </button>
+                {totalQty > 0 && (
+                  <div style={{ background:'#FBF8F2', borderRadius:'12px',
+                    padding:'10px 14px', marginBottom:'12px', fontSize:'14px',
+                    color:'#72243E', fontWeight:500 }}>
+                    🛒 選択中: 合計 {totalQty} 点
                   </div>
-                  )
-                })}
+                )}
+
+                <div style={{ background:'white', borderRadius:'16px',
+                  overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)',
+                  marginBottom:'16px' }}>
+                  {categories.map((cat, idx) => {
+                    const items   = allProducts.filter((p) => p.category === cat)
+                    const catQty  = items.reduce((s, p) =>
+                      s + (quantities[p.id] || 0), 0)
+                    const icon    = CAT_ICONS[cat] || '📦'
+                    return (
+                      <button key={cat}
+                        onClick={() => {
+                          setSelectedCategory(cat)
+                          setScreen('product')
+                        }}
+                        style={{ width:'100%', padding:'18px 16px',
+                          textAlign:'left', background:'white', border:'none',
+                          borderBottom: idx < categories.length-1
+                            ? '1px solid #F5F1EA' : 'none',
+                          fontSize:'20px', cursor:'pointer',
+                          fontFamily:'inherit', color:'#2C2C2A',
+                          display:'flex', justifyContent:'space-between',
+                          alignItems:'center', gap:'8px' }}>
+                        <span style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                          <span style={{ fontSize:'24px' }}>{icon}</span>
+                          <span>{cat}</span>
+                          <span style={{ fontSize:'12px', color:'#888780', fontWeight:400 }}>
+                            ({items.length}品目)
+                          </span>
+                        </span>
+                        <span style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                          {catQty > 0 && (
+                            <span style={{ fontSize:'13px', fontWeight:500,
+                              padding:'2px 10px', borderRadius:'20px',
+                              background:'#72243E', color:'white' }}>
+                              {catQty}点
+                            </span>
+                          )}
+                          <span style={{ color:'#888780' }}>›</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
 
                 <button
                   onClick={() => {
@@ -708,7 +676,153 @@ function OrderPageContent({ branch }: { branch: string }) {
                     color:'white', border:'none', borderRadius:'12px',
                     fontSize:'20px', fontWeight:500,
                     cursor: hasAnyQty ? 'pointer' : 'not-allowed',
-                    fontFamily:'inherit', marginTop:'4px' }}>
+                    fontFamily:'inherit' }}>
+                  お客様情報を入力する
+                </button>
+              </>
+              )
+            })()}
+          </div>
+        </>
+      )}
+
+      {/* 商品選択 */}
+      {screen === 'product' && selectedCategory && (
+        <>
+          <div style={headerStyle()}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <div style={{ fontSize:'11px', opacity:.8 }}>{selectedCategory} を選択</div>
+                <div style={{ fontSize:'20px', fontWeight:500 }}>{selectedDate}</div>
+              </div>
+              <button onClick={() => setScreen('category')}
+                style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
+                  border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
+                  color:'white', fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
+                戻る
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding:'12px' }}>
+            {(() => {
+              const allProducts = [...products, ...customProducts]
+              const cat         = selectedCategory
+              const items       = allProducts.filter((p) => p.category === cat)
+              const CAT_ICONS: Record<string, string> = { '弁当': '🍱', '餅': '🍡' }
+              const icon        = CAT_ICONS[cat] || '📦'
+              const hasAnyQty   = allProducts.some((p) => (quantities[p.id] || 0) > 0)
+
+              return (
+              <>
+                <div style={{ fontSize:'15px', fontWeight:500,
+                  padding:'4px 4px 8px', color:'#2C2C2A',
+                  display:'flex', alignItems:'center', gap:'6px' }}>
+                  <span style={{ fontSize:'18px' }}>{icon}</span>
+                  {cat}
+                  <span style={{ fontSize:'12px', color:'#888780', fontWeight:400 }}>
+                    ({items.length}品目)
+                  </span>
+                </div>
+
+                <div style={{ background:'white', borderRadius:'16px',
+                  overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+                  {items.length === 0 ? (
+                    <div style={{ padding:'20px', textAlign:'center',
+                      color:'#B4B2A9', fontSize:'13px' }}>
+                      この日に注文できる{cat}はありません
+                    </div>
+                  ) : items.map((p, idx) => {
+                    const qty      = quantities[p.id] || 0
+                    const isCustom = p.id < 0
+                    return (
+                    <div key={p.id} style={{ padding:'14px 16px',
+                      borderBottom: idx < items.length-1
+                        ? '1px solid #F5F1EA' : 'none',
+                      display:'flex', justifyContent:'space-between',
+                      alignItems:'center' }}>
+                      <div>
+                        <div style={{ fontSize:'20px', fontWeight:500,
+                          display:'flex', alignItems:'center', gap:'8px' }}>
+                          {p.productName}
+                          {isCustom && (
+                            <span style={{ fontSize:'11px', fontWeight:500,
+                              padding:'2px 8px', borderRadius:'8px',
+                              background:'#FBF8F2', color:'#888780',
+                              border:'1px solid #E5E1D8' }}>マスタ外</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize:'15px', color:'#888780' }}>
+                          ¥{Number(p.price).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                        <button onClick={() => setQuantities({
+                          ...quantities,
+                          [p.id]: Math.max(0, qty - 1)
+                        })}
+                          style={{ width:'36px', height:'36px', borderRadius:'50%',
+                            border:'1.5px solid #E5E1D8', background:'white',
+                            fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
+                          -
+                        </button>
+                        <span style={{ minWidth:'28px', textAlign:'center',
+                          fontSize:'20px', fontWeight:500 }}>
+                          {qty}
+                        </span>
+                        <button onClick={() => setQuantities({
+                          ...quantities,
+                          [p.id]: qty + 1
+                        })}
+                          style={{ width:'36px', height:'36px', borderRadius:'50%',
+                            border: qty > 0 ? '1.5px solid #72243E' : '1.5px solid #E5E1D8',
+                            background: qty > 0 ? '#72243E' : 'white',
+                            color: qty > 0 ? 'white' : '#2C2C2A',
+                            fontSize:'20px', cursor:'pointer', fontFamily:'inherit' }}>
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  )})}
+                </div>
+
+                <button
+                  onClick={() => setCustomModal({
+                    name:'', price:'', qty:1, category: cat,
+                  })}
+                  style={{ width:'100%', padding:'10px', background:'white',
+                    color:'#888780', border:'1.5px dashed #D6D2C7',
+                    borderRadius:'10px', fontSize:'14px',
+                    cursor:'pointer', fontFamily:'inherit',
+                    marginTop:'8px', marginBottom:'16px' }}>
+                  ＋ {cat}を追加（マスタ外）
+                </button>
+
+                <button
+                  onClick={() => setScreen('category')}
+                  style={{ width:'100%', padding:'14px',
+                    background:'white', color:'#72243E',
+                    border:'1.5px solid #72243E', borderRadius:'12px',
+                    fontSize:'18px', fontWeight:500,
+                    cursor:'pointer', fontFamily:'inherit',
+                    marginBottom:'8px' }}>
+                  ← 他のカテゴリも選ぶ
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (!hasAnyQty) {
+                      showToast('商品を選択してください')
+                      return
+                    }
+                    setScreen('form')
+                  }}
+                  style={{ width:'100%', padding:'16px',
+                    background: hasAnyQty ? '#72243E' : '#B4B2A9',
+                    color:'white', border:'none', borderRadius:'12px',
+                    fontSize:'20px', fontWeight:500,
+                    cursor: hasAnyQty ? 'pointer' : 'not-allowed',
+                    fontFamily:'inherit' }}>
                   お客様情報を入力する
                 </button>
               </>
@@ -727,7 +841,7 @@ function OrderPageContent({ branch }: { branch: string }) {
                 <div style={{ fontSize:'11px', opacity:.8 }}>お客様情報</div>
                 <div style={{ fontSize:'20px', fontWeight:500 }}>{selectedDate}</div>
               </div>
-              <button onClick={() => setScreen('product')}
+              <button onClick={() => setScreen('category')}
                 style={{ padding:'10px 16px', background:'rgba(255,255,255,.2)',
                   border:'1.5px solid rgba(255,255,255,.6)', borderRadius:'10px',
                   color:'white', fontSize:'16px', cursor:'pointer', fontFamily:'inherit' }}>
@@ -1281,7 +1395,7 @@ function OrderPageContent({ branch }: { branch: string }) {
             </div>
 
             <div style={{ display:'flex', gap:'10px' }}>
-              <button onClick={() => setCustomModal(null)}
+              <button onClick={closeCustomModal}
                 style={{ flex:1, padding:'12px',
                   border:'1.5px solid #E5E1D8', borderRadius:'10px',
                   background:'white', fontSize:'15px',

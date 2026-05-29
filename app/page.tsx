@@ -46,9 +46,9 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     title: '📝 日報',
     rows: [[
       { role: 'nishi',  label: '西店',
-        path: 'https://nippo.satonoaji-mikawa.net/store/nishi/today',  external: true },
+        path: 'https://nippo-system-blue.vercel.app/store/nishi',  external: true },
       { role: 'minami', label: '南店',
-        path: 'https://nippo.satonoaji-mikawa.net/store/minami/today', external: true },
+        path: 'https://nippo-system-blue.vercel.app/store/minami', external: true },
     ]],
   },
   {
@@ -88,7 +88,6 @@ function canAccess(pinRole: RoleKey, entry: Entry): boolean {
 export default function HomePage() {
   const router = useRouter()
   const [pinRole, setPinRole]   = useState<RoleKey | null>(null)
-  const [hydrated, setHydrated] = useState(false)
   const [busy, setBusy]         = useState<string | null>(null)
   const [error, setError]       = useState<string | null>(null)
 
@@ -111,7 +110,6 @@ export default function HomePage() {
         saved === 'all') {
       setPinRole(saved)
     }
-    setHydrated(true)
   }, [router])
 
   const onPinVerified = (role: RoleKey) => {
@@ -153,7 +151,6 @@ export default function HomePage() {
     }
   }
 
-  if (!hydrated) return null
   if (!pinRole) return <PinPad onVerified={onPinVerified} />
 
   return (
@@ -321,26 +318,26 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
       fontFamily    : "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
       padding       : '24px',
     }}>
-      <div style={{ textAlign: 'center', width: '100%', maxWidth: '360px' }}>
-        <div style={{ fontSize: '52px', marginBottom: '12px' }}>🔒</div>
-        <h1 style={{ fontSize: '24px', fontWeight: 500, color: '#2C2C2A',
-          marginBottom: '8px' }}>
+      <div style={{ textAlign: 'center', width: '100%', maxWidth: '320px' }}>
+        <div style={{ fontSize: '40px', marginBottom: '10px' }}>🔒</div>
+        <h1 style={{ fontSize: '18px', fontWeight: 500, color: '#2C2C2A',
+          marginBottom: '6px' }}>
           PIN を入力してください
         </h1>
-        <p style={{ fontSize: '16px', color: '#888780', marginBottom: '28px' }}>
+        <p style={{ fontSize: '13px', color: '#888780', marginBottom: '22px' }}>
           4桁の数字
         </p>
 
         <div style={{
           display       : 'flex',
           justifyContent: 'center',
-          gap           : '14px',
-          marginBottom  : '24px',
+          gap           : '12px',
+          marginBottom  : '20px',
         }}>
           {[0,1,2,3].map((i) => (
             <div key={i} style={{
-              width       : '18px',
-              height      : '18px',
+              width       : '14px',
+              height      : '14px',
               borderRadius: '50%',
               background  : i < digits.length ? '#2C2C2A' : '#D9D5CC',
             }} />
@@ -348,7 +345,7 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
         </div>
 
         {error && (
-          <p style={{ fontSize: '15px', color: '#E24B4A', marginBottom: '14px' }}>
+          <p style={{ fontSize: '13px', color: '#E24B4A', marginBottom: '12px' }}>
             {error}
           </p>
         )}
@@ -356,7 +353,7 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
         <div style={{
           display            : 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
-          gap                : '14px',
+          gap                : '12px',
         }}>
           {keys.map((k, i) => {
             if (k === '') return <div key={i} />
@@ -367,8 +364,8 @@ function PinPad({ onVerified }: { onVerified: (role: RoleKey) => void }) {
                 onClick={() => (isBack ? back() : push(k))}
                 disabled={busy}
                 style={{
-                  padding     : '20px 0',
-                  fontSize    : '26px',
+                  padding     : '14px 0',
+                  fontSize    : '20px',
                   border      : '1px solid #D9D5CC',
                   borderRadius: '12px',
                   background  : 'white',
