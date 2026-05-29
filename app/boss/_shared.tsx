@@ -36,10 +36,13 @@ export function BossHeader({
   )
 }
 
-const NAV_ITEMS = [
+const ANALYTICS_NAV = [
   { href: '/boss',                 label: '📊 ダッシュボード' },
   { href: '/boss/analytics',       label: '📈 売上分析' },
   { href: '/boss/analytics/labor', label: '⏱ 人時売' },
+]
+
+const MASTER_NAV = [
   { href: '/boss/users',           label: '👥 ユーザー' },
   { href: '/boss/products',        label: '🥬 商品' },
   { href: '/boss/order-products',  label: '🍱 オリジナル商品' },
@@ -47,12 +50,17 @@ const NAV_ITEMS = [
   { href: '/boss/import',          label: '📥 インポート' },
 ]
 
+function isAnalyticsPath(path: string): boolean {
+  return path === '/boss' || path.startsWith('/boss/analytics')
+}
+
 export function BossNav({ active }: { active: string }) {
+  const items = isAnalyticsPath(active) ? ANALYTICS_NAV : MASTER_NAV
   return (
     <div style={{ background:'white', padding:'12px 16px',
       borderBottom:'1px solid #E5E1D8',
       display:'flex', gap:'8px', overflowX:'auto' }}>
-      {NAV_ITEMS.map((n) => {
+      {items.map((n) => {
         const isCurrent = n.href === active
         return (
           <Link key={n.href} href={n.href} prefetch={false}
