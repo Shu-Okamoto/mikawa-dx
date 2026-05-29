@@ -17,20 +17,37 @@ interface UseAuthOptions {
   roles?: string[]
   // 未ログイン時に自動でこのロールで /api/auth/role を叩く。
   autoLoginRole?: string
+  // この一覧に含まれるホスト名から遷移してきた場合、既存トークンの
+  // ロールが roles に合わなくても token を破棄して autoLoginRole で
+  // 再ログインを試みる。PIN画面を経由せず外部システムから直リンクで
+  // 入れるようにしたいケース向け。
+  trustedReferrers?: string[]
 }
 
 // 旧 API との後方互換用に string | string[] | options も受け付ける。
 type UseAuthArg = string | string[] | UseAuthOptions | undefined
+type LegacyOptions = { autoLoginRole?: string; trustedReferrers?: string[] }
 
-function normalize(arg: UseAuthArg, legacyOptions?: { autoLoginRole?: string }): UseAuthOptions {
-  if (arg == null) return { autoLoginRole: legacyOptions?.autoLoginRole }
-  if (typeof arg === 'string') return { roles: [arg], autoLoginRole: legacyOptions?.autoLoginRole }
-  if (Array.isArray(arg))      return { roles: arg,   autoLoginRole: legacyOptions?.autoLoginRole }
+function normalize(arg: UseAuthArg, legacyOptions?: LegacyOptions): UseAuthOptions {
+  if (arg == null) return { ...legacyOptions }
+  if (typeof arg === 'string') return { roles: [arg], ...legacyOptions }
+  if (Array.isArray(arg))      return { roles: arg,   ...legacyOptions }
   return arg
 }
 
-export function useAuth(arg?: UseAuthArg, legacyOptions?: { autoLoginRole?: string }) {
-  const { roles, autoLoginRole } = normalize(arg, legacyOptions)
+function referrerIsTrusted(trustedReferrers?: string[]): boolean {
+  if (!trustedReferrers || trustedReferrers.length === 0) return false
+  if (typeof document === 'undefined' || !document.referrer) return false
+  try {
+    const host = new URL(document.referrer).hostname
+    return trustedReferrers.includes(host)
+  } catch {
+    return false
+  }
+}
+
+export function useAuth(arg?: UseAuthArg, legacyOptions?: LegacyOptions) {
+  const { roles, autoLoginRole, trustedReferrers } = normalize(arg, legacyOptions)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -114,7 +131,16 @@ export function useAuth(arg?: UseAuthArg, legacyOptions?: { autoLoginRole?: stri
       return () => { cancelled = true }
     }
 
-    // 2. localStorage に有効なトークンがあれば使う
+    // 2. 信頼ホストからの遷移なら既存トークンを破棄して
+    //    autoLoginRole での再ログインを強制する。
+    //    別ロールのトークンが残っていても確実に honbu 等で入れるように。
+    if (referrerIsTrusted(trustedReferrers) && autoLoginRole) {
+      clearStoredAuth()
+      callRoleLogin(autoLoginRole)
+      return () => { cancelled = true }
+    }
+
+    // 3. localStorage に有効なトークンがあれば使う
     const stored = getStoredAuth()
     if (stored && !isTokenExpired(stored.token)) {
       if (!isAllowed(stored.user.role)) {
