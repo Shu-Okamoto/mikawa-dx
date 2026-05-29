@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 
 export function BossHeader({
   title,
@@ -54,7 +55,7 @@ export function BossNav({ active }: { active: string }) {
       {NAV_ITEMS.map((n) => {
         const isCurrent = n.href === active
         return (
-          <a key={n.href} href={n.href}
+          <Link key={n.href} href={n.href} prefetch={false}
             style={{ padding:'10px 16px',
               background: isCurrent ? '#3B6D11' : '#F5F1EA',
               color     : isCurrent ? 'white'   : '#2C2C2A',
@@ -62,7 +63,7 @@ export function BossNav({ active }: { active: string }) {
               textDecoration:'none', whiteSpace:'nowrap',
               fontFamily:'inherit', fontWeight: isCurrent ? 500 : 400 }}>
             {n.label}
-          </a>
+          </Link>
         )
       })}
     </div>
@@ -84,10 +85,15 @@ export function Toast({ text }: { text: string }) {
 
 export function useToast() {
   const [toast, setToast] = useState('')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showToast = (msg: string) => {
     setToast(msg)
-    setTimeout(() => setToast(''), 2500)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setToast(''), 2500)
   }
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
   return { toast, showToast }
 }
 
