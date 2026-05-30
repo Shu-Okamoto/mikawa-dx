@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForStoreName } from '@/lib/storeColors'
-import { SOOZAI_WEEKLY_MENU_URL } from '@/lib/trusted-referrers'
 
 interface CalendarDay {
   date  : string
@@ -518,9 +517,11 @@ const MENU_CATEGORIES = ['デラックスメイン', 'メイン肉', '魚', '天
 const DAY_LABELS = ['月', '火', '水', '木', '金', '土']  // day_of_week 1〜6
 
 function WeeklyMenu() {
-  const [rows, setRows]       = useState<MenuRow[] | null>(null)
-  const [error, setError]     = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [rows, setRows]         = useState<MenuRow[] | null>(null)
+  const [weekStart, setWeekStart] = useState<string | null>(null)
+  const [error, setError]       = useState<string | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [open, setOpen]         = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -537,6 +538,7 @@ function WeeklyMenu() {
           setRows([])
         } else {
           setRows(Array.isArray(data.rows) ? data.rows : [])
+          setWeekStart(typeof data.weekStart === 'string' ? data.weekStart : null)
           setError(null)
         }
       })
@@ -554,62 +556,81 @@ function WeeklyMenu() {
     return m
   }, [rows])
 
+  // 'YYYY-MM-DD' → 'YYYY/M/D〜'
+  const weekStartLabel = weekStart
+    ? (() => {
+        const [y, m, d] = weekStart.split('-')
+        return `${y}/${Number(m)}/${Number(d)}〜`
+      })()
+    : ''
+
   return (
     <div style={{ background:'white', borderRadius:'12px',
-      padding:'12px 12px 8px', marginBottom:'12px',
-      boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
-      <div style={{ display:'flex', justifyContent:'space-between',
-        alignItems:'center', marginBottom:'8px' }}>
+      marginBottom:'12px',
+      boxShadow:'0 1px 4px rgba(0,0,0,.04)', overflow:'hidden' }}>
+      <button onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{ width:'100%', display:'flex', justifyContent:'space-between',
+          alignItems:'center', padding:'12px', background:'white', border:'none',
+          cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
         <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A' }}>
           🍱 今週の献立(惣菜)
+          {weekStartLabel && (
+            <span style={{ fontSize:'13px', fontWeight:400,
+              color:'#888780', marginLeft:'8px' }}>
+              {weekStartLabel}
+            </span>
+          )}
         </div>
-        <a href={SOOZAI_WEEKLY_MENU_URL} target="_blank" rel="noreferrer noopener"
-          style={{ fontSize:'13px', color:'#1A5276', textDecoration:'underline',
-            fontFamily:'inherit' }}>
-          全件を見る →
-        </a>
-      </div>
+        <div style={{ fontSize:'13px', color:'#888780' }}>
+          {open ? '▲ 閉じる' : '▼ 開く'}
+        </div>
+      </button>
 
-      {loading && (
-        <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>読み込み中...</div>
-      )}
-      {!loading && error && (
-        <div style={{ fontSize:'12px', color:'#E24B4A', padding:'8px 0' }}>{error}</div>
-      )}
-      {!loading && !error && rows && rows.length === 0 && (
-        <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>
-          今週の献立データはありません
-        </div>
-      )}
-      {!loading && !error && rows && rows.length > 0 && (
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse',
-            fontSize:'12px', minWidth:'420px' }}>
-            <thead>
-              <tr>
-                <th style={cellHead}></th>
-                {DAY_LABELS.map((d, i) => (
-                  <th key={d} style={{ ...cellHead, color: i === 5 ? '#1A5276' : '#2C2C2A' }}>{d}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MENU_CATEGORIES.map((cat) => (
-                <tr key={cat}>
-                  <td style={{ ...cellBody, fontWeight:500, background:'#FAF7F0',
-                    whiteSpace:'nowrap' }}>{cat}</td>
-                  {DAY_LABELS.map((_, i) => {
-                    const day = i + 1
-                    return (
-                      <td key={day} style={cellBody}>
-                        {lookup.get(`${day}::${cat}`) || '—'}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {open && (
+        <div style={{ padding:'0 12px 12px' }}>
+          {loading && (
+            <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>読み込み中...</div>
+          )}
+          {!loading && error && (
+            <div style={{ fontSize:'12px', color:'#E24B4A', padding:'8px 0' }}>{error}</div>
+          )}
+          {!loading && !error && rows && rows.length === 0 && (
+            <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>
+              今週の献立データはありません
+            </div>
+          )}
+          {!loading && !error && rows && rows.length > 0 && (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse',
+                fontSize:'12px', minWidth:'420px' }}>
+                <thead>
+                  <tr>
+                    <th style={cellHead}></th>
+                    {DAY_LABELS.map((d, i) => (
+                      <th key={d} style={{ ...cellHead, color: i === 5 ? '#1A5276' : '#2C2C2A' }}>{d}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MENU_CATEGORIES.map((cat) => (
+                    <tr key={cat}>
+                      <td style={{ ...cellBody, fontWeight:500, background:'#FAF7F0',
+                        whiteSpace:'nowrap' }}>{cat}</td>
+                      {DAY_LABELS.map((_, i) => {
+                        const day = i + 1
+                        return (
+                          <td key={day} style={cellBody}>
+                            {lookup.get(`${day}::${cat}`) || '—'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
