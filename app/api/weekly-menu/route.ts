@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
 const ALLOWED_CATEGORIES = ['デラックスメイン', 'メイン肉', '魚', '天ぷら']
@@ -22,12 +21,9 @@ interface MenuRow {
   menu_name  : string | null
 }
 
+// 認証不要。soozai-system 由来の今週の献立(惣菜カテゴリ抜粋)を返す
+// 読み取り専用エンドポイント。
 export async function GET(req: NextRequest) {
-  const user = verifyToken(req)
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
-  }
-
   const weekStartParam = req.nextUrl.searchParams.get('weekStart')
   const weekStart      = weekStartParam ? new Date(weekStartParam) : thisMondayJst()
   if (isNaN(weekStart.getTime())) {

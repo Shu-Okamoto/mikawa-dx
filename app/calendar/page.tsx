@@ -312,7 +312,7 @@ function CalendarPageContent() {
 
       <div style={{ padding:'12px' }}>
 
-        <WeeklyMenu authFetch={authFetch} />
+        <WeeklyMenu />
 
         {viewMode === 'calendar' ? (
           <CalendarGrid
@@ -508,8 +508,6 @@ function CalendarPageContent() {
   )
 }
 
-type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
-
 interface MenuRow {
   day_of_week: number
   category   : string
@@ -519,7 +517,7 @@ interface MenuRow {
 const MENU_CATEGORIES = ['デラックスメイン', 'メイン肉', '魚', '天ぷら'] as const
 const DAY_LABELS = ['月', '火', '水', '木', '金', '土']  // day_of_week 1〜6
 
-function WeeklyMenu({ authFetch }: { authFetch: AuthFetch }) {
+function WeeklyMenu() {
   const [rows, setRows]       = useState<MenuRow[] | null>(null)
   const [error, setError]     = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -527,7 +525,7 @@ function WeeklyMenu({ authFetch }: { authFetch: AuthFetch }) {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    authFetch('/api/weekly-menu')
+    fetch('/api/weekly-menu')
       .then(async (res) => {
         const data = await res.json()
         if (cancelled) return
@@ -542,7 +540,7 @@ function WeeklyMenu({ authFetch }: { authFetch: AuthFetch }) {
       .catch(() => { if (!cancelled) { setError('取得に失敗しました'); setRows([]) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [authFetch])
+  }, [])
 
   // [day_of_week][category] -> menu_name の lookup
   const lookup = useMemo(() => {
