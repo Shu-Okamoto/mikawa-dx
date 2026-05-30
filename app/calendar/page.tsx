@@ -530,7 +530,10 @@ function WeeklyMenu() {
         const data = await res.json()
         if (cancelled) return
         if (!res.ok) {
-          setError(data.error || '取得に失敗しました')
+          const msg = data.detail
+            ? `${data.error || '取得に失敗しました'} (${data.detail})`
+            : (data.error || '取得に失敗しました')
+          setError(msg)
           setRows([])
         } else {
           setRows(Array.isArray(data.rows) ? data.rows : [])
