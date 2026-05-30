@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForStoreName } from '@/lib/storeColors'
+import { SOOZAI_WEEKLY_MENU_URL } from '@/lib/trusted-referrers'
 
 interface CalendarDay {
   date  : string
@@ -311,6 +312,8 @@ function CalendarPageContent() {
 
       <div style={{ padding:'12px' }}>
 
+        <WeeklyMenu authFetch={authFetch} />
+
         {viewMode === 'calendar' ? (
           <CalendarGrid
             calData={calData}
@@ -503,6 +506,122 @@ function CalendarPageContent() {
       )}
     </div>
   )
+}
+
+type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
+
+interface MenuRow {
+  day_of_week: number
+  category   : string
+  menu_name  : string | null
+}
+
+const MENU_CATEGORIES = ['デラックスメイン', 'メイン肉', '魚', '天ぷら'] as const
+const DAY_LABELS = ['月', '火', '水', '木', '金', '土']  // day_of_week 1〜6
+
+function WeeklyMenu({ authFetch }: { authFetch: AuthFetch }) {
+  const [rows, setRows]       = useState<MenuRow[] | null>(null)
+  const [error, setError]     = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    authFetch('/api/weekly-menu')
+      .then(async (res) => {
+        const data = await res.json()
+        if (cancelled) return
+        if (!res.ok) {
+          setError(data.error || '取得に失敗しました')
+          setRows([])
+        } else {
+          setRows(Array.isArray(data.rows) ? data.rows : [])
+          setError(null)
+        }
+      })
+      .catch(() => { if (!cancelled) { setError('取得に失敗しました'); setRows([]) } })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [authFetch])
+
+  // [day_of_week][category] -> menu_name の lookup
+  const lookup = useMemo(() => {
+    const m = new Map<string, string>()
+    rows?.forEach((r) => {
+      m.set(`${r.day_of_week}::${r.category}`, r.menu_name ?? '')
+    })
+    return m
+  }, [rows])
+
+  return (
+    <div style={{ background:'white', borderRadius:'12px',
+      padding:'12px 12px 8px', marginBottom:'12px',
+      boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'8px' }}>
+        <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A' }}>
+          🍱 今週の献立(惣菜)
+        </div>
+        <a href={SOOZAI_WEEKLY_MENU_URL} target="_blank" rel="noreferrer noopener"
+          style={{ fontSize:'13px', color:'#1A5276', textDecoration:'underline',
+            fontFamily:'inherit' }}>
+          全件を見る →
+        </a>
+      </div>
+
+      {loading && (
+        <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>読み込み中...</div>
+      )}
+      {!loading && error && (
+        <div style={{ fontSize:'12px', color:'#E24B4A', padding:'8px 0' }}>{error}</div>
+      )}
+      {!loading && !error && rows && rows.length === 0 && (
+        <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>
+          今週の献立データはありません
+        </div>
+      )}
+      {!loading && !error && rows && rows.length > 0 && (
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse',
+            fontSize:'12px', minWidth:'420px' }}>
+            <thead>
+              <tr>
+                <th style={cellHead}></th>
+                {DAY_LABELS.map((d, i) => (
+                  <th key={d} style={{ ...cellHead, color: i === 5 ? '#1A5276' : '#2C2C2A' }}>{d}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {MENU_CATEGORIES.map((cat) => (
+                <tr key={cat}>
+                  <td style={{ ...cellBody, fontWeight:500, background:'#FAF7F0',
+                    whiteSpace:'nowrap' }}>{cat}</td>
+                  {DAY_LABELS.map((_, i) => {
+                    const day = i + 1
+                    return (
+                      <td key={day} style={cellBody}>
+                        {lookup.get(`${day}::${cat}`) || '—'}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const cellHead: React.CSSProperties = {
+  padding:'4px 6px', borderBottom:'1px solid #E5E1D8',
+  fontSize:'11px', fontWeight:500, textAlign:'center',
+}
+const cellBody: React.CSSProperties = {
+  padding:'6px', borderBottom:'1px solid #F0ECE3',
+  textAlign:'center', color:'#2C2C2A',
 }
 
 function CalendarGrid({
