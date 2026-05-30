@@ -35,10 +35,13 @@ export async function GET(req: NextRequest) {
   try {
     // soozai-system が管理する public.hq_weekly_menus を参照のみで読む。
     // 当該テーブルのマイグレーション管理は mikawa-dx 側では行わない。
+    // week_start は text 型で 'YYYY-MM-DD' 形式が入っている想定。
+    // text を date にキャストして比較することで形式ゆらぎ(例: '2026-5-3')も
+    // 吸収しつつ意図通りの日付比較ができる。
     const rows = await prisma.$queryRawUnsafe<MenuRow[]>(
       `SELECT day_of_week, category, menu_name
        FROM public.hq_weekly_menus
-       WHERE week_start = $1::date
+       WHERE week_start::date = $1::date
          AND category = ANY($2::text[])
        ORDER BY day_of_week, category`,
       weekStartIso,
