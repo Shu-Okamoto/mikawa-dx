@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'weekStart が不正です' }, { status: 400 })
   }
 
+  const weekStartIso = weekStart.toISOString().slice(0, 10)
+
   try {
     // soozai-system が管理する public.hq_weekly_menus を参照のみで読む。
     // 当該テーブルのマイグレーション管理は mikawa-dx 側では行わない。
@@ -39,19 +41,20 @@ export async function GET(req: NextRequest) {
        WHERE week_start = $1::date
          AND category = ANY($2::text[])
        ORDER BY day_of_week, category`,
-      weekStart.toISOString().slice(0, 10),
+      weekStartIso,
       ALLOWED_CATEGORIES,
     )
 
     return NextResponse.json({
-      weekStart : weekStart.toISOString().slice(0, 10),
+      weekStart : weekStartIso,
       categories: ALLOWED_CATEGORIES,
       rows,
     })
   } catch (e) {
-    console.error(e)
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('[weekly-menu]', message)
     return NextResponse.json(
-      { error: '週間献立表を取得できませんでした' },
+      { error: '週間献立表を取得できませんでした', detail: message, weekStart: weekStartIso },
       { status: 500 }
     )
   }
