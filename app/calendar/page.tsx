@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForStoreName } from '@/lib/storeColors'
@@ -311,6 +311,8 @@ function CalendarPageContent() {
 
       <div style={{ padding:'12px' }}>
 
+        <WeeklyMenu />
+
         {viewMode === 'calendar' ? (
           <CalendarGrid
             calData={calData}
@@ -503,6 +505,145 @@ function CalendarPageContent() {
       )}
     </div>
   )
+}
+
+interface MenuRow {
+  day_of_week: number
+  category   : string
+  menu_name  : string | null
+}
+
+const MENU_CATEGORIES = ['デラックスメイン', 'メイン肉', '魚', '天ぷら'] as const
+const DAY_LABELS = ['月', '火', '水', '木', '金', '土']  // day_of_week 1〜6
+
+function WeeklyMenu() {
+  const [rows, setRows]         = useState<MenuRow[] | null>(null)
+  const [weekStart, setWeekStart] = useState<string | null>(null)
+  const [error, setError]       = useState<string | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [open, setOpen]         = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch('/api/weekly-menu')
+      .then(async (res) => {
+        const data = await res.json()
+        if (cancelled) return
+        if (!res.ok) {
+          const msg = data.detail
+            ? `${data.error || '取得に失敗しました'} (${data.detail})`
+            : (data.error || '取得に失敗しました')
+          setError(msg)
+          setRows([])
+        } else {
+          setRows(Array.isArray(data.rows) ? data.rows : [])
+          setWeekStart(typeof data.weekStart === 'string' ? data.weekStart : null)
+          setError(null)
+        }
+      })
+      .catch(() => { if (!cancelled) { setError('取得に失敗しました'); setRows([]) } })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // [day_of_week][category] -> menu_name の lookup
+  const lookup = useMemo(() => {
+    const m = new Map<string, string>()
+    rows?.forEach((r) => {
+      m.set(`${r.day_of_week}::${r.category}`, r.menu_name ?? '')
+    })
+    return m
+  }, [rows])
+
+  // 'YYYY-MM-DD' → 'YYYY/M/D〜'
+  const weekStartLabel = weekStart
+    ? (() => {
+        const [y, m, d] = weekStart.split('-')
+        return `${y}/${Number(m)}/${Number(d)}〜`
+      })()
+    : ''
+
+  return (
+    <div style={{ background:'white', borderRadius:'12px',
+      marginBottom:'12px',
+      boxShadow:'0 1px 4px rgba(0,0,0,.04)', overflow:'hidden' }}>
+      <button onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{ width:'100%', display:'flex', justifyContent:'space-between',
+          alignItems:'center', padding:'12px', background:'white', border:'none',
+          cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+        <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A' }}>
+          🍱 今週の献立(惣菜)
+          {weekStartLabel && (
+            <span style={{ fontSize:'13px', fontWeight:400,
+              color:'#888780', marginLeft:'8px' }}>
+              {weekStartLabel}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize:'13px', color:'#888780' }}>
+          {open ? '▲ 閉じる' : '▼ 開く'}
+        </div>
+      </button>
+
+      {open && (
+        <div style={{ padding:'0 12px 12px' }}>
+          {loading && (
+            <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>読み込み中...</div>
+          )}
+          {!loading && error && (
+            <div style={{ fontSize:'12px', color:'#E24B4A', padding:'8px 0' }}>{error}</div>
+          )}
+          {!loading && !error && rows && rows.length === 0 && (
+            <div style={{ fontSize:'12px', color:'#888780', padding:'8px 0' }}>
+              今週の献立データはありません
+            </div>
+          )}
+          {!loading && !error && rows && rows.length > 0 && (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse',
+                fontSize:'12px', minWidth:'420px' }}>
+                <thead>
+                  <tr>
+                    <th style={cellHead}></th>
+                    {DAY_LABELS.map((d, i) => (
+                      <th key={d} style={{ ...cellHead, color: i === 5 ? '#1A5276' : '#2C2C2A' }}>{d}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MENU_CATEGORIES.map((cat) => (
+                    <tr key={cat}>
+                      <td style={{ ...cellBody, fontWeight:500, background:'#FAF7F0',
+                        whiteSpace:'nowrap' }}>{cat}</td>
+                      {DAY_LABELS.map((_, i) => {
+                        const day = i + 1
+                        return (
+                          <td key={day} style={cellBody}>
+                            {lookup.get(`${day}::${cat}`) || '—'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const cellHead: React.CSSProperties = {
+  padding:'4px 6px', borderBottom:'1px solid #E5E1D8',
+  fontSize:'11px', fontWeight:500, textAlign:'center',
+}
+const cellBody: React.CSSProperties = {
+  padding:'6px', borderBottom:'1px solid #F0ECE3',
+  textAlign:'center', color:'#2C2C2A',
 }
 
 function CalendarGrid({
