@@ -160,9 +160,13 @@ function StorePageContent({ branch }: { branch: string }) {
     const ordersByCat: Record<string, SentItem[]> = {}
     if (ordData.orders) {
       ordData.orders.forEach((o: any) => {
+        // qtyText が保存されていれば原文を採用、無ければ数値を文字列化
+        const qtyText = o.requestQtyText
+          ? String(o.requestQtyText)
+          : (o.requestQty != null ? String(o.requestQty) : '')
         init[o.productId] = {
           status: o.status,
-          qty   : o.requestQty != null ? String(o.requestQty) : '',
+          qty   : qtyText,
           customName: '',
           registerToMaster: false,
         }
@@ -175,7 +179,7 @@ function StorePageContent({ branch }: { branch: string }) {
           category   : cat,
           unit       : o.product.unit,
           status     : o.status || '―',
-          qty        : Number(o.requestQty) || 0,
+          qty        : qtyText || 0,
         })
       })
     }
@@ -311,7 +315,7 @@ function StorePageContent({ branch }: { branch: string }) {
       if (!st) continue
       const include =
         st.status === '〇' || st.status === '△' || st.status === '×' ||
-        (st.qty && Number(st.qty) >= 0 && st.qty !== '')
+        (st.qty && st.qty.trim() !== '')
       if (!include) continue
       orders.push({
         productId  : p.id,
@@ -783,16 +787,15 @@ function ItemRow({
           borderLeft: '1.5px solid #F0ECE3',
         }}>
           <input
-            type="number" min="0" max="999" value={qty}
+            type="text" inputMode="text" value={qty}
             onChange={(e) => onSetQty(e.target.value)}
             placeholder="残数"
             style={{
-              width: '48px', height: '38px',
+              width: '80px', height: '38px', padding: '0 6px',
               border: '1.5px solid #E5E1D8', borderRadius: '10px',
               textAlign: 'center', fontSize: '16px', fontWeight: 500,
               fontFamily: 'inherit', background: 'white', color: '#2C2C2A',
             }} />
-          <span style={{ fontSize: '11px', color: '#888780', minWidth: '20px' }}>{unit}</span>
         </div>
       </div>
       {onDelete && (

@@ -44,8 +44,8 @@ interface ItemSummary {
   category   : string
   unit       : string
   vendor     : string
-  storeA     : { status: string | null; qty: number } | null
-  storeB     : { status: string | null; qty: number } | null
+  storeA     : { status: string | null; qty: number; qtyText: string | null } | null
+  storeB     : { status: string | null; qty: number; qtyText: string | null } | null
   totalQty   : number
   adjustedQty: number
 }
@@ -68,7 +68,8 @@ type OrderRow = {
   product  : { productName: string; category: string; unit: string; vendor: { vendorName: string } | null }
   store    : { storeCode: string }
   status   : string | null
-  requestQty: number | { toNumber: () => number }
+  requestQty    : number | { toNumber: () => number }
+  requestQtyText: string | null
 }
 
 function aggregateItems(orders: OrderRow[]): ItemSummary[] {
@@ -88,13 +89,14 @@ function aggregateItems(orders: OrderRow[]): ItemSummary[] {
         adjustedQty: 0,
       }
     }
-    const item = summary[pid]
-    const qty  = typeof o.requestQty === 'number' ? o.requestQty : o.requestQty.toNumber()
+    const item    = summary[pid]
+    const qty     = typeof o.requestQty === 'number' ? o.requestQty : o.requestQty.toNumber()
+    const qtyText = o.requestQtyText ?? null
 
     if (o.store.storeCode === 'nishi') {
-      item.storeA = { status: o.status, qty }
+      item.storeA = { status: o.status, qty, qtyText }
     } else if (o.store.storeCode === 'minami') {
-      item.storeB = { status: o.status, qty }
+      item.storeB = { status: o.status, qty, qtyText }
     }
     item.totalQty += qty
   })

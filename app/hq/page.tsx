@@ -12,8 +12,8 @@ interface ProductSummary {
   category   : string
   unit       : string
   vendor     : string
-  storeA     : { status: string | null; qty: number } | null
-  storeB     : { status: string | null; qty: number } | null
+  storeA     : { status: string | null; qty: number; qtyText: string | null } | null
+  storeB     : { status: string | null; qty: number; qtyText: string | null } | null
   totalQty   : number
   adjustedQty: number
 }
@@ -153,7 +153,7 @@ function HqPageContent() {
       for (const it of list) {
         const qty = adjusted[it.productId] || it.totalQty
         if (qty > 0) {
-          text += `${it.productName}: ${qty}${it.unit}\n`
+          text += `${it.productName}: ${qty}\n`
         }
       }
       text += '\n'
@@ -518,9 +518,9 @@ function OrderCards({
                         <>
                           <span style={{ color: statusColor(s.status), fontSize:'20px',
                             fontWeight:500 }}>{s.status || '―'}</span>
-                          {s.qty > 0 && (
+                          {(s.qtyText || s.qty > 0) && (
                             <span style={{ marginLeft:'auto', fontSize:'16px' }}>
-                              {s.qty}{item.unit}
+                              {s.qtyText ?? String(s.qty)}
                             </span>
                           )}
                         </>
@@ -532,7 +532,7 @@ function OrderCards({
                 })}
                 <div style={{ textAlign:'center', fontSize:'14px',
                   fontWeight:500, color:'#2C2C2A' }}>
-                  計 {item.totalQty}{item.unit}
+                  計 {item.totalQty}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:'4px' }}>
                   <input type="number"
@@ -545,7 +545,6 @@ function OrderCards({
                       border:'1.5px solid #E5E1D8', borderRadius:'8px',
                       fontSize:'20px', fontWeight:500, fontFamily:'inherit' }}
                     min="0" />
-                  <span style={{ fontSize:'12px', color:'#888780' }}>{item.unit}</span>
                 </div>
               </div>
             </div>
@@ -811,10 +810,12 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
                       const b = item?.storeB
                       const aStyle = statusStyle(a?.status ?? null)
                       const bStyle = statusStyle(b?.status ?? null)
+                      const aQty  = a?.qtyText ?? (a && a.qty > 0 ? String(a.qty) : '')
+                      const bQty  = b?.qtyText ?? (b && b.qty > 0 ? String(b.qty) : '')
                       const aText = !a || a.status === null ? '—'
-                        : a.status + (a.qty > 0 ? ` ${a.qty}` : '')
+                        : a.status + (aQty ? ` ${aQty}` : '')
                       const bText = !b || b.status === null ? '—'
-                        : b.status + (b.qty > 0 ? ` ${b.qty}` : '')
+                        : b.status + (bQty ? ` ${bQty}` : '')
                       return (
                         <Fragment key={`${pid}-${wd.dateStr}`}>
                           <td style={{
