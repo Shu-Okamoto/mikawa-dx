@@ -50,6 +50,19 @@ interface ItemSummary {
   adjustedQty: number
 }
 
+interface MemoEntry {
+  store   : string
+  category: string
+  memo    : string
+}
+
+type MemoRow = {
+  store   : { storeCode: string }
+  category: string
+  memo    : string
+  orderDate: Date
+}
+
 type OrderRow = {
   productId: number
   product  : { productName: string; category: string; unit: string; vendor: { vendorName: string } | null }
@@ -113,36 +126,58 @@ export async function GET(req: NextRequest) {
     const fromParam     = parseDateParam(req.nextUrl.searchParams.get('from'))
     const toParam       = parseDateParam(req.nextUrl.searchParams.get('to'))
 
-    // 範囲指定: { days: { dateStr: { items } } } を返す
+    // 範囲指定: { days: { dateStr: { items, memos } } } を返す
     if (fromParam && toParam) {
       const start = fromParam <= toParam ? fromParam : toParam
       const end   = fromParam <= toParam ? toParam   : fromParam
 
-      const orders = await prisma.dailyOrder.findMany({
-        where: {
-          orderDate: { gte: start, lte: end },
-          ...(category ? { product: { category } } : {}),
-        },
-        include: {
-          store  : true,
-          product: { include: { vendor: true } },
-        },
-      })
+      const [orders, memos] = await Promise.all([
+        prisma.dailyOrder.findMany({
+          where: {
+            orderDate: { gte: start, lte: end },
+            ...(category ? { product: { category } } : {}),
+          },
+          include: {
+            store  : true,
+            product: { include: { vendor: true } },
+          },
+        }),
+        prisma.orderCategoryMemo.findMany({
+          where: {
+            orderDate: { gte: start, lte: end },
+            ...(category ? { category } : {}),
+          },
+          include: { store: true },
+        }),
+      ])
 
       // 日付ごとに分類
-      const byDate: Record<string, OrderRow[]> = {}
+      const ordersByDate: Record<string, OrderRow[]> = {}
       orders.forEach((o) => {
         const key = toDateKey(new Date(o.orderDate))
-        if (!byDate[key]) byDate[key] = []
-        byDate[key].push(o as unknown as OrderRow)
+        if (!ordersByDate[key]) ordersByDate[key] = []
+        ordersByDate[key].push(o as unknown as OrderRow)
+      })
+      const memosByDate: Record<string, MemoEntry[]> = {}
+      ;(memos as unknown as MemoRow[]).forEach((m) => {
+        const key = toDateKey(new Date(m.orderDate))
+        if (!memosByDate[key]) memosByDate[key] = []
+        memosByDate[key].push({
+          store   : m.store.storeCode,
+          category: m.category,
+          memo    : m.memo,
+        })
       })
 
-      const days: Record<string, { items: ItemSummary[] }> = {}
+      const days: Record<string, { items: ItemSummary[]; memos: MemoEntry[] }> = {}
       // 範囲内の全日を埋める（空日もキー入れる）
       const cur = new Date(start)
       while (cur <= end) {
         const key = toDateKey(cur)
-        days[key] = { items: aggregateItems(byDate[key] ?? []) }
+        days[key] = {
+          items: aggregateItems(ordersByDate[key] ?? []),
+          memos: memosByDate[key] ?? [],
+        }
         cur.setDate(cur.getDate() + 1)
       }
 
@@ -152,19 +187,33 @@ export async function GET(req: NextRequest) {
     // 単一日: 既存の互換形式
     const orderDate = parseDateParam(req.nextUrl.searchParams.get('date')) ?? today()
 
-    const orders = await prisma.dailyOrder.findMany({
-      where: {
-        orderDate,
-        ...(category ? { product: { category } } : {}),
-      },
-      include: {
-        store  : true,
-        product: { include: { vendor: true } },
-      },
-    })
+    const [orders, memos] = await Promise.all([
+      prisma.dailyOrder.findMany({
+        where: {
+          orderDate,
+          ...(category ? { product: { category } } : {}),
+        },
+        include: {
+          store  : true,
+          product: { include: { vendor: true } },
+        },
+      }),
+      prisma.orderCategoryMemo.findMany({
+        where: {
+          orderDate,
+          ...(category ? { category } : {}),
+        },
+        include: { store: true },
+      }),
+    ])
 
     const items = aggregateItems(orders as unknown as OrderRow[])
-    return NextResponse.json({ items })
+    const memoList: MemoEntry[] = (memos as unknown as MemoRow[]).map((m) => ({
+      store   : m.store.storeCode,
+      category: m.category,
+      memo    : m.memo,
+    }))
+    return NextResponse.json({ items, memos: memoList })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
