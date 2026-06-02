@@ -263,15 +263,29 @@ export async function POST(req: NextRequest) {
           storeId    : store.id,
           productId  : o.productId,
           status     : o.status || null,
-          requestQty : Number(o.qty) || 0,
+          requestQty : parseFloat(String(o.qty)) || 0,
           inputUser  : user.name,
           submittedAt: new Date(),
         })),
       })
     }
 
-    // メモ + 追加商品を 1 つの memo 文字列にまとめて upsert
-    const combinedMemo = [memo, ...extraMemoLines]
+    // qty に「2ケース」「半ケース」のような非数値テキストが含まれる場合は、
+    // 数値情報は requestQty (parseFloat) に保存しつつ、原文をメモに自動追記して
+    // 情報損失を防ぐ。
+    const qtyTextNotes: string[] = []
+    for (const o of validItems) {
+      const rawTxt = String(o.qty ?? '').trim()
+      if (!rawTxt) continue
+      const num = parseFloat(rawTxt)
+      // 純粋な数値表記の場合 (例: '5', '2.5') はメモ不要
+      const isPureNumber = !Number.isNaN(num) && String(num) === rawTxt
+      if (isPureNumber) continue
+      if (o.productName) qtyTextNotes.push(`${o.productName}: ${rawTxt}`)
+    }
+
+    // メモ + 追加商品 + qty テキスト注釈 を 1 つの memo 文字列にまとめて upsert
+    const combinedMemo = [memo, ...extraMemoLines, ...qtyTextNotes]
       .map((s) => (s || '').trim()).filter(Boolean).join('\n')
 
     if (combinedMemo) {

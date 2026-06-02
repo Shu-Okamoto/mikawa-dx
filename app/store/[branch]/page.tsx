@@ -311,7 +311,7 @@ function StorePageContent({ branch }: { branch: string }) {
       if (!st) continue
       const include =
         st.status === '〇' || st.status === '△' || st.status === '×' ||
-        (st.qty && Number(st.qty) >= 0 && st.qty !== '')
+        (st.qty && st.qty.trim() !== '')
       if (!include) continue
       orders.push({
         productId  : p.id,
@@ -783,11 +783,11 @@ function ItemRow({
           borderLeft: '1.5px solid #F0ECE3',
         }}>
           <input
-            type="number" min="0" max="999" value={qty}
+            type="text" inputMode="text" value={qty}
             onChange={(e) => onSetQty(e.target.value)}
             placeholder="残数"
             style={{
-              width: '48px', height: '38px',
+              width: '80px', height: '38px', padding: '0 6px',
               border: '1.5px solid #E5E1D8', borderRadius: '10px',
               textAlign: 'center', fontSize: '16px', fontWeight: 500,
               fontFamily: 'inherit', background: 'white', color: '#2C2C2A',
