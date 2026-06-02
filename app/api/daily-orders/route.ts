@@ -258,15 +258,23 @@ export async function POST(req: NextRequest) {
 
     if (validItems.length > 0) {
       await prisma.dailyOrder.createMany({
-        data: validItems.map((o) => ({
-          orderDate,
-          storeId    : store.id,
-          productId  : o.productId,
-          status     : o.status || null,
-          requestQty : Number(o.qty) || 0,
-          inputUser  : user.name,
-          submittedAt: new Date(),
-        })),
+        data: validItems.map((o) => {
+          const rawTxt = String(o.qty ?? '').trim()
+          const num    = parseFloat(rawTxt)
+          // 純粋な数値表記 (例: '5', '2.5') かどうか
+          const isPureNumber = rawTxt !== '' && !Number.isNaN(num) && String(num) === rawTxt
+          return {
+            orderDate,
+            storeId       : store.id,
+            productId     : o.productId,
+            status        : o.status || null,
+            requestQty    : Number.isNaN(num) ? 0 : num,
+            // 単位表記付きの自由入力のみ保存。純数値や空は null。
+            requestQtyText: isPureNumber || rawTxt === '' ? null : rawTxt,
+            inputUser     : user.name,
+            submittedAt   : new Date(),
+          }
+        }),
       })
     }
 

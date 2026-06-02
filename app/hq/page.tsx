@@ -12,8 +12,8 @@ interface ProductSummary {
   category   : string
   unit       : string
   vendor     : string
-  storeA     : { status: string | null; qty: number } | null
-  storeB     : { status: string | null; qty: number } | null
+  storeA     : { status: string | null; qty: number; qtyText: string | null } | null
+  storeB     : { status: string | null; qty: number; qtyText: string | null } | null
   totalQty   : number
   adjustedQty: number
 }
@@ -518,9 +518,9 @@ function OrderCards({
                         <>
                           <span style={{ color: statusColor(s.status), fontSize:'20px',
                             fontWeight:500 }}>{s.status || '―'}</span>
-                          {s.qty > 0 && (
+                          {(s.qtyText || s.qty > 0) && (
                             <span style={{ marginLeft:'auto', fontSize:'16px' }}>
-                              {s.qty}{item.unit}
+                              {s.qtyText ?? `${s.qty}${item.unit}`}
                             </span>
                           )}
                         </>
@@ -811,10 +811,12 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
                       const b = item?.storeB
                       const aStyle = statusStyle(a?.status ?? null)
                       const bStyle = statusStyle(b?.status ?? null)
+                      const aQty  = a?.qtyText ?? (a && a.qty > 0 ? String(a.qty) : '')
+                      const bQty  = b?.qtyText ?? (b && b.qty > 0 ? String(b.qty) : '')
                       const aText = !a || a.status === null ? '—'
-                        : a.status + (a.qty > 0 ? ` ${a.qty}` : '')
+                        : a.status + (aQty ? ` ${aQty}` : '')
                       const bText = !b || b.status === null ? '—'
-                        : b.status + (b.qty > 0 ? ` ${b.qty}` : '')
+                        : b.status + (bQty ? ` ${bQty}` : '')
                       return (
                         <Fragment key={`${pid}-${wd.dateStr}`}>
                           <td style={{
