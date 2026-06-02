@@ -193,12 +193,10 @@ export function useAuth(arg?: UseAuthArg, legacyOptions?: LegacyOptions) {
   }, [router])
 
   const logout = useCallback(() => {
-    // 「終了する」: localStorage の認証情報に加えて sessionStorage の
-    // pinRole もクリアして、完全にログイン前(PIN画面)まで戻す。
+    // 「終了する」: localStorage の認証情報のみクリアし、
+    // sessionStorage の pinRole は残して入口のメニュー(エントリ選択)
+    // 画面に戻す。PIN から入り直したい場合は「別のPINで入り直す」で。
     clearStoredAuth()
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('pinRole')
-    }
     router.push('/')
   }, [router])
 
