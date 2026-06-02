@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { Fragment, useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
-type Granularity = 'year' | 'month' | 'week' | 'day'
+type Granularity = 'year' | 'month' | 'day'
+type MetricKey  = 'amount' | 'souzai' | 'mochi' | 'hana'
 
 interface Bucket {
   amount       : number
@@ -15,16 +16,15 @@ interface Bucket {
   days         : number
 }
 
-interface DowEntry {
-  dow         : number
-  label       : string
-  days        : number
-  totalAmount : number
-  avgAmount   : number
-  avgSouzai   : number
-  avgMochi    : number
-  avgHana     : number
-  avgCustomer : number
+interface DailyEntry {
+  date    : string
+  dow     : number
+  byStore : Record<string, Bucket>
+}
+
+interface MonthlyEntry {
+  month   : number
+  byStore : Record<string, Bucket>
 }
 
 interface ApiData {
@@ -34,24 +34,25 @@ interface ApiData {
   end        : string
   label      : string
   total      : { byStore: Record<string, Bucket> }
-  dow?       : { byStore: Record<string, DowEntry[]> }
+  prevTotal  : { byStore: Record<string, Bucket> }
+  daily?     : DailyEntry[]
+  prevDaily? : DailyEntry[]
+  monthly?   : MonthlyEntry[]
+  prevMonthly?: MonthlyEntry[]
 }
 
 const STORES = ['西店', '南店']
 
-const SEGMENTS = [
-  { key: 'souzai', label: '惣菜',   color: '#639922' },
-  { key: 'mochi' , label: '餅'  ,   color: '#1A5276' },
-  { key: 'hana'  , label: '花'  ,   color: '#E67E22' },
-  { key: 'other' , label: 'その他', color: '#A8A69E' },
-] as const
+const METRICS: { key: MetricKey; label: string; emoji: string }[] = [
+  { key: 'amount', label: '売上',   emoji: '💰' },
+  { key: 'souzai', label: '惣菜',   emoji: '🍱' },
+  { key: 'mochi',  label: '餅',     emoji: '🍡' },
+  { key: 'hana',   label: '花',     emoji: '💐' },
+]
 
 function todayYmd(): string {
   const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
 function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
@@ -59,39 +60,43 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
   const date = new Date(y, m - 1, d)
   if (g === 'year')  date.setFullYear(date.getFullYear() + dir)
   if (g === 'month') date.setMonth(date.getMonth() + dir)
-  if (g === 'week')  date.setDate(date.getDate() + 7 * dir)
   if (g === 'day')   date.setDate(date.getDate() + dir)
-  const yy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
 }
 
-function weekStartOf(ref: string): string {
-  const [y, m, d] = ref.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  const offset = (date.getDay() + 6) % 7 // 月曜始まり
-  date.setDate(date.getDate() - offset)
-  const yy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+function emptyBucket(): Bucket {
+  return { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
-// 表示順: 月→日 (JS getDay基準で 1,2,3,4,5,6,0)
-const DOW_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
-
-function reorderDow(entries: DowEntry[]): DowEntry[] {
-  return DOW_DISPLAY_ORDER.map((i) => entries[i] ?? {
-    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
-    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+function sumStores(byStore: Record<string, Bucket>): Bucket {
+  const out = emptyBucket()
+  STORES.forEach((s) => {
+    const b = byStore[s]
+    if (!b) return
+    out.amount        += b.amount
+    out.souzai        += b.souzai
+    out.mochi         += b.mochi
+    out.hana          += b.hana
+    out.customerCount += b.customerCount
+    out.days = Math.max(out.days, b.days)
   })
+  return out
+}
+
+function yen(n: number): string {
+  return '¥' + Math.round(n).toLocaleString('ja-JP')
+}
+
+function pct(curr: number, prev: number): string {
+  if (prev <= 0) return curr > 0 ? '—' : '—'
+  return Math.round((curr / prev) * 100) + '%'
 }
 
 function AnalyticsContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [ref, setRef] = useState<string>(todayYmd())
+  const [metric, setMetric] = useState<MetricKey>('amount')
   const [data, setData] = useState<ApiData | null>(null)
   const [fetching, setFetching] = useState(true)
 
@@ -114,18 +119,6 @@ function AnalyticsContent() {
   if (loading) return <Center>読み込み中...</Center>
   if (error)   return <Center error>{error}</Center>
 
-  const totalAll: Bucket = { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
-  STORES.forEach((s) => {
-    const b = data?.total.byStore[s]
-    if (!b) return
-    totalAll.amount        += b.amount
-    totalAll.souzai        += b.souzai
-    totalAll.mochi         += b.mochi
-    totalAll.hana          += b.hana
-    totalAll.customerCount += b.customerCount
-    totalAll.days = Math.max(totalAll.days, b.days)
-  })
-
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
       background:'#F5F1EA', minHeight:'100vh', paddingBottom:'24px' }}>
@@ -140,8 +133,7 @@ function AnalyticsContent() {
           <div style={{ display:'flex', gap:'6px', flexWrap:'wrap',
             marginBottom:'12px' }}>
             {([
-              ['day'  , '今日'],
-              ['week' , '週'],
+              ['day'  , '日'],
               ['month', '月'],
               ['year' , '年'],
             ] as const).map(([key, label]) => {
@@ -174,60 +166,38 @@ function AnalyticsContent() {
               style={navBtn}>›</button>
           </div>
 
-          {/* 粒度ごとのピッカー */}
           <div style={{ marginTop:'12px', display:'flex',
             justifyContent:'center' }}>
-            <PeriodPicker granularity={granularity} ref_={ref}
-              onChange={setRef} />
+            <PeriodPicker granularity={granularity} ref_={ref} onChange={setRef} />
           </div>
         </div>
 
-        {/* 売上合計 */}
-        <div style={{ background:'white', borderRadius:'16px', padding:'16px',
-          marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'12px' }}>
-            💰 売上合計
-          </div>
-          {fetching ? (
-            <div style={{ padding:'24px', textAlign:'center',
-              color:'#888780', fontSize:'15px' }}>読み込み中...</div>
-          ) : (
-            <>
-              {STORES.map((s) => (
-                <StoreBucket key={s} name={s}
-                  bucket={data?.total.byStore[s] ??
-                    { amount:0, souzai:0, mochi:0, hana:0, customerCount:0, days:0 }} />
-              ))}
-              <StoreBucket name="🧮 2店合計" bucket={totalAll} />
-            </>
-          )}
+        {/* メトリクスタブ */}
+        <div style={{ display:'flex', gap:'6px', marginBottom:'10px', flexWrap:'wrap' }}>
+          {METRICS.map((m) => {
+            const active = m.key === metric
+            return (
+              <button key={m.key} onClick={() => setMetric(m.key)}
+                style={{
+                  flex:'1 1 0', minWidth:'70px', padding:'10px 8px',
+                  borderRadius:'12px', fontSize:'14px', fontWeight:500,
+                  fontFamily:'inherit', cursor:'pointer',
+                  border: active ? '1.5px solid #1A5276' : '1.5px solid #E5E1D8',
+                  background: active ? '#1A5276' : 'white',
+                  color    : active ? 'white'   : '#2C2C2A',
+                }}>{m.emoji} {m.label}</button>
+            )
+          })}
         </div>
 
-        {/* 曜日別グラフ (日粒度では非表示) */}
-        {granularity !== 'day' && (
-        <div style={{ background:'white', borderRadius:'16px', padding:'16px',
-          boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
-            📊 曜日別 1日平均売上
-          </div>
-          <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
-            ※ {data?.label} 内の各曜日の1日あたり平均
-          </div>
-
-          <Legend />
-
-          {fetching ? (
-            <div style={{ padding:'24px', textAlign:'center',
-              color:'#888780', fontSize:'15px' }}>読み込み中...</div>
-          ) : (
-            <>
-              {STORES.map((s) => (
-                <DowBarChart key={s} name={s}
-                  entries={reorderDow(data?.dow?.byStore[s] ?? emptyDow())} />
-              ))}
-            </>
-          )}
-        </div>
+        {fetching ? (
+          <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+            textAlign:'center', color:'#888780' }}>読み込み中...</div>
+        ) : data ? (
+          <SalesTable data={data} metric={metric} />
+        ) : (
+          <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+            textAlign:'center', color:'#888780' }}>データがありません</div>
         )}
 
       </div>
@@ -235,53 +205,177 @@ function AnalyticsContent() {
   )
 }
 
-function emptyDow(): DowEntry[] {
-  return Array.from({ length: 7 }, (_, i) => ({
-    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
-    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
-  }))
-}
+function SalesTable({ data, metric }: { data: ApiData; metric: MetricKey }) {
+  // 行データを統一インタフェイス {label, byStore, prevByStore} で組み立て
+  const rows = useMemo(() => buildRows(data), [data])
+  const totalRow = useMemo(() => buildTotalRow(data), [data])
 
-function Legend() {
+  const metricLabel = METRICS.find((m) => m.key === metric)?.label ?? '売上'
+  const metricEmoji = METRICS.find((m) => m.key === metric)?.emoji ?? ''
+
   return (
-    <div style={{ display:'flex', gap:'14px', flexWrap:'wrap',
-      marginBottom:'10px', fontSize:'13px', color:'#555' }}>
-      {SEGMENTS.map((seg) => (
-        <span key={seg.key} style={{ display:'flex', alignItems:'center', gap:'4px' }}>
-          <span style={{ width:'14px', height:'14px', borderRadius:'3px',
-            background: seg.color, display:'inline-block' }} />
-          {seg.label}
-        </span>
-      ))}
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        {metricEmoji} {metricLabel} 一覧
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'640px',
+          borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>
+                {data.granularity === 'year' ? '月' : '日付'}
+              </th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th colSpan={2} style={thTotalGroupStyle}>合計</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>前年比</th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>{metricLabel}</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={thSubStyle}>{metricLabel}</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>{metricLabel}</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>客数</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <Row key={r.key} row={r} metric={metric} />
+            ))}
+            <Row row={totalRow} metric={metric} isTotal />
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
 
-function StoreBucket({ name, bucket }: { name: string; bucket: Bucket }) {
+interface RowData {
+  key      : string
+  label    : string
+  sublabel?: string
+  dow?     : number    // 日曜=0,土曜=6
+  byStore     : Record<string, Bucket>
+  prevByStore : Record<string, Bucket>
+}
+
+function buildRows(data: ApiData): RowData[] {
+  if (data.granularity === 'month') {
+    const daily     = data.daily ?? []
+    const prevDaily = data.prevDaily ?? []
+    return daily.map((d, i) => {
+      // 前年同日: 同じインデックス(月内位置)で対応させる。
+      // 末日のズレ(例: 当月31日まで、前年同月30日まで)は prevDaily[i] が
+      // undefined になるので 0扱い。
+      const p = prevDaily[i]
+      const dt = new Date(d.date)
+      return {
+        key        : d.date,
+        label      : `${dt.getMonth()+1}/${dt.getDate()}`,
+        sublabel   : ['日','月','火','水','木','金','土'][d.dow],
+        dow        : d.dow,
+        byStore    : d.byStore,
+        prevByStore: p?.byStore ?? {},
+      }
+    })
+  }
+  if (data.granularity === 'year') {
+    const monthly     = data.monthly ?? []
+    const prevMonthly = data.prevMonthly ?? []
+    return monthly.map((m, i) => ({
+      key        : `m${m.month}`,
+      label      : `${m.month}月`,
+      byStore    : m.byStore,
+      prevByStore: prevMonthly[i]?.byStore ?? {},
+    }))
+  }
+  // day: 1行だけ
+  return [{
+    key        : 'd',
+    label      : data.label,
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }]
+}
+
+function buildTotalRow(data: ApiData): RowData {
+  return {
+    key        : 'TOTAL',
+    label      : '合計',
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }
+}
+
+function metricOf(b: Bucket | undefined, m: MetricKey): number {
+  if (!b) return 0
+  if (m === 'amount') return b.amount
+  if (m === 'souzai') return b.souzai
+  if (m === 'mochi')  return b.mochi
+  return b.hana
+}
+
+function Row({ row, metric, isTotal }: {
+  row: RowData; metric: MetricKey; isTotal?: boolean
+}) {
+  const total     = sumStores(row.byStore)
+  const prevTotal = sumStores(row.prevByStore)
+  const curMetric = metricOf(total, metric)
+  const prvMetric = metricOf(prevTotal, metric)
+
+  const bg = isTotal ? '#FBF8F2'
+    : row.dow === 0 ? '#FFF7F6'
+    : row.dow === 6 ? '#F2F7FB'
+    : 'white'
+  const labelColor = isTotal ? '#2C2C2A'
+    : row.dow === 0 ? '#E24B4A'
+    : row.dow === 6 ? '#1A5276'
+    : '#2C2C2A'
+  const weight = isTotal ? 600 : 500
+
   return (
-    <div style={{ marginBottom:'12px', paddingBottom:'12px',
-      borderBottom:'1px solid #F5F1EA' }}>
-      <div style={{ display:'flex', justifyContent:'space-between',
-        alignItems:'baseline', marginBottom:'6px' }}>
-        <span style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A' }}>{name}</span>
-        <span style={{ fontSize:'13px', color:'#888780' }}>{bucket.days}営業日</span>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
-        gap:'4px', fontSize:'14px' }}>
-        <Stat label="売上合計" value={'¥' + bucket.amount.toLocaleString()} />
-        <Stat label="客数合計" value={bucket.customerCount + '人'} />
-        <Stat label="惣菜売上" value={'¥' + bucket.souzai.toLocaleString()} />
-        <Stat label="餅売上"   value={'¥' + bucket.mochi.toLocaleString()} />
-        <Stat label="花売上"   value={'¥' + bucket.hana.toLocaleString()} />
-        <Stat label="客単価"   value={bucket.customerCount > 0
-          ? '¥' + Math.round(bucket.amount / bucket.customerCount).toLocaleString() : '—'} />
-        <Stat label="日商平均" value={bucket.days > 0
-          ? '¥' + Math.round(bucket.amount / bucket.days).toLocaleString() : '—'} />
-        <Stat label="日次客数" value={bucket.days > 0
-          ? Math.round(bucket.customerCount / bucket.days) + '人' : '—'} />
-      </div>
-    </div>
+    <tr style={{ background: bg, borderTop:'1px solid #F0ECE3' }}>
+      <td style={{ ...tdStyle, fontWeight: weight, color: labelColor, whiteSpace:'nowrap' }}>
+        {row.label}
+        {row.sublabel && (
+          <span style={{ marginLeft:'4px', fontSize:'11px', color:'#888780' }}>
+            ({row.sublabel})
+          </span>
+        )}
+      </td>
+      {STORES.map((s) => {
+        const b = row.byStore[s]
+        const v = metricOf(b, metric)
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{v > 0 ? yen(v) : '—'}</td>
+            <td style={tdNumStyle}>{b && b.customerCount > 0 ? `${b.customerCount}人` : '—'}</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: isTotal ? 600 : 500 }}>
+        {curMetric > 0 ? yen(curMetric) : '—'}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
+      </td>
+      <td style={{ ...tdNumStyle, color: yoyColor(curMetric, prvMetric) }}>
+        {prvMetric > 0 ? pct(curMetric, prvMetric) : '—'}
+      </td>
+    </tr>
   )
+}
+
+function yoyColor(curr: number, prev: number): string {
+  if (prev <= 0 || curr === 0) return '#888780'
+  const ratio = curr / prev
+  if (ratio >= 1.05) return '#3B6D11'
+  if (ratio <= 0.95) return '#E24B4A'
+  return '#2C2C2A'
 }
 
 function PeriodPicker({ granularity, ref_, onChange }: {
@@ -304,7 +398,6 @@ function PeriodPicker({ granularity, ref_, onChange }: {
       </select>
     )
   }
-
   if (granularity === 'day') {
     return (
       <input type="date" value={ref_}
@@ -312,29 +405,40 @@ function PeriodPicker({ granularity, ref_, onChange }: {
         style={pickerStyle} />
     )
   }
-
-  if (granularity === 'month') {
-    const value = `${y}-${String(m).padStart(2, '0')}`
-    return (
-      <input type="month" value={value}
-        onChange={(e) => {
-          if (!e.target.value) return
-          onChange(e.target.value + '-01')
-        }}
-        style={pickerStyle} />
-    )
-  }
-
-  // week: 開始日を表示するdate input
-  const weekStart = weekStartOf(ref_)
+  // month
+  const value = `${y}-${String(m).padStart(2, '0')}`
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-      <span style={{ fontSize:'13px', color:'#888780' }}>週開始(月)</span>
-      <input type="date" value={weekStart}
-        onChange={(e) => e.target.value && onChange(e.target.value)}
-        style={pickerStyle} />
-    </div>
+    <input type="month" value={value}
+      onChange={(e) => {
+        if (!e.target.value) return
+        onChange(e.target.value + '-01')
+      }}
+      style={pickerStyle} />
   )
+}
+
+const thStyle: React.CSSProperties = {
+  padding:'8px 6px', borderBottom:'1.5px solid #E5E1D8',
+  fontSize:'12px', fontWeight:500, color:'#2C2C2A',
+  background:'#FAF8F3', whiteSpace:'nowrap',
+}
+const thGroupStyle: React.CSSProperties = {
+  ...thStyle, textAlign:'center',
+}
+const thTotalGroupStyle: React.CSSProperties = {
+  ...thStyle, textAlign:'center', background:'#FBF8F2',
+}
+const thSubStyle: React.CSSProperties = {
+  padding:'4px 6px', borderBottom:'1.5px solid #E5E1D8',
+  fontSize:'11px', fontWeight:400, color:'#888780',
+  background:'#FAF8F3', whiteSpace:'nowrap', textAlign:'center',
+}
+const tdStyle: React.CSSProperties = {
+  padding:'6px 8px', fontSize:'13px', color:'#2C2C2A',
+}
+const tdNumStyle: React.CSSProperties = {
+  padding:'6px 8px', fontSize:'13px', color:'#2C2C2A',
+  textAlign:'right', whiteSpace:'nowrap',
 }
 
 const pickerStyle: React.CSSProperties = {
@@ -342,102 +446,6 @@ const pickerStyle: React.CSSProperties = {
   border:'1.5px solid #E5E1D8', borderRadius:'10px',
   background:'white', fontFamily:'inherit',
   color:'#2C2C2A', cursor:'pointer',
-}
-
-function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
-  const maxAmount = Math.max(...entries.map((e) => e.avgAmount), 1)
-
-  const seg = (e: DowEntry) => ({
-    souzai: e.avgSouzai,
-    mochi : e.avgMochi,
-    hana  : e.avgHana,
-    other : Math.max(0, e.avgAmount - e.avgSouzai - e.avgMochi - e.avgHana),
-  })
-
-  return (
-    <div style={{ marginTop:'12px', marginBottom:'8px' }}>
-      <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
-        marginBottom:'8px' }}>{name}</div>
-
-      <div style={{ display:'flex', flexDirection:'column', gap:'6px',
-        padding:'10px', background:'#FAFAFA', borderRadius:'8px' }}>
-        {entries.map((e) => {
-          const total = e.avgAmount
-          const widthPct = total > 0 ? (total / maxAmount) * 100 : 0
-          const labelColor = e.dow === 0 ? '#E24B4A' :
-                              e.dow === 6 ? '#1A6FAF' : '#2C2C2A'
-          const segs = seg(e)
-          return (
-            <div key={e.dow} style={{ display:'flex', alignItems:'center',
-              gap:'8px' }}>
-              {/* 曜日 */}
-              <div style={{ width:'28px', fontSize:'14px', fontWeight:600,
-                color: labelColor, textAlign:'center', flexShrink:0 }}>
-                {e.label}
-              </div>
-
-              {/* バー本体 */}
-              <div style={{ flex:1, position:'relative', height:'28px',
-                background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>
-                {total > 0 && (
-                  <div style={{ position:'absolute', left:0, top:0, bottom:0,
-                    width: widthPct + '%', display:'flex',
-                    borderRadius:'4px', overflow:'hidden' }}>
-                    {SEGMENTS.map((s) => {
-                      const v = segs[s.key]
-                      if (v <= 0) return null
-                      const pct = (v / total) * 100
-                      const segWidthPx = (pct / 100) * widthPct
-                      // セグメントが十分広いとき (>=8% of full chart width) のみ金額表示
-                      const showLabel = segWidthPx >= 8
-                      return (
-                        <div key={s.key}
-                          title={`${s.label} ¥${Math.round(v).toLocaleString()} (${pct.toFixed(0)}%)`}
-                          style={{ width: pct + '%', background: s.color,
-                            display:'flex', alignItems:'center',
-                            justifyContent:'center',
-                            color:'white', fontSize:'11px', fontWeight:600,
-                            overflow:'hidden', whiteSpace:'nowrap' }}>
-                          {showLabel ? '¥' + Math.round(v).toLocaleString() : ''}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* 右側: 売上合計平均 + 平均客数 */}
-              <div style={{ width:'92px', fontSize:'12px',
-                textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
-                {e.days > 0 ? (
-                  <>
-                    <div style={{ fontWeight:600, color:'#2C2C2A' }}>
-                      ¥{Math.round(total).toLocaleString()}
-                    </div>
-                    <div style={{ color:'#888780', fontSize:'11px' }}>
-                      {e.avgCustomer}人 · {e.days}日
-                    </div>
-                  </>
-                ) : (
-                  <span style={{ color:'#888780' }}>—</span>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display:'flex', justifyContent:'space-between',
-      padding:'6px 10px', background:'#FAFAFA', borderRadius:'6px' }}>
-      <span style={{ color:'#888780' }}>{label}</span>
-      <span style={{ fontWeight:500, color:'#2C2C2A' }}>{value}</span>
-    </div>
-  )
 }
 
 const navBtn: React.CSSProperties = {

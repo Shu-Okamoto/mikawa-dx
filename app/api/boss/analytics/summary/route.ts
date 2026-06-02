@@ -21,7 +21,7 @@ interface Bucket {
   days         : number
 }
 
-type Granularity = 'year' | 'month' | 'week' | 'day'
+type Granularity = 'year' | 'month' | 'day'
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 
 function toNum(v: { toNumber: () => number } | number): number {
@@ -30,6 +30,15 @@ function toNum(v: { toNumber: () => number } | number): number {
 
 function newBucket(): Bucket {
   return { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
+}
+
+function addRow(b: Bucket, s: SaleRow) {
+  b.amount        += toNum(s.amount)
+  b.souzai        += toNum(s.souzaiAmount)
+  b.mochi         += toNum(s.mochiAmount)
+  b.hana          += toNum(s.hanaAmount)
+  b.customerCount += s.customerCount
+  b.days          += 1
 }
 
 function parseRefDate(s: string | null): Date {
@@ -54,36 +63,20 @@ function rangeFor(granularity: Granularity, ref: Date): {
   if (granularity === 'year') {
     const start = new Date(ref.getFullYear(), 0, 1)
     const end   = new Date(ref.getFullYear() + 1, 0, 1)
-    const endI  = new Date(end.getTime() - 86400000)
-    return { start, endExclusive: end, endInclusive: endI,
+    return { start, endExclusive: end, endInclusive: new Date(end.getTime() - 86400000),
       label: `${ref.getFullYear()}年` }
   }
   if (granularity === 'month') {
     const start = new Date(ref.getFullYear(), ref.getMonth(), 1)
     const end   = new Date(ref.getFullYear(), ref.getMonth() + 1, 1)
-    const endI  = new Date(end.getTime() - 86400000)
-    return { start, endExclusive: end, endInclusive: endI,
+    return { start, endExclusive: end, endInclusive: new Date(end.getTime() - 86400000),
       label: `${ref.getFullYear()}年${ref.getMonth() + 1}月` }
-  }
-  if (granularity === 'week') {
-    const start = new Date(ref)
-    // 月曜始まり: Sun(0)→-6, Mon(1)→0, Tue(2)→-1, ...
-    const offset = (ref.getDay() + 6) % 7
-    start.setDate(ref.getDate() - offset)
-    const end   = new Date(start)
-    end.setDate(start.getDate() + 7)
-    const endI  = new Date(end.getTime() - 86400000)
-    const ml = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`
-    return { start, endExclusive: end, endInclusive: endI,
-      label: `${ml(start)}〜${ml(endI)} の週` }
   }
   // day
   const start = new Date(ref)
   const end   = new Date(ref.getTime() + 86400000)
   return {
-    start,
-    endExclusive: end,
-    endInclusive: new Date(ref),
+    start, endExclusive: end, endInclusive: new Date(ref),
     label: `${ref.getFullYear()}/${ref.getMonth() + 1}/${ref.getDate()}(${DOW_LABELS[ref.getDay()]})`,
   }
 }
@@ -93,15 +86,57 @@ function aggregateByStore(sales: SaleRow[]): Record<string, Bucket> {
   sales.forEach((s) => {
     const name = s.store.storeName
     if (!out[name]) out[name] = newBucket()
-    const b = out[name]
-    b.amount        += toNum(s.amount)
-    b.souzai        += toNum(s.souzaiAmount)
-    b.mochi         += toNum(s.mochiAmount)
-    b.hana          += toNum(s.hanaAmount)
-    b.customerCount += s.customerCount
-    b.days          += 1
+    addRow(out[name], s)
   })
   return out
+}
+
+// 日別 (月粒度用)
+interface DailyEntry {
+  date    : string                       // 'YYYY-MM-DD'
+  dow     : number                       // 0=日,6=土
+  byStore : Record<string, Bucket>
+}
+function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): DailyEntry[] {
+  const byDate = new Map<string, DailyEntry>()
+  const cur = new Date(start)
+  while (cur <= endInclusive) {
+    byDate.set(ymd(cur), { date: ymd(cur), dow: cur.getDay(), byStore: {} })
+    cur.setDate(cur.getDate() + 1)
+  }
+  sales.forEach((s) => {
+    const key = ymd(new Date(s.saleDate))
+    const entry = byDate.get(key)
+    if (!entry) return
+    const name = s.store.storeName
+    if (!entry.byStore[name]) entry.byStore[name] = newBucket()
+    addRow(entry.byStore[name], s)
+  })
+  return Array.from(byDate.values())
+}
+
+// 月別 (年粒度用)
+interface MonthlyEntry {
+  month   : number                       // 1〜12
+  byStore : Record<string, Bucket>
+}
+function aggregateMonthly(sales: SaleRow[]): MonthlyEntry[] {
+  const arr: MonthlyEntry[] = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1, byStore: {},
+  }))
+  sales.forEach((s) => {
+    const m  = new Date(s.saleDate).getMonth() // 0..11
+    const e  = arr[m]
+    const name = s.store.storeName
+    if (!e.byStore[name]) e.byStore[name] = newBucket()
+    addRow(e.byStore[name], s)
+  })
+  return arr
+}
+
+// 前年同期間の Date を計算
+function prevYearRef(ref: Date): Date {
+  return new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
 }
 
 export async function GET(req: NextRequest) {
@@ -113,69 +148,53 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const g  = (searchParams.get('granularity') ?? 'month') as Granularity
-    if (!['year', 'month', 'week', 'day'].includes(g)) {
+    if (!['year', 'month', 'day'].includes(g)) {
       return NextResponse.json({ error: '不正な粒度' }, { status: 400 })
     }
-    const ref = parseRefDate(searchParams.get('ref'))
-    const { start, endExclusive, endInclusive, label } = rangeFor(g, ref)
+    const ref     = parseRefDate(searchParams.get('ref'))
+    const prevRef = prevYearRef(ref)
+    const cur     = rangeFor(g, ref)
+    const prev    = rangeFor(g, prevRef)
 
-    const sales = await prisma.sale.findMany({
-      where  : { saleDate: { gte: start, lt: endExclusive } },
-      include: { store: true },
-    }) as unknown as SaleRow[]
+    const [curSales, prevSales] = await Promise.all([
+      prisma.sale.findMany({
+        where  : { saleDate: { gte: cur.start, lt: cur.endExclusive } },
+        include: { store: true },
+      }) as unknown as Promise<SaleRow[]>,
+      prisma.sale.findMany({
+        where  : { saleDate: { gte: prev.start, lt: prev.endExclusive } },
+        include: { store: true },
+      }) as unknown as Promise<SaleRow[]>,
+    ])
 
-    const totalByStore = aggregateByStore(sales)
+    const total     = { byStore: aggregateByStore(curSales) }
+    const prevTotal = { byStore: aggregateByStore(prevSales) }
 
-    let dowByStore: Record<string, Array<{
-      dow         : number
-      label       : string
-      days        : number
-      totalAmount : number
-      avgAmount   : number
-      avgSouzai   : number
-      avgMochi    : number
-      avgHana     : number
-      avgCustomer : number
-    }>> | undefined
+    let daily      : DailyEntry[] | undefined
+    let prevDaily  : DailyEntry[] | undefined
+    let monthly    : MonthlyEntry[] | undefined
+    let prevMonthly: MonthlyEntry[] | undefined
 
-    if (g !== 'day') {
-      const dowAccum: Record<string, Bucket[]> = {}
-      sales.forEach((s) => {
-        const name = s.store.storeName
-        const dow  = new Date(s.saleDate).getDay()
-        if (!dowAccum[name]) dowAccum[name] = Array.from({ length: 7 }, newBucket)
-        const b = dowAccum[name][dow]
-        b.amount        += toNum(s.amount)
-        b.souzai        += toNum(s.souzaiAmount)
-        b.mochi         += toNum(s.mochiAmount)
-        b.hana          += toNum(s.hanaAmount)
-        b.customerCount += s.customerCount
-        b.days          += 1
-      })
-      dowByStore = {}
-      Object.entries(dowAccum).forEach(([name, buckets]) => {
-        dowByStore![name] = buckets.map((b, i) => ({
-          dow         : i,
-          label       : DOW_LABELS[i],
-          days        : b.days,
-          totalAmount : b.amount,
-          avgAmount   : b.days > 0 ? Math.round(b.amount / b.days) : 0,
-          avgSouzai   : b.days > 0 ? Math.round(b.souzai / b.days) : 0,
-          avgMochi    : b.days > 0 ? Math.round(b.mochi  / b.days) : 0,
-          avgHana     : b.days > 0 ? Math.round(b.hana   / b.days) : 0,
-          avgCustomer : b.days > 0 ? Math.round(b.customerCount / b.days) : 0,
-        }))
-      })
+    if (g === 'month') {
+      daily     = aggregateDaily(curSales,  cur.start,  cur.endInclusive)
+      prevDaily = aggregateDaily(prevSales, prev.start, prev.endInclusive)
+    } else if (g === 'year') {
+      monthly     = aggregateMonthly(curSales)
+      prevMonthly = aggregateMonthly(prevSales)
     }
 
     return NextResponse.json({
       granularity: g,
       ref        : ymd(ref),
-      start      : ymd(start),
-      end        : ymd(endInclusive),
-      label,
-      total      : { byStore: totalByStore },
-      dow        : dowByStore ? { byStore: dowByStore } : undefined,
+      start      : ymd(cur.start),
+      end        : ymd(cur.endInclusive),
+      label      : cur.label,
+      total,
+      prevTotal,
+      ...(daily       ? { daily }       : {}),
+      ...(prevDaily   ? { prevDaily }   : {}),
+      ...(monthly     ? { monthly }     : {}),
+      ...(prevMonthly ? { prevMonthly } : {}),
     })
   } catch (e) {
     console.error(e)
