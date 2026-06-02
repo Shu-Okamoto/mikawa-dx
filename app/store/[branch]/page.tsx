@@ -796,7 +796,6 @@ function ItemRow({
               textAlign: 'center', fontSize: '16px', fontWeight: 500,
               fontFamily: 'inherit', background: 'white', color: '#2C2C2A',
             }} />
-          <span style={{ fontSize: '11px', color: '#888780', minWidth: '20px' }}>{unit}</span>
         </div>
       </div>
       {onDelete && (
