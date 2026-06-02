@@ -20,18 +20,20 @@ interface Product {
 }
 
 interface OrderState {
-  status    : string | null
-  qty       : string
-  customName: string
+  status          : string | null
+  qty             : string
+  customName      : string
+  registerToMaster: boolean
 }
 
 interface SentItem {
-  productId  : number | string
-  productName: string
-  category   : string
-  unit       : string
-  status     : string
-  qty        : number | string
+  productId       : number | string
+  productName     : string
+  category        : string
+  unit            : string
+  status          : string
+  qty             : number | string
+  registerToMaster?: boolean
 }
 
 interface SentCategory {
@@ -152,7 +154,7 @@ function StorePageContent({ branch }: { branch: string }) {
     // 既存注文を sent + orderState に反映
     const init: Record<number | string, OrderState> = {}
     prodData.forEach((p: Product) => {
-      init[p.id] = { status: null, qty: '', customName: '' }
+      init[p.id] = { status: null, qty: '', customName: '', registerToMaster: false }
     })
 
     const ordersByCat: Record<string, SentItem[]> = {}
@@ -162,6 +164,7 @@ function StorePageContent({ branch }: { branch: string }) {
           status: o.status,
           qty   : o.requestQty != null ? String(o.requestQty) : '',
           customName: '',
+          registerToMaster: false,
         }
         const cat = o.product?.category
         if (!cat) return
@@ -252,20 +255,26 @@ function StorePageContent({ branch }: { branch: string }) {
   const setStatus = (id: number | string, status: string) => {
     setOrderState((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] || { status: null, qty: '', customName: '' }),
+      [id]: { ...(prev[id] || { status: null, qty: '', customName: '', registerToMaster: false }),
               status: prev[id]?.status === status ? null : status },
     }))
   }
   const setQty = (id: number | string, qty: string) => {
     setOrderState((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] || { status: null, qty: '', customName: '' }), qty },
+      [id]: { ...(prev[id] || { status: null, qty: '', customName: '', registerToMaster: false }), qty },
     }))
   }
   const setCustomName = (id: string, customName: string) => {
     setOrderState((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] || { status: null, qty: '', customName: '' }), customName },
+      [id]: { ...(prev[id] || { status: null, qty: '', customName: '', registerToMaster: false }), customName },
+    }))
+  }
+  const setRegisterToMaster = (id: string, registerToMaster: boolean) => {
+    setOrderState((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || { status: null, qty: '', customName: '', registerToMaster: false }), registerToMaster },
     }))
   }
 
@@ -275,7 +284,7 @@ function StorePageContent({ branch }: { branch: string }) {
     setTempIds((prev) => ({ ...prev, [cat]: [...(prev[cat] || []), tempId] }))
     setOrderState((prev) => ({
       ...prev,
-      [tempId]: { status: null, qty: '', customName: '' },
+      [tempId]: { status: null, qty: '', customName: '', registerToMaster: false },
     }))
   }
 
@@ -321,12 +330,13 @@ function StorePageContent({ branch }: { branch: string }) {
       const include = st.status || (st.qty && st.qty !== '')
       if (!include) continue
       orders.push({
-        productId  : tempId,
-        productName: st.customName || '(無題)',
-        category   : cat,
-        unit       : '個',
-        status     : st.status || '―',
-        qty        : st.qty || 0,
+        productId       : tempId,
+        productName     : st.customName || '(無題)',
+        category        : cat,
+        unit            : '個',
+        status          : st.status || '―',
+        qty             : st.qty || 0,
+        registerToMaster: !!st.registerToMaster,
       })
     }
 
@@ -420,6 +430,7 @@ function StorePageContent({ branch }: { branch: string }) {
           setStatus={setStatus}
           setQty={setQty}
           setCustomName={setCustomName}
+          setRegisterToMaster={setRegisterToMaster}
           setMemo={(v) => setMemoByCat((prev) => ({ ...prev, [currentCat]: v }))}
           addTempItem={() => addTempItem(currentCat)}
           removeTempItem={(id) => removeTempItem(currentCat, id)}
@@ -576,23 +587,25 @@ function CatSelectScreen({
 
 function InputScreen({
   cat, products, orderState, memoByCat, tempIds,
-  onBack, setStatus, setQty, setCustomName, setMemo, addTempItem, removeTempItem,
+  onBack, setStatus, setQty, setCustomName, setRegisterToMaster,
+  setMemo, addTempItem, removeTempItem,
   onSubmit, busy,
 }: {
-  cat        : string
-  products   : Product[]
-  orderState : Record<number | string, OrderState>
-  memoByCat  : Record<string, string>
-  tempIds    : string[]
-  onBack     : () => void
-  setStatus  : (id: number | string, status: string) => void
-  setQty     : (id: number | string, qty: string) => void
-  setCustomName: (id: string, name: string) => void
-  setMemo    : (v: string) => void
-  addTempItem: () => void
-  removeTempItem: (id: string) => void
-  onSubmit   : () => void
-  busy       : boolean
+  cat                : string
+  products           : Product[]
+  orderState         : Record<number | string, OrderState>
+  memoByCat          : Record<string, string>
+  tempIds            : string[]
+  onBack             : () => void
+  setStatus          : (id: number | string, status: string) => void
+  setQty             : (id: number | string, qty: string) => void
+  setCustomName      : (id: string, name: string) => void
+  setRegisterToMaster: (id: string, v: boolean) => void
+  setMemo            : (v: string) => void
+  addTempItem        : () => void
+  removeTempItem     : (id: string) => void
+  onSubmit           : () => void
+  busy               : boolean
 }) {
   const icon  = CAT_ICONS[cat] || '📦'
   const filledCount = products.filter((p) => {
@@ -606,7 +619,7 @@ function InputScreen({
 
       <div style={{ background: 'white' }}>
         {products.map((p) => {
-          const st = orderState[p.id] || { status: null, qty: '', customName: '' }
+          const st = orderState[p.id] || { status: null, qty: '', customName: '', registerToMaster: false }
           return (
             <ItemRow key={p.id}
               name={p.productName}
@@ -620,12 +633,14 @@ function InputScreen({
         })}
 
         {tempIds.map((id) => {
-          const st = orderState[id] || { status: null, qty: '', customName: '' }
+          const st = orderState[id] || { status: null, qty: '', customName: '', registerToMaster: false }
           return (
             <ItemRow key={id}
               name=""
               customName={st.customName}
               onSetCustomName={(n) => setCustomName(id, n)}
+              registerToMaster={st.registerToMaster}
+              onSetRegisterToMaster={(v) => setRegisterToMaster(id, v)}
               hint="追加商品"
               unit="個"
               status={st.status}
@@ -682,19 +697,22 @@ function InputScreen({
 
 function ItemRow({
   name, customName, onSetCustomName,
+  registerToMaster, onSetRegisterToMaster,
   hint, unit, status, qty,
   onSetStatus, onSetQty, onDelete,
 }: {
-  name           : string
-  customName?    : string
-  onSetCustomName?: (v: string) => void
-  hint?          : string
-  unit           : string
-  status         : string | null
-  qty            : string
-  onSetStatus    : (s: string) => void
-  onSetQty       : (q: string) => void
-  onDelete?      : () => void
+  name                 : string
+  customName?          : string
+  onSetCustomName?     : (v: string) => void
+  registerToMaster?    : boolean
+  onSetRegisterToMaster?: (v: boolean) => void
+  hint?                : string
+  unit                 : string
+  status               : string | null
+  qty                  : string
+  onSetStatus          : (s: string) => void
+  onSetQty             : (q: string) => void
+  onDelete?            : () => void
 }) {
   const marks: string[] = ['〇', '△', '×']
   const classOn: Record<string, { bg: string; bd: string; cl: string }> = {
@@ -724,6 +742,21 @@ function ItemRow({
         )}
         {hint && (
           <div style={{ fontSize: '11px', color: '#A8A69E', marginTop: '2px' }}>{hint}</div>
+        )}
+        {onSetRegisterToMaster && (
+          <label style={{
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+            marginTop: '4px', fontSize: '12px', color: '#2C2C2A',
+            cursor: 'pointer', userSelect: 'none',
+          }}>
+            <input
+              type="checkbox"
+              checked={!!registerToMaster}
+              onChange={(e) => onSetRegisterToMaster(e.target.checked)}
+              style={{ width: '16px', height: '16px', accentColor: '#1A5276' }}
+            />
+            マスタ登録する
+          </label>
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
