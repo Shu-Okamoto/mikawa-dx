@@ -338,6 +338,9 @@ export async function GET(req: NextRequest) {
     const pastYears: PastYearEntry[] = past3SalesByIdx.map((sales, i) =>
       aggregatePastYear(sales, past3Refs[i].getFullYear(), past3Ranges[i].label),
     )
+    // 今年 (現在選択中期間) も同形式で算出 (過去3年表の比較行用)
+    const currentYear: PastYearEntry =
+      aggregatePastYear(curSales, ref.getFullYear(), cur.label)
 
     const total     = { byStore: aggregateByStore(curSales) }
     const prevTotal = { byStore: aggregateByStore(prevSales) }
@@ -376,6 +379,7 @@ export async function GET(req: NextRequest) {
       ...(dowByStore     ? { dow    : { byStore: dowByStore }     } : {}),
       ...(weatherByStore ? { weather: { byStore: weatherByStore } } : {}),
       pastYears,
+      currentYear,
     })
   } catch (e) {
     console.error(e)

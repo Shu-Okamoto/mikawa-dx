@@ -66,6 +66,7 @@ interface ApiData {
   dow?        : { byStore: Record<string, DowEntry[]> }
   weather?    : { byStore: Record<string, WeatherEntry[]> }
   pastYears?  : PastYearEntry[]
+  currentYear?: PastYearEntry
 }
 
 interface PastYearStoreEntry {
@@ -282,7 +283,8 @@ function AnalyticsContent() {
             <DailySalesTable data={data} />
             {data.pastYears && data.pastYears.length > 0 && (
               <div style={{ marginTop:'12px' }}>
-                <Past3YearsTable pastYears={data.pastYears} />
+                <Past3YearsTable pastYears={data.pastYears}
+                  currentYear={data.currentYear} />
               </div>
             )}
           </>
@@ -485,7 +487,10 @@ function avgPastYears(pastYears: PastYearEntry[]): {
   }
 }
 
-function Past3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) {
+function Past3YearsTable({ pastYears, currentYear }: {
+  pastYears: PastYearEntry[]
+  currentYear?: PastYearEntry
+}) {
   const avg = avgPastYears(pastYears)
 
   const renderCell = (e: PastYearStoreEntry | undefined) => {
@@ -558,13 +563,38 @@ function Past3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) {
                 </tr>
               )
             })}
+            {currentYear && (() => {
+              const west  = renderCell(currentYear.byStore[STORES[0]])
+              const south = renderCell(currentYear.byStore[STORES[1]])
+              const tot   = renderCell(currentYear.total)
+              return (
+                <tr style={{ background:'#F5EFE0', borderTop:'2px solid #E5E1D8',
+                  fontWeight: 700 }}>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>
+                    今年 ({currentYear.year}年)
+                  </td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.amt}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.cust}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.up}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.days}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.amt}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.cust}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.up}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.days}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.amt}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.cust}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.up}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.days}</td>
+                </tr>
+              )
+            })()}
             {(() => {
               const west  = renderCell(avg.byStore[STORES[0]])
               const south = renderCell(avg.byStore[STORES[1]])
               const tot   = renderCell(avg.total)
               return (
-                <tr style={{ background:'#FBF8F2', borderTop:'2px solid #E5E1D8' }}>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>3年平均</td>
+                <tr style={{ background:'#FBF8F2', borderTop:'1px solid #E5E1D8' }}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>過去3年平均</td>
                   <td style={{ ...tdNumStyle, fontWeight: 600 }}>{west.amt}</td>
                   <td style={tdNumStyle}>{west.cust}</td>
                   <td style={tdNumStyle}>{west.up}</td>
@@ -754,7 +784,8 @@ function CategoryTable({ data }: { data: ApiData }) {
       </div>
 
       {data.pastYears && data.pastYears.length > 0 && (
-        <CategoryPast3YearsTable pastYears={data.pastYears} />
+        <CategoryPast3YearsTable pastYears={data.pastYears}
+          currentYear={data.currentYear} />
       )}
     </div>
   )
@@ -798,18 +829,26 @@ function CategoryYoYRow({ byStore, prevByStore }: {
 
 // カテゴリ別の過去3年売上表
 // 店舗×カテゴリ別売上 + 合計 (惣菜+餅) + 客数 の構成
-function CategoryPast3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) {
+function CategoryPast3YearsTable({ pastYears, currentYear }: {
+  pastYears: PastYearEntry[]
+  currentYear?: PastYearEntry
+}) {
   const avg = avgPastYears(pastYears)
   const cell = (n: number) => n > 0 ? yen(n) : '—'
-  type Row = { key: string; label: string; isAvg?: boolean; entry: {
-    byStore: Record<string, PastYearStoreEntry>; total: PastYearStoreEntry
-  } }
+  type Row = { key: string; label: string; isAvg?: boolean; isCurrent?: boolean;
+    entry: {
+      byStore: Record<string, PastYearStoreEntry>; total: PastYearStoreEntry
+    } }
   const rows: Row[] = [
     ...pastYears.map((py) => ({
       key: String(py.year), label: `${py.year}年`,
       entry: { byStore: py.byStore, total: py.total },
     })),
-    { key: 'AVG', label: '3年平均', isAvg: true, entry: avg },
+    ...(currentYear ? [{
+      key: 'CURRENT', label: `今年 (${currentYear.year}年)`, isCurrent: true,
+      entry: { byStore: currentYear.byStore, total: currentYear.total },
+    }] : []),
+    { key: 'AVG', label: '過去3年平均', isAvg: true, entry: avg },
   ]
   return (
     <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
@@ -843,25 +882,36 @@ function CategoryPast3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) 
           <tbody>
             {rows.map((r) => {
               const sm = r.entry.total.souzai + r.entry.total.mochi
+              const weight = r.isCurrent ? 700 : r.isAvg ? 600 : 500
+              const bg = r.isCurrent ? '#F5EFE0'
+                : r.isAvg ? '#FBF8F2' : 'white'
+              const totalBg = r.isCurrent ? '#F5EFE0' : '#FBF8F2'
+              const borderTop = r.isCurrent
+                ? '2px solid #E5E1D8'
+                : r.isAvg
+                ? '1px solid #E5E1D8'
+                : '1px solid #F0ECE3'
               return (
-                <tr key={r.key} style={{
-                  borderTop: r.isAvg ? '2px solid #E5E1D8' : '1px solid #F0ECE3',
-                  background: r.isAvg ? '#FBF8F2' : 'white',
-                }}>
-                  <td style={{ ...tdStyle, fontWeight: r.isAvg ? 600 : 500,
+                <tr key={r.key} style={{ borderTop, background: bg }}>
+                  <td style={{ ...tdStyle, fontWeight: weight,
                     whiteSpace:'nowrap' }}>{r.label}</td>
                   {STORES.map((s) => {
                     const b = r.entry.byStore[s]
                     return (
                       <Fragment key={s}>
-                        <td style={tdNumStyle}>{cell(b?.souzai ?? 0)}</td>
-                        <td style={tdNumStyle}>{cell(b?.mochi  ?? 0)}</td>
+                        <td style={{ ...tdNumStyle, fontWeight: r.isCurrent ? 700 : undefined }}>
+                          {cell(b?.souzai ?? 0)}
+                        </td>
+                        <td style={{ ...tdNumStyle, fontWeight: r.isCurrent ? 700 : undefined }}>
+                          {cell(b?.mochi ?? 0)}
+                        </td>
                       </Fragment>
                     )
                   })}
-                  <td style={{ ...tdNumStyle, background:'#FBF8F2',
-                    fontWeight: r.isAvg ? 600 : 500 }}>{cell(sm)}</td>
-                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+                  <td style={{ ...tdNumStyle, background: totalBg,
+                    fontWeight: weight }}>{cell(sm)}</td>
+                  <td style={{ ...tdNumStyle, background: totalBg,
+                    fontWeight: r.isCurrent ? 700 : undefined }}>
                     {r.entry.total.customerCount > 0
                       ? `${r.entry.total.customerCount.toLocaleString()}人` : '—'}
                   </td>
