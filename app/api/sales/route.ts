@@ -3,6 +3,7 @@ import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
 const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
+const VALID_WEATHER  = new Set(['晴', '曇', '雨', '雪'])
 
 function canAccessBranch(role: string, branch: string): boolean {
   if (role === 'all') return true
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
         customerCount : s.customerCount,
         staffMorning  : Number(s.staffMorning),
         staffAfternoon: Number(s.staffAfternoon),
+        weather       : s.weather ?? '',
         notes         : s.notes ?? '',
       }
     })
@@ -77,6 +79,10 @@ export async function POST(req: NextRequest) {
 
     const saleDate = today()
 
+    // 天気: 晴/曇/雨/雪 のみ受け付ける。空文字や不明値は null。
+    const weatherRaw = typeof data.weather === 'string' ? data.weather.trim() : ''
+    const weather    = VALID_WEATHER.has(weatherRaw) ? weatherRaw : null
+
     const payload = {
       amount        : Number(data.amount)         || 0,
       souzaiAmount  : Number(data.souzai)         || 0,
@@ -85,6 +91,7 @@ export async function POST(req: NextRequest) {
       customerCount : Number(data.customerCount)  || 0,
       staffMorning  : Number(data.staffMorning)   || 0,
       staffAfternoon: Number(data.staffAfternoon) || 0,
+      weather,
       notes         : data.notes ?? null,
       inputUser     : user.name,
     }
