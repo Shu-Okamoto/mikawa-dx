@@ -134,6 +134,43 @@ function aggregateMonthly(sales: SaleRow[]): MonthlyEntry[] {
   return arr
 }
 
+// 曜日別 1日平均 (月/年粒度用)
+interface DowEntry {
+  dow         : number
+  label       : string
+  days        : number
+  totalAmount : number
+  avgAmount   : number
+  avgSouzai   : number
+  avgMochi    : number
+  avgHana     : number
+  avgCustomer : number
+}
+function aggregateDow(sales: SaleRow[]): Record<string, DowEntry[]> {
+  const accum: Record<string, Bucket[]> = {}
+  sales.forEach((s) => {
+    const name = s.store.storeName
+    const dow  = new Date(s.saleDate).getDay()
+    if (!accum[name]) accum[name] = Array.from({ length: 7 }, newBucket)
+    addRow(accum[name][dow], s)
+  })
+  const out: Record<string, DowEntry[]> = {}
+  Object.entries(accum).forEach(([name, buckets]) => {
+    out[name] = buckets.map((b, i) => ({
+      dow         : i,
+      label       : DOW_LABELS[i],
+      days        : b.days,
+      totalAmount : b.amount,
+      avgAmount   : b.days > 0 ? Math.round(b.amount / b.days) : 0,
+      avgSouzai   : b.days > 0 ? Math.round(b.souzai / b.days) : 0,
+      avgMochi    : b.days > 0 ? Math.round(b.mochi  / b.days) : 0,
+      avgHana     : b.days > 0 ? Math.round(b.hana   / b.days) : 0,
+      avgCustomer : b.days > 0 ? Math.round(b.customerCount / b.days) : 0,
+    }))
+  })
+  return out
+}
+
 // 前年同期間の Date を計算
 function prevYearRef(ref: Date): Date {
   return new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
@@ -174,13 +211,16 @@ export async function GET(req: NextRequest) {
     let prevDaily  : DailyEntry[] | undefined
     let monthly    : MonthlyEntry[] | undefined
     let prevMonthly: MonthlyEntry[] | undefined
+    let dowByStore : Record<string, DowEntry[]> | undefined
 
     if (g === 'month') {
       daily     = aggregateDaily(curSales,  cur.start,  cur.endInclusive)
       prevDaily = aggregateDaily(prevSales, prev.start, prev.endInclusive)
+      dowByStore = aggregateDow(curSales)
     } else if (g === 'year') {
       monthly     = aggregateMonthly(curSales)
       prevMonthly = aggregateMonthly(prevSales)
+      dowByStore  = aggregateDow(curSales)
     }
 
     return NextResponse.json({
@@ -195,6 +235,7 @@ export async function GET(req: NextRequest) {
       ...(prevDaily   ? { prevDaily }   : {}),
       ...(monthly     ? { monthly }     : {}),
       ...(prevMonthly ? { prevMonthly } : {}),
+      ...(dowByStore  ? { dow: { byStore: dowByStore } } : {}),
     })
   } catch (e) {
     console.error(e)

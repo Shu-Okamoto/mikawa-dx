@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
 type Granularity = 'year' | 'month' | 'day'
-type MetricKey  = 'amount' | 'souzai' | 'mochi' | 'hana'
+type ViewKey    = 'category' | 'dow'
 
 interface Bucket {
   amount       : number
@@ -27,28 +27,49 @@ interface MonthlyEntry {
   byStore : Record<string, Bucket>
 }
 
+interface DowEntry {
+  dow         : number
+  label       : string
+  days        : number
+  totalAmount : number
+  avgAmount   : number
+  avgSouzai   : number
+  avgMochi    : number
+  avgHana     : number
+  avgCustomer : number
+}
+
 interface ApiData {
-  granularity: Granularity
-  ref        : string
-  start      : string
-  end        : string
-  label      : string
-  total      : { byStore: Record<string, Bucket> }
-  prevTotal  : { byStore: Record<string, Bucket> }
-  daily?     : DailyEntry[]
-  prevDaily? : DailyEntry[]
-  monthly?   : MonthlyEntry[]
+  granularity : Granularity
+  ref         : string
+  start       : string
+  end         : string
+  label       : string
+  total       : { byStore: Record<string, Bucket> }
+  prevTotal   : { byStore: Record<string, Bucket> }
+  daily?      : DailyEntry[]
+  prevDaily?  : DailyEntry[]
+  monthly?    : MonthlyEntry[]
   prevMonthly?: MonthlyEntry[]
+  dow?        : { byStore: Record<string, DowEntry[]> }
 }
 
 const STORES = ['西店', '南店']
 
-const METRICS: { key: MetricKey; label: string; emoji: string }[] = [
-  { key: 'amount', label: '売上',   emoji: '💰' },
-  { key: 'souzai', label: '惣菜',   emoji: '🍱' },
-  { key: 'mochi',  label: '餅',     emoji: '🍡' },
-  { key: 'hana',   label: '花',     emoji: '💐' },
+const SEGMENTS = [
+  { key: 'souzai', label: '惣菜',   color: '#639922' },
+  { key: 'mochi' , label: '餅'  ,   color: '#1A5276' },
+  { key: 'hana'  , label: '花'  ,   color: '#E67E22' },
+  { key: 'other' , label: 'その他', color: '#A8A69E' },
+] as const
+
+const VIEWS: { key: ViewKey; label: string; emoji: string }[] = [
+  { key: 'category', label: 'カテゴリ別', emoji: '📋' },
+  { key: 'dow'     , label: '曜日別'    , emoji: '📊' },
 ]
+
+// 表示順: 月→日
+const DOW_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
 
 function todayYmd(): string {
   const d = new Date()
@@ -88,15 +109,29 @@ function yen(n: number): string {
 }
 
 function pct(curr: number, prev: number): string {
-  if (prev <= 0) return curr > 0 ? '—' : '—'
+  if (prev <= 0) return '—'
   return Math.round((curr / prev) * 100) + '%'
+}
+
+function emptyDow(): DowEntry[] {
+  return Array.from({ length: 7 }, (_, i) => ({
+    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
+    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+  }))
+}
+
+function reorderDow(entries: DowEntry[]): DowEntry[] {
+  return DOW_DISPLAY_ORDER.map((i) => entries[i] ?? {
+    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
+    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+  })
 }
 
 function AnalyticsContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [ref, setRef] = useState<string>(todayYmd())
-  const [metric, setMetric] = useState<MetricKey>('amount')
+  const [view, setView] = useState<ViewKey>('category')
   const [data, setData] = useState<ApiData | null>(null)
   const [fetching, setFetching] = useState(true)
 
@@ -118,6 +153,9 @@ function AnalyticsContent() {
 
   if (loading) return <Center>読み込み中...</Center>
   if (error)   return <Center error>{error}</Center>
+
+  // 曜日別は日粒度では非表示なので、自動でカテゴリ別に倒す
+  const effectiveView: ViewKey = granularity === 'day' && view === 'dow' ? 'category' : view
 
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
@@ -172,20 +210,24 @@ function AnalyticsContent() {
           </div>
         </div>
 
-        {/* メトリクスタブ */}
-        <div style={{ display:'flex', gap:'6px', marginBottom:'10px', flexWrap:'wrap' }}>
-          {METRICS.map((m) => {
-            const active = m.key === metric
+        {/* ビュー切替タブ */}
+        <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
+          {VIEWS.map((v) => {
+            const active   = v.key === effectiveView
+            const disabled = v.key === 'dow' && granularity === 'day'
             return (
-              <button key={m.key} onClick={() => setMetric(m.key)}
+              <button key={v.key} onClick={() => !disabled && setView(v.key)}
+                disabled={disabled}
                 style={{
-                  flex:'1 1 0', minWidth:'70px', padding:'10px 8px',
+                  flex:'1 1 0', padding:'10px 8px',
                   borderRadius:'12px', fontSize:'14px', fontWeight:500,
-                  fontFamily:'inherit', cursor:'pointer',
+                  fontFamily:'inherit',
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  opacity: disabled ? 0.4 : 1,
                   border: active ? '1.5px solid #1A5276' : '1.5px solid #E5E1D8',
                   background: active ? '#1A5276' : 'white',
                   color    : active ? 'white'   : '#2C2C2A',
-                }}>{m.emoji} {m.label}</button>
+                }}>{v.emoji} {v.label}</button>
             )
           })}
         </div>
@@ -193,11 +235,13 @@ function AnalyticsContent() {
         {fetching ? (
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
             textAlign:'center', color:'#888780' }}>読み込み中...</div>
-        ) : data ? (
-          <SalesTable data={data} metric={metric} />
-        ) : (
+        ) : !data ? (
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
             textAlign:'center', color:'#888780' }}>データがありません</div>
+        ) : effectiveView === 'category' ? (
+          <CategoryTable data={data} />
+        ) : (
+          <DowChartView data={data} />
         )}
 
       </div>
@@ -205,60 +249,16 @@ function AnalyticsContent() {
   )
 }
 
-function SalesTable({ data, metric }: { data: ApiData; metric: MetricKey }) {
-  // 行データを統一インタフェイス {label, byStore, prevByStore} で組み立て
-  const rows = useMemo(() => buildRows(data), [data])
-  const totalRow = useMemo(() => buildTotalRow(data), [data])
-
-  const metricLabel = METRICS.find((m) => m.key === metric)?.label ?? '売上'
-  const metricEmoji = METRICS.find((m) => m.key === metric)?.emoji ?? ''
-
-  return (
-    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
-      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
-        fontWeight:500, fontSize:'16px' }}>
-        {metricEmoji} {metricLabel} 一覧
-      </div>
-      <div style={{ overflowX:'auto' }}>
-        <table style={{ width:'100%', minWidth:'640px',
-          borderCollapse:'collapse', fontSize:'13px' }}>
-          <thead>
-            <tr>
-              <th rowSpan={2} style={thStyle}>
-                {data.granularity === 'year' ? '月' : '日付'}
-              </th>
-              <th colSpan={2} style={thGroupStyle}>西店</th>
-              <th colSpan={2} style={thGroupStyle}>南店</th>
-              <th colSpan={2} style={thTotalGroupStyle}>合計</th>
-              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>前年比</th>
-            </tr>
-            <tr>
-              <th style={thSubStyle}>{metricLabel}</th>
-              <th style={thSubStyle}>客数</th>
-              <th style={thSubStyle}>{metricLabel}</th>
-              <th style={thSubStyle}>客数</th>
-              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>{metricLabel}</th>
-              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>客数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <Row key={r.key} row={r} metric={metric} />
-            ))}
-            <Row row={totalRow} metric={metric} isTotal />
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
+// =====================================
+// カテゴリ別ビュー: 表
+// 列: 日付 | 西店惣菜 西店餅 | 南店惣菜 南店餅 | 合計惣菜 合計餅 | 客数 | 前年比
+// =====================================
 
 interface RowData {
   key      : string
   label    : string
   sublabel?: string
-  dow?     : number    // 日曜=0,土曜=6
+  dow?     : number
   byStore     : Record<string, Bucket>
   prevByStore : Record<string, Bucket>
 }
@@ -268,10 +268,7 @@ function buildRows(data: ApiData): RowData[] {
     const daily     = data.daily ?? []
     const prevDaily = data.prevDaily ?? []
     return daily.map((d, i) => {
-      // 前年同日: 同じインデックス(月内位置)で対応させる。
-      // 末日のズレ(例: 当月31日まで、前年同月30日まで)は prevDaily[i] が
-      // undefined になるので 0扱い。
-      const p = prevDaily[i]
+      const p  = prevDaily[i]
       const dt = new Date(d.date)
       return {
         key        : d.date,
@@ -284,7 +281,7 @@ function buildRows(data: ApiData): RowData[] {
     })
   }
   if (data.granularity === 'year') {
-    const monthly     = data.monthly ?? []
+    const monthly     = data.monthly     ?? []
     const prevMonthly = data.prevMonthly ?? []
     return monthly.map((m, i) => ({
       key        : `m${m.month}`,
@@ -293,39 +290,73 @@ function buildRows(data: ApiData): RowData[] {
       prevByStore: prevMonthly[i]?.byStore ?? {},
     }))
   }
-  // day: 1行だけ
   return [{
-    key        : 'd',
-    label      : data.label,
+    key: 'd', label: data.label,
     byStore    : data.total.byStore,
     prevByStore: data.prevTotal.byStore,
   }]
 }
 
-function buildTotalRow(data: ApiData): RowData {
-  return {
-    key        : 'TOTAL',
-    label      : '合計',
+function CategoryTable({ data }: { data: ApiData }) {
+  const rows = useMemo(() => buildRows(data), [data])
+  const totalRow: RowData = {
+    key: 'TOTAL', label: '合計',
     byStore    : data.total.byStore,
     prevByStore: data.prevTotal.byStore,
   }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        📋 カテゴリ別 売上一覧
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'720px',
+          borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>
+                {data.granularity === 'year' ? '月' : '日付'}
+              </th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th colSpan={2} style={thTotalGroupStyle}>合計</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                客数
+              </th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                前年比
+              </th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>惣菜</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>餅</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <CategoryRow key={r.key} row={r} />
+            ))}
+            <CategoryRow row={totalRow} isTotal />
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
 }
 
-function metricOf(b: Bucket | undefined, m: MetricKey): number {
-  if (!b) return 0
-  if (m === 'amount') return b.amount
-  if (m === 'souzai') return b.souzai
-  if (m === 'mochi')  return b.mochi
-  return b.hana
-}
-
-function Row({ row, metric, isTotal }: {
-  row: RowData; metric: MetricKey; isTotal?: boolean
-}) {
+function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
   const total     = sumStores(row.byStore)
   const prevTotal = sumStores(row.prevByStore)
-  const curMetric = metricOf(total, metric)
-  const prvMetric = metricOf(prevTotal, metric)
+  // 前年比は 売上合計(amount) ベース
+  const curAmount  = total.amount
+  const prevAmount = prevTotal.amount
 
   const bg = isTotal ? '#FBF8F2'
     : row.dow === 0 ? '#FFF7F6'
@@ -336,6 +367,8 @@ function Row({ row, metric, isTotal }: {
     : row.dow === 6 ? '#1A5276'
     : '#2C2C2A'
   const weight = isTotal ? 600 : 500
+
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
 
   return (
     <tr style={{ background: bg, borderTop:'1px solid #F0ECE3' }}>
@@ -349,22 +382,22 @@ function Row({ row, metric, isTotal }: {
       </td>
       {STORES.map((s) => {
         const b = row.byStore[s]
-        const v = metricOf(b, metric)
         return (
           <Fragment key={s}>
-            <td style={tdNumStyle}>{v > 0 ? yen(v) : '—'}</td>
-            <td style={tdNumStyle}>{b && b.customerCount > 0 ? `${b.customerCount}人` : '—'}</td>
+            <td style={tdNumStyle}>{cell(b?.souzai ?? 0)}</td>
+            <td style={tdNumStyle}>{cell(b?.mochi  ?? 0)}</td>
           </Fragment>
         )
       })}
-      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: isTotal ? 600 : 500 }}>
-        {curMetric > 0 ? yen(curMetric) : '—'}
-      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2',
+        fontWeight: isTotal ? 600 : 500 }}>{cell(total.souzai)}</td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2',
+        fontWeight: isTotal ? 600 : 500 }}>{cell(total.mochi)}</td>
       <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
         {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
       </td>
-      <td style={{ ...tdNumStyle, color: yoyColor(curMetric, prvMetric) }}>
-        {prvMetric > 0 ? pct(curMetric, prvMetric) : '—'}
+      <td style={{ ...tdNumStyle, color: yoyColor(curAmount, prevAmount) }}>
+        {prevAmount > 0 ? pct(curAmount, prevAmount) : '—'}
       </td>
     </tr>
   )
@@ -376,6 +409,129 @@ function yoyColor(curr: number, prev: number): string {
   if (ratio >= 1.05) return '#3B6D11'
   if (ratio <= 0.95) return '#E24B4A'
   return '#2C2C2A'
+}
+
+// =====================================
+// 曜日別ビュー: 棒グラフ
+// =====================================
+
+function DowChartView({ data }: { data: ApiData }) {
+  if (!data.dow) {
+    return (
+      <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+        textAlign:'center', color:'#888780' }}>
+        この粒度では曜日別表示は利用できません
+      </div>
+    )
+  }
+  return (
+    <div style={{ background:'white', borderRadius:'16px', padding:'16px',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
+        📊 曜日別 1日平均売上
+      </div>
+      <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
+        ※ {data.label} 内の各曜日の1日あたり平均
+      </div>
+
+      <Legend />
+
+      {STORES.map((s) => (
+        <DowBarChart key={s} name={s}
+          entries={reorderDow(data.dow!.byStore[s] ?? emptyDow())} />
+      ))}
+    </div>
+  )
+}
+
+function Legend() {
+  return (
+    <div style={{ display:'flex', gap:'14px', flexWrap:'wrap',
+      marginBottom:'10px', fontSize:'13px', color:'#555' }}>
+      {SEGMENTS.map((seg) => (
+        <span key={seg.key} style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+          <span style={{ width:'14px', height:'14px', borderRadius:'3px',
+            background: seg.color, display:'inline-block' }} />
+          {seg.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
+  const maxAmount = Math.max(...entries.map((e) => e.avgAmount), 1)
+  const seg = (e: DowEntry) => ({
+    souzai: e.avgSouzai, mochi: e.avgMochi, hana: e.avgHana,
+    other : Math.max(0, e.avgAmount - e.avgSouzai - e.avgMochi - e.avgHana),
+  })
+
+  return (
+    <div style={{ marginTop:'12px', marginBottom:'8px' }}>
+      <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
+        marginBottom:'8px' }}>{name}</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:'6px',
+        padding:'10px', background:'#FAFAFA', borderRadius:'8px' }}>
+        {entries.map((e) => {
+          const total = e.avgAmount
+          const widthPct = total > 0 ? (total / maxAmount) * 100 : 0
+          const labelColor = e.dow === 0 ? '#E24B4A' :
+                              e.dow === 6 ? '#1A6FAF' : '#2C2C2A'
+          const segs = seg(e)
+          return (
+            <div key={e.dow} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ width:'28px', fontSize:'14px', fontWeight:600,
+                color: labelColor, textAlign:'center', flexShrink:0 }}>
+                {e.label}
+              </div>
+              <div style={{ flex:1, position:'relative', height:'28px',
+                background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>
+                {total > 0 && (
+                  <div style={{ position:'absolute', left:0, top:0, bottom:0,
+                    width: widthPct + '%', display:'flex',
+                    borderRadius:'4px', overflow:'hidden' }}>
+                    {SEGMENTS.map((s) => {
+                      const v = segs[s.key]
+                      if (v <= 0) return null
+                      const pct = (v / total) * 100
+                      const segWidthPx = (pct / 100) * widthPct
+                      const showLabel = segWidthPx >= 8
+                      return (
+                        <div key={s.key}
+                          title={`${s.label} ¥${Math.round(v).toLocaleString()} (${pct.toFixed(0)}%)`}
+                          style={{ width: pct + '%', background: s.color,
+                            display:'flex', alignItems:'center',
+                            justifyContent:'center',
+                            color:'white', fontSize:'11px', fontWeight:600,
+                            overflow:'hidden', whiteSpace:'nowrap' }}>
+                          {showLabel ? '¥' + Math.round(v).toLocaleString() : ''}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              <div style={{ width:'92px', fontSize:'12px',
+                textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
+                {e.days > 0 ? (
+                  <>
+                    <div style={{ fontWeight:600, color:'#2C2C2A' }}>
+                      ¥{Math.round(total).toLocaleString()}
+                    </div>
+                    <div style={{ color:'#888780', fontSize:'11px' }}>
+                      {e.avgCustomer}人 · {e.days}日
+                    </div>
+                  </>
+                ) : (
+                  <span style={{ color:'#888780' }}>—</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 function PeriodPicker({ granularity, ref_, onChange }: {
@@ -405,7 +561,6 @@ function PeriodPicker({ granularity, ref_, onChange }: {
         style={pickerStyle} />
     )
   }
-  // month
   const value = `${y}-${String(m).padStart(2, '0')}`
   return (
     <input type="month" value={value}
@@ -422,12 +577,8 @@ const thStyle: React.CSSProperties = {
   fontSize:'12px', fontWeight:500, color:'#2C2C2A',
   background:'#FAF8F3', whiteSpace:'nowrap',
 }
-const thGroupStyle: React.CSSProperties = {
-  ...thStyle, textAlign:'center',
-}
-const thTotalGroupStyle: React.CSSProperties = {
-  ...thStyle, textAlign:'center', background:'#FBF8F2',
-}
+const thGroupStyle: React.CSSProperties = { ...thStyle, textAlign:'center' }
+const thTotalGroupStyle: React.CSSProperties = { ...thStyle, textAlign:'center', background:'#FBF8F2' }
 const thSubStyle: React.CSSProperties = {
   padding:'4px 6px', borderBottom:'1.5px solid #E5E1D8',
   fontSize:'11px', fontWeight:400, color:'#888780',
@@ -440,14 +591,12 @@ const tdNumStyle: React.CSSProperties = {
   padding:'6px 8px', fontSize:'13px', color:'#2C2C2A',
   textAlign:'right', whiteSpace:'nowrap',
 }
-
 const pickerStyle: React.CSSProperties = {
   padding:'10px 14px', fontSize:'15px',
   border:'1.5px solid #E5E1D8', borderRadius:'10px',
   background:'white', fontFamily:'inherit',
   color:'#2C2C2A', cursor:'pointer',
 }
-
 const navBtn: React.CSSProperties = {
   width:'40px', height:'40px', borderRadius:'10px',
   background:'#F5F1EA', border:'none', fontSize:'22px',
