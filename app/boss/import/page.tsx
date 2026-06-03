@@ -168,8 +168,8 @@ const SALE_HEADER_ALIASES: Record<keyof SaleRow, string[]> = {
   weather : ['天気', '天候', 'weather'],
 }
 
-// 「天気」は CSV にない場合もあるので、必須から外す。
-const SALE_OPTIONAL: Set<keyof SaleRow> = new Set(['weather'])
+// 「天気」「花」は CSV にない場合もあるので、必須から外す。
+const SALE_OPTIONAL: Set<keyof SaleRow> = new Set(['weather', 'hana'])
 
 function findSaleHeaderRow(rows: string[][]): {
   idx: number
@@ -322,7 +322,7 @@ function ImportContent() {
               ? '列: ProductID / ProductName / Category / Unit / WeeklyAvg / Vendor / Active'
               : mode === 'order-product'
               ? '列: ProductID / ProductName / Category / Price / AvailableDays / Active / Memo'
-              : '列: 日付 / 店 / 売上 / 惣菜 / 餅 / 花 / 客数 / 天気 (店は「西店」「南店」「本部」もしくは nishi/minami/honbu。天気は 晴/曇/雨/雪、列なしも可)'}
+              : '列: 日付 / 店 / 天気 / 売上 / 客数 / 惣菜 / 餅 (順不同。店は「西店」「南店」「本部」もしくは nishi/minami/honbu。天気は 晴/曇/雨/雪。花列があれば取り込みますが、なくても OK)'}
           </div>
 
           {mode === 'sale' && (
@@ -397,12 +397,11 @@ function ImportContent() {
                       <>
                         <th style={th}>日付</th>
                         <th style={th}>店</th>
+                        <th style={th}>天気</th>
                         <th style={th}>売上</th>
+                        <th style={th}>客数</th>
                         <th style={th}>惣菜</th>
                         <th style={th}>餅</th>
-                        <th style={th}>花</th>
-                        <th style={th}>客数</th>
-                        <th style={th}>天気</th>
                       </>
                     )}
                   </tr>
@@ -434,12 +433,11 @@ function ImportContent() {
                         <>
                           <td style={td}>{(r as SaleRow).date}</td>
                           <td style={td}>{(r as SaleRow).store}</td>
+                          <td style={td}>{(r as SaleRow).weather || '-'}</td>
                           <td style={td}>{(r as SaleRow).amount}</td>
+                          <td style={td}>{(r as SaleRow).customer}</td>
                           <td style={td}>{(r as SaleRow).souzai}</td>
                           <td style={td}>{(r as SaleRow).mochi}</td>
-                          <td style={td}>{(r as SaleRow).hana}</td>
-                          <td style={td}>{(r as SaleRow).customer}</td>
-                          <td style={td}>{(r as SaleRow).weather || '-'}</td>
                         </>
                       )}
                     </tr>

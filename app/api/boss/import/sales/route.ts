@@ -85,19 +85,18 @@ export async function GET(req: NextRequest) {
       orderBy: [{ saleDate: 'asc' }, { storeId: 'asc' }],
     })
 
-    const header = ['日付', '店', '売上', '惣菜', '餅', '花', '客数', '天気']
+    const header = ['日付', '店', '天気', '売上', '客数', '惣菜', '餅']
     const lines: string[] = [header.map(csvCell).join(',')]
     sales.forEach((s) => {
       const ymd = s.saleDate.toISOString().slice(0, 10)
       lines.push([
         ymd,
         s.store.storeName,
+        s.weather ?? '',
         Number(s.amount),
+        s.customerCount,
         Number(s.souzaiAmount),
         Number(s.mochiAmount),
-        Number(s.hanaAmount),
-        s.customerCount,
-        s.weather ?? '',
       ].map(csvCell).join(','))
     })
     const body = '﻿' + lines.join('\r\n') + '\r\n'
