@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
-const STORE_BRANCHES = new Set(['nishi', 'minami'])
+const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const VALID_CATEGORIES = new Set(['野菜', '果物', '餅・乾物菓子類'])
 
 function canAccessBranch(role: string, branch: string): boolean {
@@ -180,6 +180,9 @@ export async function POST(req: NextRequest) {
     // 正規アイテム（productId が数値）と メモ扱い（MEMO ステータスや productId が文字列）を分離
     const regularItems: any[] = []
     const extraMemoLines: string[] = []
+    // マスタ登録(temp + registerToMaster)対象。あとで一括で Product 作成 →
+    // regularItems に編入する。
+    const toRegisterItems: any[] = []
 
     for (const o of orders) {
       const isMemo =
@@ -192,13 +195,49 @@ export async function POST(req: NextRequest) {
         continue
       }
       if (isExtra) {
-        const name = o.productName || '(無題)'
-        const tag  = `${o.status || '―'} ${o.qty || 0}${o.unit || ''}`
-        extraMemoLines.push(`+ ${name} ${tag}`.trim())
+        const name = (o.productName || '').trim()
+        if (o.registerToMaster && name) {
+          toRegisterItems.push(o)
+          continue
+        }
+        const tag = `${o.status || '―'} ${o.qty || 0}${o.unit || ''}`
+        extraMemoLines.push(`+ ${name || '(無題)'} ${tag}`.trim())
         continue
       }
       if (typeof o.productId !== 'number') continue
       regularItems.push(o)
+    }
+
+    // マスタ登録: Product を作成して regularItems に追加する。
+    // productCode は STORE_<branch>_<timestamp>_<i> で衝突を避ける。
+    // displayOrder は当該カテゴリ末尾。
+    if (toRegisterItems.length > 0) {
+      const maxOrder = await prisma.product.aggregate({
+        where: { category },
+        _max : { displayOrder: true },
+      })
+      let nextOrder = (maxOrder._max.displayOrder ?? 0) + 1
+      const ts = Date.now()
+      for (let i = 0; i < toRegisterItems.length; i++) {
+        const o = toRegisterItems[i]
+        const created = await prisma.product.create({
+          data: {
+            productCode : `STORE_${branch}_${ts}_${i}`,
+            productName : String(o.productName).trim(),
+            category,
+            unit        : o.unit || '個',
+            weeklyAvg   : 0,
+            isActive    : true,
+            displayOrder: nextOrder++,
+          },
+        })
+        regularItems.push({
+          productId: created.id,
+          status   : o.status,
+          qty      : o.qty,
+          unit     : created.unit,
+        })
+      }
     }
 
     // カテゴリ内の Product を取得して product.category 制約を確認
@@ -219,15 +258,23 @@ export async function POST(req: NextRequest) {
 
     if (validItems.length > 0) {
       await prisma.dailyOrder.createMany({
-        data: validItems.map((o) => ({
-          orderDate,
-          storeId    : store.id,
-          productId  : o.productId,
-          status     : o.status || null,
-          requestQty : Number(o.qty) || 0,
-          inputUser  : user.name,
-          submittedAt: new Date(),
-        })),
+        data: validItems.map((o) => {
+          const rawTxt = String(o.qty ?? '').trim()
+          const num    = parseFloat(rawTxt)
+          // 純粋な数値表記 (例: '5', '2.5') かどうか
+          const isPureNumber = rawTxt !== '' && !Number.isNaN(num) && String(num) === rawTxt
+          return {
+            orderDate,
+            storeId       : store.id,
+            productId     : o.productId,
+            status        : o.status || null,
+            requestQty    : Number.isNaN(num) ? 0 : num,
+            // 単位表記付きの自由入力のみ保存。純数値や空は null。
+            requestQtyText: isPureNumber || rawTxt === '' ? null : rawTxt,
+            inputUser     : user.name,
+            submittedAt   : new Date(),
+          }
+        }),
       })
     }
 

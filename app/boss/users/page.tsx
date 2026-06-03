@@ -22,6 +22,7 @@ const ROLE_OPTIONS = [
   { value: 'pending', label: '保留中' },
   { value: 'nishi',   label: '西店' },
   { value: 'minami',  label: '南店' },
+  { value: 'honbu',   label: '本部' },
   { value: 'hq1',     label: '本部 (野菜)' },
   { value: 'hq2',     label: '本部 (果物)' },
   { value: 'hq3',     label: '本部 (餅乾物)' },

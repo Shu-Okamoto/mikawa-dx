@@ -27,7 +27,7 @@ const roleHome: Record<RoleKey, string> = {
 
 const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
-    title: '🥬 在庫発注',
+    title: '🥬 野菜果物発注',
     rows: [[
       { role: 'nishi',  path: '/store/nishi',  label: '西店' },
       { role: 'minami', path: '/store/minami', label: '南店' },
@@ -46,19 +46,19 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     title: '📝 日報',
     rows: [[
       { role: 'nishi',  label: '西店',
-        path: 'https://nippo-system-blue.vercel.app/store/nishi',  external: true },
+        path: 'https://nippo-system-blue.vercel.app/store/nishi/today',  external: true },
       { role: 'minami', label: '南店',
-        path: 'https://nippo-system-blue.vercel.app/store/minami', external: true },
+        path: 'https://nippo-system-blue.vercel.app/store/minami/today', external: true },
     ]],
   },
   {
-    title: '📅 週間カレンダー',
+    title: '📅 注文カレンダー',
     rows: [[
       { role: 'all', path: '/calendar', label: '注文リスト' },
     ]],
   },
   {
-    title: '管理',
+    title: '🏢 管理',
     rows: [[
       { role: 'hq1', path: '/hq', label: '野菜発注' },
       { role: 'hq2', path: '/hq', label: '果物発注' },
@@ -66,9 +66,10 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     ]],
   },
   {
-    title: '分析・システム',
+    title: '📊 分析・マスタ',
     rows: [[
-      { role: 'all', path: '/boss', label: 'ダッシュボード' },
+      { role: 'all', path: '/boss',       label: '売上分析' },
+      { role: 'all', path: '/boss/users', label: 'マスタ管理' },
     ]],
   },
 ]
@@ -92,6 +93,18 @@ export default function HomePage() {
   const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
+    // PIN を入力済み(=sessionStorage に pinRole)ならエントリ選択画面を
+    // 必ず表示する。これがないと、PINロール+残存トークンの組み合わせで
+    // 意図せず roleHome (例: /boss) にリダイレクトされてしまう。
+    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
+    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
+        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
+        saved === 'all') {
+      setPinRole(saved)
+      return
+    }
+    // PIN 未入力でログイン済み(ブックマーク/外部リンク等)はロール別
+    // ホームに案内する。
     const token = localStorage.getItem('token')
     const stored = localStorage.getItem('user')
     if (token && stored) {
@@ -103,12 +116,6 @@ export default function HomePage() {
           return
         }
       } catch { /* 壊れた値は無視 */ }
-    }
-    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
-    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
-        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
-        saved === 'all') {
-      setPinRole(saved)
     }
   }, [router])
 
@@ -165,7 +172,7 @@ export default function HomePage() {
     }}>
       <div style={{ textAlign: 'center', width: '100%', maxWidth: '480px' }}>
 
-        <div style={{ fontSize: '60px', marginBottom: '16px' }}>🥬</div>
+        <div style={{ fontSize: '60px', marginBottom: '16px' }}>📋</div>
         <h1 style={{ fontSize: '28px', fontWeight: 500, color: '#2C2C2A',
           marginBottom: '8px' }}>
           里の味みかわ
@@ -188,11 +195,11 @@ export default function HomePage() {
 
           {entryGroups.map((group) => (
             <div key={group.title} style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '15px', color: '#888780',
-                marginBottom: '8px' }}>{group.title}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '18px', color: '#2C2C2A', fontWeight: 600,
+                marginBottom: '10px' }}>{group.title}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {group.rows.map((row, rowIdx) => (
-                  <div key={rowIdx} style={{ display: 'flex', gap: '10px' }}>
+                  <div key={rowIdx} style={{ display: 'flex', gap: '8px' }}>
                     {row.map((entry) => {
                       const key = `${entry.role}:${entry.path}`
                       const isBusy = busy === key
@@ -207,13 +214,13 @@ export default function HomePage() {
                           style={{
                             flex        : '1 1 0',
                             minWidth    : '0',
-                            padding     : '14px 14px',
+                            padding     : '10px 12px',
                             border      : '1px solid #D9D5CC',
                             borderRadius: '10px',
                             background  : !allowed ? '#EFEAE0'
                                         : isBusy   ? '#EFEAE0' : 'white',
                             color       : !allowed ? '#B8B5AC' : '#2C2C2A',
-                            fontSize    : '17px',
+                            fontSize    : '15px',
                             cursor      : disabled ? 'not-allowed' : 'pointer',
                             opacity     : !allowed ? 0.55
                                         : (busy && !isBusy) ? 0.5 : 1,

@@ -96,18 +96,21 @@ model User {
 }
 
 model DailyOrder {
-  id          Int       @id @default(autoincrement())
-  orderDate   DateTime  @db.Date
-  store       Store     @relation(fields: [storeId], references: [id])
-  storeId     Int
-  product     Product   @relation(fields: [productId], references: [id])
-  productId   Int
-  status      String?
-  requestQty  Decimal   @default(0)
-  inputUser   String?
-  submittedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now()) @updatedAt
+  id             Int       @id @default(autoincrement())
+  orderDate      DateTime  @db.Date
+  store          Store     @relation(fields: [storeId], references: [id])
+  storeId        Int
+  product        Product   @relation(fields: [productId], references: [id])
+  productId      Int
+  status         String?
+  requestQty     Decimal   @default(0)
+  // ユーザーが入力した残数の原文 (例: "2ケース", "半箱")。単位表記が無い
+  // 純粋な数値の場合は null。表示時はこの値を優先する。
+  requestQtyText String?
+  inputUser      String?
+  submittedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
 
   @@unique([orderDate, storeId, productId])
   @@schema("dx")

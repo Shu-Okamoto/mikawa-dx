@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { Fragment, useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
-type Granularity = 'year' | 'month' | 'week' | 'day'
+type Granularity = 'year' | 'month' | 'day'
+type ViewKey    = 'daily' | 'category' | 'dow'
 
 interface Bucket {
   amount       : number
@@ -13,6 +14,17 @@ interface Bucket {
   hana         : number
   customerCount: number
   days         : number
+}
+
+interface DailyEntry {
+  date    : string
+  dow     : number
+  byStore : Record<string, Bucket>
+}
+
+interface MonthlyEntry {
+  month   : number
+  byStore : Record<string, Bucket>
 }
 
 interface DowEntry {
@@ -28,13 +40,18 @@ interface DowEntry {
 }
 
 interface ApiData {
-  granularity: Granularity
-  ref        : string
-  start      : string
-  end        : string
-  label      : string
-  total      : { byStore: Record<string, Bucket> }
-  dow?       : { byStore: Record<string, DowEntry[]> }
+  granularity : Granularity
+  ref         : string
+  start       : string
+  end         : string
+  label       : string
+  total       : { byStore: Record<string, Bucket> }
+  prevTotal   : { byStore: Record<string, Bucket> }
+  daily?      : DailyEntry[]
+  prevDaily?  : DailyEntry[]
+  monthly?    : MonthlyEntry[]
+  prevMonthly?: MonthlyEntry[]
+  dow?        : { byStore: Record<string, DowEntry[]> }
 }
 
 const STORES = ['西店', '南店']
@@ -46,12 +63,18 @@ const SEGMENTS = [
   { key: 'other' , label: 'その他', color: '#A8A69E' },
 ] as const
 
+const VIEWS: { key: ViewKey; label: string; emoji: string }[] = [
+  { key: 'daily'   , label: '日別'      , emoji: '💰' },
+  { key: 'category', label: 'カテゴリ別', emoji: '📋' },
+  { key: 'dow'     , label: '曜日別'    , emoji: '📊' },
+]
+
+// 表示順: 月→日
+const DOW_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
+
 function todayYmd(): string {
   const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
 function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
@@ -59,27 +82,44 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
   const date = new Date(y, m - 1, d)
   if (g === 'year')  date.setFullYear(date.getFullYear() + dir)
   if (g === 'month') date.setMonth(date.getMonth() + dir)
-  if (g === 'week')  date.setDate(date.getDate() + 7 * dir)
   if (g === 'day')   date.setDate(date.getDate() + dir)
-  const yy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
 }
 
-function weekStartOf(ref: string): string {
-  const [y, m, d] = ref.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  const offset = (date.getDay() + 6) % 7 // 月曜始まり
-  date.setDate(date.getDate() - offset)
-  const yy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+function emptyBucket(): Bucket {
+  return { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
-// 表示順: 月→日 (JS getDay基準で 1,2,3,4,5,6,0)
-const DOW_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
+function sumStores(byStore: Record<string, Bucket>): Bucket {
+  const out = emptyBucket()
+  STORES.forEach((s) => {
+    const b = byStore[s]
+    if (!b) return
+    out.amount        += b.amount
+    out.souzai        += b.souzai
+    out.mochi         += b.mochi
+    out.hana          += b.hana
+    out.customerCount += b.customerCount
+    out.days = Math.max(out.days, b.days)
+  })
+  return out
+}
+
+function yen(n: number): string {
+  return '¥' + Math.round(n).toLocaleString('ja-JP')
+}
+
+function pct(curr: number, prev: number): string {
+  if (prev <= 0) return '—'
+  return Math.round((curr / prev) * 100) + '%'
+}
+
+function emptyDow(): DowEntry[] {
+  return Array.from({ length: 7 }, (_, i) => ({
+    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
+    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+  }))
+}
 
 function reorderDow(entries: DowEntry[]): DowEntry[] {
   return DOW_DISPLAY_ORDER.map((i) => entries[i] ?? {
@@ -92,6 +132,7 @@ function AnalyticsContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [ref, setRef] = useState<string>(todayYmd())
+  const [view, setView] = useState<ViewKey>('daily')
   const [data, setData] = useState<ApiData | null>(null)
   const [fetching, setFetching] = useState(true)
 
@@ -114,17 +155,8 @@ function AnalyticsContent() {
   if (loading) return <Center>読み込み中...</Center>
   if (error)   return <Center error>{error}</Center>
 
-  const totalAll: Bucket = { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
-  STORES.forEach((s) => {
-    const b = data?.total.byStore[s]
-    if (!b) return
-    totalAll.amount        += b.amount
-    totalAll.souzai        += b.souzai
-    totalAll.mochi         += b.mochi
-    totalAll.hana          += b.hana
-    totalAll.customerCount += b.customerCount
-    totalAll.days = Math.max(totalAll.days, b.days)
-  })
+  // 曜日別は日粒度では非表示なので、自動で日別に倒す
+  const effectiveView: ViewKey = granularity === 'day' && view === 'dow' ? 'daily' : view
 
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
@@ -140,8 +172,7 @@ function AnalyticsContent() {
           <div style={{ display:'flex', gap:'6px', flexWrap:'wrap',
             marginBottom:'12px' }}>
             {([
-              ['day'  , '今日'],
-              ['week' , '週'],
+              ['day'  , '日'],
               ['month', '月'],
               ['year' , '年'],
             ] as const).map(([key, label]) => {
@@ -174,60 +205,46 @@ function AnalyticsContent() {
               style={navBtn}>›</button>
           </div>
 
-          {/* 粒度ごとのピッカー */}
           <div style={{ marginTop:'12px', display:'flex',
             justifyContent:'center' }}>
-            <PeriodPicker granularity={granularity} ref_={ref}
-              onChange={setRef} />
+            <PeriodPicker granularity={granularity} ref_={ref} onChange={setRef} />
           </div>
         </div>
 
-        {/* 売上合計 */}
-        <div style={{ background:'white', borderRadius:'16px', padding:'16px',
-          marginBottom:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'12px' }}>
-            💰 売上合計
-          </div>
-          {fetching ? (
-            <div style={{ padding:'24px', textAlign:'center',
-              color:'#888780', fontSize:'15px' }}>読み込み中...</div>
-          ) : (
-            <>
-              {STORES.map((s) => (
-                <StoreBucket key={s} name={s}
-                  bucket={data?.total.byStore[s] ??
-                    { amount:0, souzai:0, mochi:0, hana:0, customerCount:0, days:0 }} />
-              ))}
-              <StoreBucket name="🧮 2店合計" bucket={totalAll} />
-            </>
-          )}
+        {/* ビュー切替タブ */}
+        <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
+          {VIEWS.map((v) => {
+            const active   = v.key === effectiveView
+            const disabled = v.key === 'dow' && granularity === 'day'
+            return (
+              <button key={v.key} onClick={() => !disabled && setView(v.key)}
+                disabled={disabled}
+                style={{
+                  flex:'1 1 0', padding:'10px 8px',
+                  borderRadius:'12px', fontSize:'14px', fontWeight:500,
+                  fontFamily:'inherit',
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  opacity: disabled ? 0.4 : 1,
+                  border: active ? '1.5px solid #1A5276' : '1.5px solid #E5E1D8',
+                  background: active ? '#1A5276' : 'white',
+                  color    : active ? 'white'   : '#2C2C2A',
+                }}>{v.emoji} {v.label}</button>
+            )
+          })}
         </div>
 
-        {/* 曜日別グラフ (日粒度では非表示) */}
-        {granularity !== 'day' && (
-        <div style={{ background:'white', borderRadius:'16px', padding:'16px',
-          boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-          <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
-            📊 曜日別 1日平均売上
-          </div>
-          <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
-            ※ {data?.label} 内の各曜日の1日あたり平均
-          </div>
-
-          <Legend />
-
-          {fetching ? (
-            <div style={{ padding:'24px', textAlign:'center',
-              color:'#888780', fontSize:'15px' }}>読み込み中...</div>
-          ) : (
-            <>
-              {STORES.map((s) => (
-                <DowBarChart key={s} name={s}
-                  entries={reorderDow(data?.dow?.byStore[s] ?? emptyDow())} />
-              ))}
-            </>
-          )}
-        </div>
+        {fetching ? (
+          <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+            textAlign:'center', color:'#888780' }}>読み込み中...</div>
+        ) : !data ? (
+          <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+            textAlign:'center', color:'#888780' }}>データがありません</div>
+        ) : effectiveView === 'daily' ? (
+          <DailySalesTable data={data} />
+        ) : effectiveView === 'category' ? (
+          <CategoryTable data={data} />
+        ) : (
+          <DowChartView data={data} />
         )}
 
       </div>
@@ -235,11 +252,350 @@ function AnalyticsContent() {
   )
 }
 
-function emptyDow(): DowEntry[] {
-  return Array.from({ length: 7 }, (_, i) => ({
-    dow: i, label: ['日','月','火','水','木','金','土'][i], days: 0,
-    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
-  }))
+// =====================================
+// 日別 (売上) ビュー: 表
+// 列: 日付 | 西店(売上/客数) | 南店(売上/客数) | 本部合計(売上/客数) | 前年比
+// 行: 各日 + 合計 + 平均 (粒度=月/年のみ平均行を表示)
+// =====================================
+
+function avgBucket(rows: RowData[]): Bucket {
+  // データのある行 (西店または南店の amount > 0) を分母にする
+  const out = emptyBucket()
+  let days = 0
+  rows.forEach((r) => {
+    const t = sumStores(r.byStore)
+    if (t.amount <= 0 && t.customerCount <= 0) return
+    days++
+    out.amount        += t.amount
+    out.souzai        += t.souzai
+    out.mochi         += t.mochi
+    out.hana          += t.hana
+    out.customerCount += t.customerCount
+  })
+  if (days === 0) return out
+  out.amount        = Math.round(out.amount        / days)
+  out.souzai        = Math.round(out.souzai        / days)
+  out.mochi         = Math.round(out.mochi         / days)
+  out.hana          = Math.round(out.hana          / days)
+  out.customerCount = Math.round(out.customerCount / days)
+  out.days          = days
+  return out
+}
+
+function DailySalesTable({ data }: { data: ApiData }) {
+  const rows = useMemo(() => buildRows(data), [data])
+  const totalRow: RowData = {
+    key: 'TOTAL', label: '合計',
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }
+  // 平均行: 当期 / 前年同期間 をそれぞれ「データのある日」で平均
+  const showAvg = data.granularity !== 'day' && rows.length > 1
+  const avgByStore: Record<string, Bucket> = {}
+  const avgPrevByStore: Record<string, Bucket> = {}
+  if (showAvg) {
+    STORES.forEach((s) => {
+      avgByStore[s]     = avgBucket(rows.map((r) => ({
+        ...r, byStore: { [s]: r.byStore[s]     ?? emptyBucket() },
+      })))
+      avgPrevByStore[s] = avgBucket(rows.map((r) => ({
+        ...r, byStore: { [s]: r.prevByStore[s] ?? emptyBucket() },
+      })))
+    })
+  }
+  const avgRow: RowData = {
+    key: 'AVG', label: '平均',
+    byStore: avgByStore, prevByStore: avgPrevByStore,
+  }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        💰 売上 一覧
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'640px',
+          borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>
+                {data.granularity === 'year' ? '月' : '日付'}
+              </th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th colSpan={2} style={thTotalGroupStyle}>本部合計</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                前年比
+              </th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>売上</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>客数</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <DailyRow key={r.key} row={r} />
+            ))}
+            <DailyRow row={totalRow} isTotal />
+            {showAvg && <DailyRow row={avgRow} isAvg />}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function DailyRow({ row, isTotal, isAvg }: {
+  row: RowData; isTotal?: boolean; isAvg?: boolean
+}) {
+  const total     = sumStores(row.byStore)
+  const prevTotal = sumStores(row.prevByStore)
+  const curAmt  = total.amount
+  const prevAmt = prevTotal.amount
+
+  const bg = isTotal || isAvg ? '#FBF8F2'
+    : row.dow === 0 ? '#FFF7F6'
+    : row.dow === 6 ? '#F2F7FB'
+    : 'white'
+  const labelColor = isTotal || isAvg ? '#2C2C2A'
+    : row.dow === 0 ? '#E24B4A'
+    : row.dow === 6 ? '#1A5276'
+    : '#2C2C2A'
+  const weight = isTotal || isAvg ? 600 : 500
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
+
+  return (
+    <tr style={{ background: bg, borderTop: isAvg ? '2px solid #E5E1D8' : '1px solid #F0ECE3' }}>
+      <td style={{ ...tdStyle, fontWeight: weight, color: labelColor, whiteSpace:'nowrap' }}>
+        {row.label}
+        {row.sublabel && (
+          <span style={{ marginLeft:'4px', fontSize:'11px', color:'#888780' }}>
+            ({row.sublabel})
+          </span>
+        )}
+      </td>
+      {STORES.map((s) => {
+        const b = row.byStore[s]
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{cell(b?.amount ?? 0)}</td>
+            <td style={tdNumStyle}>
+              {b && b.customerCount > 0 ? `${b.customerCount}人` : '—'}
+            </td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: weight }}>
+        {cell(curAmt)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
+      </td>
+      <td style={{ ...tdNumStyle, color: yoyColor(curAmt, prevAmt) }}>
+        {prevAmt > 0 ? pct(curAmt, prevAmt) : '—'}
+      </td>
+    </tr>
+  )
+}
+
+// =====================================
+// カテゴリ別ビュー: 表
+// 列: 日付 | 西店惣菜 西店餅 | 南店惣菜 南店餅 | 本部合計(惣菜+餅) | 客数 | 前年比
+// =====================================
+
+interface RowData {
+  key      : string
+  label    : string
+  sublabel?: string
+  dow?     : number
+  byStore     : Record<string, Bucket>
+  prevByStore : Record<string, Bucket>
+}
+
+function buildRows(data: ApiData): RowData[] {
+  if (data.granularity === 'month') {
+    const daily     = data.daily ?? []
+    const prevDaily = data.prevDaily ?? []
+    return daily.map((d, i) => {
+      const p  = prevDaily[i]
+      const dt = new Date(d.date)
+      return {
+        key        : d.date,
+        label      : `${dt.getMonth()+1}/${dt.getDate()}`,
+        sublabel   : ['日','月','火','水','木','金','土'][d.dow],
+        dow        : d.dow,
+        byStore    : d.byStore,
+        prevByStore: p?.byStore ?? {},
+      }
+    })
+  }
+  if (data.granularity === 'year') {
+    const monthly     = data.monthly     ?? []
+    const prevMonthly = data.prevMonthly ?? []
+    return monthly.map((m, i) => ({
+      key        : `m${m.month}`,
+      label      : `${m.month}月`,
+      byStore    : m.byStore,
+      prevByStore: prevMonthly[i]?.byStore ?? {},
+    }))
+  }
+  return [{
+    key: 'd', label: data.label,
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }]
+}
+
+function CategoryTable({ data }: { data: ApiData }) {
+  const rows = useMemo(() => buildRows(data), [data])
+  const totalRow: RowData = {
+    key: 'TOTAL', label: '合計',
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        📋 カテゴリ別 売上一覧
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'720px',
+          borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>
+                {data.granularity === 'year' ? '月' : '日付'}
+              </th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'90px' }}>
+                本部合計
+              </th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                客数
+              </th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                前年比
+              </th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <CategoryRow key={r.key} row={r} />
+            ))}
+            <CategoryRow row={totalRow} isTotal />
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
+  const total     = sumStores(row.byStore)
+  const prevTotal = sumStores(row.prevByStore)
+  // 本部合計と前年比は 惣菜 + 餅 ベース (花/その他は含めない)
+  const curSM  = total.souzai     + total.mochi
+  const prevSM = prevTotal.souzai + prevTotal.mochi
+
+  const bg = isTotal ? '#FBF8F2'
+    : row.dow === 0 ? '#FFF7F6'
+    : row.dow === 6 ? '#F2F7FB'
+    : 'white'
+  const labelColor = isTotal ? '#2C2C2A'
+    : row.dow === 0 ? '#E24B4A'
+    : row.dow === 6 ? '#1A5276'
+    : '#2C2C2A'
+  const weight = isTotal ? 600 : 500
+
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
+
+  return (
+    <tr style={{ background: bg, borderTop:'1px solid #F0ECE3' }}>
+      <td style={{ ...tdStyle, fontWeight: weight, color: labelColor, whiteSpace:'nowrap' }}>
+        {row.label}
+        {row.sublabel && (
+          <span style={{ marginLeft:'4px', fontSize:'11px', color:'#888780' }}>
+            ({row.sublabel})
+          </span>
+        )}
+      </td>
+      {STORES.map((s) => {
+        const b = row.byStore[s]
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{cell(b?.souzai ?? 0)}</td>
+            <td style={tdNumStyle}>{cell(b?.mochi  ?? 0)}</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2',
+        fontWeight: isTotal ? 600 : 500 }}>{cell(curSM)}</td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
+      </td>
+      <td style={{ ...tdNumStyle, color: yoyColor(curSM, prevSM) }}>
+        {prevSM > 0 ? pct(curSM, prevSM) : '—'}
+      </td>
+    </tr>
+  )
+}
+
+function yoyColor(curr: number, prev: number): string {
+  if (prev <= 0 || curr === 0) return '#888780'
+  const ratio = curr / prev
+  if (ratio >= 1.05) return '#3B6D11'
+  if (ratio <= 0.95) return '#E24B4A'
+  return '#2C2C2A'
+}
+
+// =====================================
+// 曜日別ビュー: 棒グラフ
+// =====================================
+
+function DowChartView({ data }: { data: ApiData }) {
+  if (!data.dow) {
+    return (
+      <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+        textAlign:'center', color:'#888780' }}>
+        この粒度では曜日別表示は利用できません
+      </div>
+    )
+  }
+  return (
+    <div style={{ background:'white', borderRadius:'16px', padding:'16px',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
+        📊 曜日別 1日平均売上
+      </div>
+      <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
+        ※ {data.label} 内の各曜日の1日あたり平均
+      </div>
+
+      <Legend />
+
+      {STORES.map((s) => (
+        <DowBarChart key={s} name={s}
+          entries={reorderDow(data.dow!.byStore[s] ?? emptyDow())} />
+      ))}
+    </div>
+  )
 }
 
 function Legend() {
@@ -257,28 +613,76 @@ function Legend() {
   )
 }
 
-function StoreBucket({ name, bucket }: { name: string; bucket: Bucket }) {
+function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
+  const maxAmount = Math.max(...entries.map((e) => e.avgAmount), 1)
+  const seg = (e: DowEntry) => ({
+    souzai: e.avgSouzai, mochi: e.avgMochi, hana: e.avgHana,
+    other : Math.max(0, e.avgAmount - e.avgSouzai - e.avgMochi - e.avgHana),
+  })
+
   return (
-    <div style={{ marginBottom:'12px', paddingBottom:'12px',
-      borderBottom:'1px solid #F5F1EA' }}>
-      <div style={{ display:'flex', justifyContent:'space-between',
-        alignItems:'baseline', marginBottom:'6px' }}>
-        <span style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A' }}>{name}</span>
-        <span style={{ fontSize:'13px', color:'#888780' }}>{bucket.days}営業日</span>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
-        gap:'4px', fontSize:'14px' }}>
-        <Stat label="売上合計" value={'¥' + bucket.amount.toLocaleString()} />
-        <Stat label="客数合計" value={bucket.customerCount + '人'} />
-        <Stat label="惣菜売上" value={'¥' + bucket.souzai.toLocaleString()} />
-        <Stat label="餅売上"   value={'¥' + bucket.mochi.toLocaleString()} />
-        <Stat label="花売上"   value={'¥' + bucket.hana.toLocaleString()} />
-        <Stat label="客単価"   value={bucket.customerCount > 0
-          ? '¥' + Math.round(bucket.amount / bucket.customerCount).toLocaleString() : '—'} />
-        <Stat label="日商平均" value={bucket.days > 0
-          ? '¥' + Math.round(bucket.amount / bucket.days).toLocaleString() : '—'} />
-        <Stat label="日次客数" value={bucket.days > 0
-          ? Math.round(bucket.customerCount / bucket.days) + '人' : '—'} />
+    <div style={{ marginTop:'12px', marginBottom:'8px' }}>
+      <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
+        marginBottom:'8px' }}>{name}</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:'6px',
+        padding:'10px', background:'#FAFAFA', borderRadius:'8px' }}>
+        {entries.map((e) => {
+          const total = e.avgAmount
+          const widthPct = total > 0 ? (total / maxAmount) * 100 : 0
+          const labelColor = e.dow === 0 ? '#E24B4A' :
+                              e.dow === 6 ? '#1A6FAF' : '#2C2C2A'
+          const segs = seg(e)
+          return (
+            <div key={e.dow} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ width:'28px', fontSize:'14px', fontWeight:600,
+                color: labelColor, textAlign:'center', flexShrink:0 }}>
+                {e.label}
+              </div>
+              <div style={{ flex:1, position:'relative', height:'28px',
+                background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>
+                {total > 0 && (
+                  <div style={{ position:'absolute', left:0, top:0, bottom:0,
+                    width: widthPct + '%', display:'flex',
+                    borderRadius:'4px', overflow:'hidden' }}>
+                    {SEGMENTS.map((s) => {
+                      const v = segs[s.key]
+                      if (v <= 0) return null
+                      const pct = (v / total) * 100
+                      const segWidthPx = (pct / 100) * widthPct
+                      const showLabel = segWidthPx >= 8
+                      return (
+                        <div key={s.key}
+                          title={`${s.label} ¥${Math.round(v).toLocaleString()} (${pct.toFixed(0)}%)`}
+                          style={{ width: pct + '%', background: s.color,
+                            display:'flex', alignItems:'center',
+                            justifyContent:'center',
+                            color:'white', fontSize:'11px', fontWeight:600,
+                            overflow:'hidden', whiteSpace:'nowrap' }}>
+                          {showLabel ? '¥' + Math.round(v).toLocaleString() : ''}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              <div style={{ width:'92px', fontSize:'12px',
+                textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
+                {e.days > 0 ? (
+                  <>
+                    <div style={{ fontWeight:600, color:'#2C2C2A' }}>
+                      ¥{Math.round(total).toLocaleString()}
+                    </div>
+                    <div style={{ color:'#888780', fontSize:'11px' }}>
+                      {e.avgCustomer}人 · {e.days}日
+                    </div>
+                  </>
+                ) : (
+                  <span style={{ color:'#888780' }}>—</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -304,7 +708,6 @@ function PeriodPicker({ granularity, ref_, onChange }: {
       </select>
     )
   }
-
   if (granularity === 'day') {
     return (
       <input type="date" value={ref_}
@@ -312,134 +715,42 @@ function PeriodPicker({ granularity, ref_, onChange }: {
         style={pickerStyle} />
     )
   }
-
-  if (granularity === 'month') {
-    const value = `${y}-${String(m).padStart(2, '0')}`
-    return (
-      <input type="month" value={value}
-        onChange={(e) => {
-          if (!e.target.value) return
-          onChange(e.target.value + '-01')
-        }}
-        style={pickerStyle} />
-    )
-  }
-
-  // week: 開始日を表示するdate input
-  const weekStart = weekStartOf(ref_)
+  const value = `${y}-${String(m).padStart(2, '0')}`
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-      <span style={{ fontSize:'13px', color:'#888780' }}>週開始(月)</span>
-      <input type="date" value={weekStart}
-        onChange={(e) => e.target.value && onChange(e.target.value)}
-        style={pickerStyle} />
-    </div>
+    <input type="month" value={value}
+      onChange={(e) => {
+        if (!e.target.value) return
+        onChange(e.target.value + '-01')
+      }}
+      style={pickerStyle} />
   )
 }
 
+const thStyle: React.CSSProperties = {
+  padding:'8px 6px', borderBottom:'1.5px solid #E5E1D8',
+  fontSize:'12px', fontWeight:500, color:'#2C2C2A',
+  background:'#FAF8F3', whiteSpace:'nowrap',
+}
+const thGroupStyle: React.CSSProperties = { ...thStyle, textAlign:'center' }
+const thTotalGroupStyle: React.CSSProperties = { ...thStyle, textAlign:'center', background:'#FBF8F2' }
+const thSubStyle: React.CSSProperties = {
+  padding:'4px 6px', borderBottom:'1.5px solid #E5E1D8',
+  fontSize:'11px', fontWeight:400, color:'#888780',
+  background:'#FAF8F3', whiteSpace:'nowrap', textAlign:'center',
+}
+const tdStyle: React.CSSProperties = {
+  padding:'6px 8px', fontSize:'13px', color:'#2C2C2A',
+}
+const tdNumStyle: React.CSSProperties = {
+  padding:'6px 8px', fontSize:'13px', color:'#2C2C2A',
+  textAlign:'right', whiteSpace:'nowrap',
+}
 const pickerStyle: React.CSSProperties = {
   padding:'10px 14px', fontSize:'15px',
   border:'1.5px solid #E5E1D8', borderRadius:'10px',
   background:'white', fontFamily:'inherit',
   color:'#2C2C2A', cursor:'pointer',
 }
-
-function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
-  const maxAmount = Math.max(...entries.map((e) => e.avgAmount), 1)
-
-  const seg = (e: DowEntry) => ({
-    souzai: e.avgSouzai,
-    mochi : e.avgMochi,
-    hana  : e.avgHana,
-    other : Math.max(0, e.avgAmount - e.avgSouzai - e.avgMochi - e.avgHana),
-  })
-
-  return (
-    <div style={{ marginTop:'12px', marginBottom:'8px' }}>
-      <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
-        marginBottom:'8px' }}>{name}</div>
-
-      <div style={{ display:'flex', flexDirection:'column', gap:'6px',
-        padding:'10px', background:'#FAFAFA', borderRadius:'8px' }}>
-        {entries.map((e) => {
-          const total = e.avgAmount
-          const widthPct = total > 0 ? (total / maxAmount) * 100 : 0
-          const labelColor = e.dow === 0 ? '#E24B4A' :
-                              e.dow === 6 ? '#1A6FAF' : '#2C2C2A'
-          const segs = seg(e)
-          return (
-            <div key={e.dow} style={{ display:'flex', alignItems:'center',
-              gap:'8px' }}>
-              {/* 曜日 */}
-              <div style={{ width:'28px', fontSize:'14px', fontWeight:600,
-                color: labelColor, textAlign:'center', flexShrink:0 }}>
-                {e.label}
-              </div>
-
-              {/* バー本体 */}
-              <div style={{ flex:1, position:'relative', height:'28px',
-                background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>
-                {total > 0 && (
-                  <div style={{ position:'absolute', left:0, top:0, bottom:0,
-                    width: widthPct + '%', display:'flex',
-                    borderRadius:'4px', overflow:'hidden' }}>
-                    {SEGMENTS.map((s) => {
-                      const v = segs[s.key]
-                      if (v <= 0) return null
-                      const pct = (v / total) * 100
-                      const segWidthPx = (pct / 100) * widthPct
-                      // セグメントが十分広いとき (>=8% of full chart width) のみ金額表示
-                      const showLabel = segWidthPx >= 8
-                      return (
-                        <div key={s.key}
-                          title={`${s.label} ¥${Math.round(v).toLocaleString()} (${pct.toFixed(0)}%)`}
-                          style={{ width: pct + '%', background: s.color,
-                            display:'flex', alignItems:'center',
-                            justifyContent:'center',
-                            color:'white', fontSize:'11px', fontWeight:600,
-                            overflow:'hidden', whiteSpace:'nowrap' }}>
-                          {showLabel ? '¥' + Math.round(v).toLocaleString() : ''}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* 右側: 売上合計平均 + 平均客数 */}
-              <div style={{ width:'92px', fontSize:'12px',
-                textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
-                {e.days > 0 ? (
-                  <>
-                    <div style={{ fontWeight:600, color:'#2C2C2A' }}>
-                      ¥{Math.round(total).toLocaleString()}
-                    </div>
-                    <div style={{ color:'#888780', fontSize:'11px' }}>
-                      {e.avgCustomer}人 · {e.days}日
-                    </div>
-                  </>
-                ) : (
-                  <span style={{ color:'#888780' }}>—</span>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display:'flex', justifyContent:'space-between',
-      padding:'6px 10px', background:'#FAFAFA', borderRadius:'6px' }}>
-      <span style={{ color:'#888780' }}>{label}</span>
-      <span style={{ fontWeight:500, color:'#2C2C2A' }}>{value}</span>
-    </div>
-  )
-}
-
 const navBtn: React.CSSProperties = {
   width:'40px', height:'40px', borderRadius:'10px',
   background:'#F5F1EA', border:'none', fontSize:'22px',

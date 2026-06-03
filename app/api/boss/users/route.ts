@@ -4,11 +4,11 @@ import { pushMessage } from '@/lib/line'
 import prisma from '@/lib/prisma'
 
 const VALID_ROLES = new Set([
-  'pending', 'nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all',
+  'pending', 'nishi', 'minami', 'honbu', 'hq1', 'hq2', 'hq3', 'all',
 ])
 
 const ACTIVE_ROLES = new Set([
-  'nishi', 'minami', 'hq1', 'hq2', 'hq3', 'all',
+  'nishi', 'minami', 'honbu', 'hq1', 'hq2', 'hq3', 'all',
 ])
 
 function requireBoss(req: NextRequest) {

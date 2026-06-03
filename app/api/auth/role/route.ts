@@ -18,15 +18,6 @@ export async function POST(req: NextRequest) {
       orderBy: { id: 'asc' },
     })
 
-    // honbu ユーザー未登録なら hq1 で代行
-    if (!user && role === 'honbu') {
-      user = await prisma.user.findFirst({
-        where  : { role: 'hq1', isActive: true },
-        include: { store: true },
-        orderBy: { id: 'asc' },
-      })
-    }
-
     // 該当 role が未登録なら all で代行（all は全ページ閲覧可）
     if (!user && role !== 'all') {
       user = await prisma.user.findFirst({

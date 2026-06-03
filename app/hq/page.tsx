@@ -12,8 +12,8 @@ interface ProductSummary {
   category   : string
   unit       : string
   vendor     : string
-  storeA     : { status: string | null; qty: number } | null
-  storeB     : { status: string | null; qty: number } | null
+  storeA     : { status: string | null; qty: number; qtyText: string | null } | null
+  storeB     : { status: string | null; qty: number; qtyText: string | null } | null
   totalQty   : number
   adjustedQty: number
 }
@@ -28,6 +28,18 @@ interface SalesEntry {
   staffMorning  : number
   staffAfternoon: number
   notes         : string
+}
+
+interface MemoEntry {
+  store   : string
+  category: string
+  memo    : string
+}
+
+const STORE_LABELS: Record<string, string> = {
+  nishi : '西店',
+  minami: '南店',
+  honbu : '本部',
 }
 
 const ROLE_TO_CATEGORY: Record<string, string> = {
@@ -45,6 +57,7 @@ function HqPageContent() {
   const searchParams = useSearchParams()
   const { user, loading, error, authFetch, logout } = useAuth(['hq1', 'hq2', 'hq3', 'all'])
   const [items, setItems]       = useState<ProductSummary[]>([])
+  const [memos, setMemos]       = useState<MemoEntry[]>([])
   const [adjusted, setAdjusted] = useState<Record<number, number>>({})
   const [sales, setSales]       = useState<Record<string, SalesEntry>>({})
   const [saving, setSaving]     = useState(false)
@@ -74,6 +87,7 @@ function HqPageContent() {
     const oData = await oRes.json()
     const sData = await sRes.json()
     setItems(oData.items || [])
+    setMemos(oData.memos || [])
     setSales(sData || {})
     const init: Record<number, number> = {}
     ;(oData.items || []).forEach((item: ProductSummary) => {
@@ -139,7 +153,7 @@ function HqPageContent() {
       for (const it of list) {
         const qty = adjusted[it.productId] || it.totalQty
         if (qty > 0) {
-          text += `${it.productName}: ${qty}${it.unit}\n`
+          text += `${it.productName}: ${qty}\n`
         }
       }
       text += '\n'
@@ -241,6 +255,9 @@ function HqPageContent() {
           <>
             {/* 売上実績 */}
             <SalesSummary sales={sales} />
+
+            {/* 店舗メモ */}
+            <MemoSection memos={memos} />
 
             {/* 注文（〇・△） */}
             <SectionTitle text={`📋 注文（${orderItems.length}品）`}
@@ -378,6 +395,50 @@ function Mini({ label, value }: { label: string; value: string }) {
   )
 }
 
+function MemoSection({ memos }: { memos: MemoEntry[] }) {
+  if (!memos || memos.length === 0) return null
+  // store でグルーピング
+  const byStore = new Map<string, MemoEntry[]>()
+  memos.forEach((m) => {
+    if (!m.memo || !m.memo.trim()) return
+    const arr = byStore.get(m.store) ?? []
+    arr.push(m)
+    byStore.set(m.store, arr)
+  })
+  if (byStore.size === 0) return null
+
+  return (
+    <div style={{ marginBottom:'16px', background:'white', borderRadius:'16px',
+      overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'14px', background:'#FBF8F2' }}>
+        📝 店舗メモ
+      </div>
+      <div style={{ padding:'8px 16px 12px' }}>
+        {Array.from(byStore.entries()).map(([store, list]) => (
+          <div key={store} style={{ marginTop:'8px' }}>
+            <div style={{ fontSize:'12px', fontWeight:500, color:'#888780',
+              marginBottom:'4px' }}>
+              {STORE_LABELS[store] ?? store}
+            </div>
+            {list.map((m, i) => (
+              <div key={`${m.category}-${i}`}
+                style={{ padding:'8px 10px', background:'#FAFAFA',
+                  borderRadius:'8px', fontSize:'13px', color:'#2C2C2A',
+                  whiteSpace:'pre-wrap', marginBottom:'4px' }}>
+                <span style={{ fontSize:'11px', color:'#888780', marginRight:'6px' }}>
+                  [{m.category}]
+                </span>
+                {m.memo}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SectionTitle({ text, color, subtitle }: {
   text: string; color: string; subtitle?: string
 }) {
@@ -457,9 +518,9 @@ function OrderCards({
                         <>
                           <span style={{ color: statusColor(s.status), fontSize:'20px',
                             fontWeight:500 }}>{s.status || '―'}</span>
-                          {s.qty > 0 && (
+                          {(s.qtyText || s.qty > 0) && (
                             <span style={{ marginLeft:'auto', fontSize:'16px' }}>
-                              {s.qty}{item.unit}
+                              {s.qtyText ?? String(s.qty)}
                             </span>
                           )}
                         </>
@@ -471,7 +532,7 @@ function OrderCards({
                 })}
                 <div style={{ textAlign:'center', fontSize:'14px',
                   fontWeight:500, color:'#2C2C2A' }}>
-                  計 {item.totalQty}{item.unit}
+                  計 {item.totalQty}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:'4px' }}>
                   <input type="number"
@@ -484,7 +545,6 @@ function OrderCards({
                       border:'1.5px solid #E5E1D8', borderRadius:'8px',
                       fontSize:'20px', fontWeight:500, fontFamily:'inherit' }}
                     min="0" />
-                  <span style={{ fontSize:'12px', color:'#888780' }}>{item.unit}</span>
                 </div>
               </div>
             </div>
@@ -587,6 +647,7 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
   label        : string
 }) {
   const [data, setData] = useState<Record<string, ProductSummary[]>>({})
+  const [memosByDate, setMemosByDate] = useState<Record<string, MemoEntry[]>>({})
   const [loading, setLoading] = useState(true)
   const [activeCat, setActiveCat] = useState<string | null>(null)
   const [weekOffset, setWeekOffset] = useState(0) // 0=今週, -1=先週, ...
@@ -628,14 +689,19 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
         const json = await res.json()
         if (cancelled) return
         const map: Record<string, ProductSummary[]> = {}
+        const memoMap: Record<string, MemoEntry[]> = {}
         if (json.days) {
-          Object.entries(json.days as Record<string, { items: ProductSummary[] }>).forEach(
-            ([k, v]) => { map[k] = v.items ?? [] },
+          Object.entries(json.days as Record<string, { items: ProductSummary[]; memos?: MemoEntry[] }>).forEach(
+            ([k, v]) => {
+              map[k] = v.items ?? []
+              memoMap[k] = v.memos ?? []
+            },
           )
         }
         setData(map)
+        setMemosByDate(memoMap)
       } catch {
-        if (!cancelled) setData({})
+        if (!cancelled) { setData({}); setMemosByDate({}) }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -777,10 +843,12 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
                       const b = item?.storeB
                       const aStyle = statusStyle(a?.status ?? null)
                       const bStyle = statusStyle(b?.status ?? null)
+                      const aQty  = a?.qtyText ?? (a && a.qty > 0 ? String(a.qty) : '')
+                      const bQty  = b?.qtyText ?? (b && b.qty > 0 ? String(b.qty) : '')
                       const aText = !a || a.status === null ? '—'
-                        : a.status + (a.qty > 0 ? ` ${a.qty}` : '')
+                        : a.status + (aQty ? ` ${aQty}` : '')
                       const bText = !b || b.status === null ? '—'
-                        : b.status + (b.qty > 0 ? ` ${b.qty}` : '')
+                        : b.status + (bQty ? ` ${bQty}` : '')
                       return (
                         <Fragment key={`${pid}-${wd.dateStr}`}>
                           <td style={{
@@ -832,6 +900,71 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
           </span>
         </div>
       )}
+
+      {!loading && <WeeklyMemos weekDays={weekDays} memosByDate={memosByDate} />}
+    </div>
+  )
+}
+
+function WeeklyMemos({
+  weekDays, memosByDate,
+}: {
+  weekDays   : { date: Date; dateStr: string; label: string; isToday: boolean }[]
+  memosByDate: Record<string, MemoEntry[]>
+}) {
+  const daysWithMemos = weekDays.filter((wd) =>
+    (memosByDate[wd.dateStr] ?? []).some((m) => m.memo && m.memo.trim())
+  )
+  if (daysWithMemos.length === 0) return null
+
+  return (
+    <div style={{ marginTop:'14px', background:'white', borderRadius:'14px',
+      overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'15px' }}>
+        📝 週間メモ
+      </div>
+      <div style={{ padding:'8px 16px 12px' }}>
+        {daysWithMemos.map((wd) => {
+          const memos = (memosByDate[wd.dateStr] ?? []).filter((m) => m.memo && m.memo.trim())
+          // store でまとめる
+          const byStore = new Map<string, MemoEntry[]>()
+          memos.forEach((m) => {
+            const arr = byStore.get(m.store) ?? []
+            arr.push(m)
+            byStore.set(m.store, arr)
+          })
+          return (
+            <div key={wd.dateStr} style={{ marginTop:'8px' }}>
+              <div style={{ fontSize:'13px', fontWeight:500,
+                color: wd.isToday ? '#1A5276' : '#2C2C2A', marginBottom:'4px' }}>
+                {wd.label} {wd.date.getMonth()+1}/{wd.date.getDate()}
+                {wd.isToday && (
+                  <span style={{ marginLeft:'6px', fontSize:'11px', color:'#1A5276' }}>(本日)</span>
+                )}
+              </div>
+              {Array.from(byStore.entries()).map(([store, list]) => (
+                <div key={store} style={{ marginLeft:'8px', marginBottom:'4px' }}>
+                  <div style={{ fontSize:'11px', color:'#888780' }}>
+                    {STORE_LABELS[store] ?? store}
+                  </div>
+                  {list.map((m, i) => (
+                    <div key={`${m.category}-${i}`}
+                      style={{ padding:'6px 10px', background:'#FAFAFA',
+                        borderRadius:'6px', fontSize:'12px', color:'#2C2C2A',
+                        whiteSpace:'pre-wrap', marginTop:'2px' }}>
+                      <span style={{ fontSize:'11px', color:'#888780', marginRight:'6px' }}>
+                        [{m.category}]
+                      </span>
+                      {m.memo}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
