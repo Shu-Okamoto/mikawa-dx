@@ -4,7 +4,7 @@ import { useState, useMemo, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav, Toast, useToast } from '../_shared'
 
-type Mode = 'product' | 'order-product'
+type Mode = 'product' | 'order-product' | 'sale'
 
 type ProductRow = {
   productCode: string
@@ -24,6 +24,16 @@ type OrderProductRow = {
   availableDays: string
   isActive     : boolean
   memo         : string
+}
+
+type SaleRow = {
+  date    : string
+  store   : string
+  amount  : string
+  souzai  : string
+  mochi   : string
+  hana    : string
+  customer: string
 }
 
 type ImportResult = {
@@ -145,6 +155,62 @@ function parseOrderProductRows(text: string): OrderProductRow[] {
   return out
 }
 
+// 売上CSV のヘッダー候補 (日本語/英語混在)
+const SALE_HEADER_ALIASES: Record<keyof SaleRow, string[]> = {
+  date    : ['日付', '年月日', 'date', 'saledate'],
+  store   : ['店', '店舗', 'store', 'storename'],
+  amount  : ['売上', '売上合計', '合計', 'amount', 'total'],
+  souzai  : ['惣菜', 'souzai'],
+  mochi   : ['餅', 'mochi'],
+  hana    : ['花', 'hana'],
+  customer: ['客数', 'customer', 'customercount'],
+}
+
+function findSaleHeaderRow(rows: string[][]): {
+  idx: number
+  cols: Record<keyof SaleRow, number>
+} | null {
+  for (let i = 0; i < rows.length; i++) {
+    const headers = rows[i].map((h) => h.trim().toLowerCase())
+    const cols: Partial<Record<keyof SaleRow, number>> = {}
+    let allFound = true
+    ;(Object.keys(SALE_HEADER_ALIASES) as (keyof SaleRow)[]).forEach((k) => {
+      const aliases = SALE_HEADER_ALIASES[k].map((a) => a.toLowerCase())
+      const idx = headers.findIndex((h) => aliases.includes(h))
+      if (idx < 0) allFound = false
+      else cols[k] = idx
+    })
+    if (allFound) return { idx: i, cols: cols as Record<keyof SaleRow, number> }
+  }
+  return null
+}
+
+function parseSaleRows(text: string): SaleRow[] {
+  const grid = parseCSV(text)
+  const header = findSaleHeaderRow(grid)
+  if (!header) {
+    throw new Error(
+      'ヘッダー行が見つかりません。必須列: 日付 / 店 / 売上 / 惣菜 / 餅 / 花 / 客数',
+    )
+  }
+  const { idx: headerIdx, cols } = header
+  const out: SaleRow[] = []
+  for (let i = headerIdx + 1; i < grid.length; i++) {
+    const r = grid[i]
+    if (!r || r.every((c) => !c?.trim())) continue
+    out.push({
+      date    : (r[cols.date]     ?? '').trim(),
+      store   : (r[cols.store]    ?? '').trim(),
+      amount  : (r[cols.amount]   ?? '').trim(),
+      souzai  : (r[cols.souzai]   ?? '').trim(),
+      mochi   : (r[cols.mochi]    ?? '').trim(),
+      hana    : (r[cols.hana]     ?? '').trim(),
+      customer: (r[cols.customer] ?? '').trim(),
+    })
+  }
+  return out
+}
+
 function ImportContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const { toast, showToast } = useToast()
@@ -158,8 +224,9 @@ function ImportContent() {
     if (!csvText.trim()) return null
     try {
       setParseError(null)
-      if (mode === 'product') return { kind: 'product' as const, rows: parseProductRows(csvText) }
-      return { kind: 'order-product' as const, rows: parseOrderProductRows(csvText) }
+      if (mode === 'product')       return { kind: 'product'       as const, rows: parseProductRows(csvText) }
+      if (mode === 'order-product') return { kind: 'order-product' as const, rows: parseOrderProductRows(csvText) }
+      return { kind: 'sale' as const, rows: parseSaleRows(csvText) }
     } catch (e: any) {
       setParseError(e.message || 'パースに失敗しました')
       return null
@@ -177,14 +244,16 @@ function ImportContent() {
 
   const execute = async () => {
     if (!parsed || parsed.rows.length === 0) return
-    if (!confirm(`${parsed.rows.length} 行をインポートします。既存の productCode は上書きされます。続行しますか？`)) {
-      return
-    }
+    const confirmMsg = parsed.kind === 'sale'
+      ? `${parsed.rows.length} 行をインポートします。同じ (日付, 店) が既にある行はスキップされます。続行しますか？`
+      : `${parsed.rows.length} 行をインポートします。既存の productCode は上書きされます。続行しますか？`
+    if (!confirm(confirmMsg)) return
     setRunning(true)
     setResult(null)
-    const url = parsed.kind === 'product'
-      ? '/api/boss/import/products'
-      : '/api/boss/import/order-products'
+    const url =
+      parsed.kind === 'product'       ? '/api/boss/import/products' :
+      parsed.kind === 'order-product' ? '/api/boss/import/order-products' :
+                                        '/api/boss/import/sales'
     const res = await authFetch(url, {
       method: 'POST',
       body  : JSON.stringify({ rows: parsed.rows }),
@@ -207,13 +276,13 @@ function ImportContent() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F5F1EA', fontFamily: "'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif" }}>
-      <BossHeader title="マスタインポート" subtitle="CSV から商品 / 注文商品を一括登録" onLogout={logout} />
+      <BossHeader title="マスタインポート" subtitle="CSV から商品 / 注文商品 / 売上を一括登録" onLogout={logout} />
       <BossNav active="/boss/import" />
 
       <div style={{ padding: '16px', maxWidth: '900px', margin: '0 auto' }}>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          {(['product', 'order-product'] as Mode[]).map((m) => (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {(['product', 'order-product', 'sale'] as Mode[]).map((m) => (
             <button key={m}
               onClick={() => { setMode(m); setCsvText(''); setResult(null) }}
               style={{
@@ -225,7 +294,11 @@ function ImportContent() {
                 cursor   : 'pointer',
                 fontSize : '13px',
               }}>
-              {m === 'product' ? '商品 (Product)' : '注文商品 (OrderProduct)'}
+              {m === 'product'
+                ? '商品 (Product)'
+                : m === 'order-product'
+                ? '注文商品 (OrderProduct)'
+                : '売上 (Sale)'}
             </button>
           ))}
         </div>
@@ -236,7 +309,9 @@ function ImportContent() {
           <div style={{ fontSize: '13px', color: '#888780', marginBottom: '10px' }}>
             {mode === 'product'
               ? '列: ProductID / ProductName / Category / Unit / WeeklyAvg / Vendor / Active'
-              : '列: ProductID / ProductName / Category / Price / AvailableDays / Active / Memo'}
+              : mode === 'order-product'
+              ? '列: ProductID / ProductName / Category / Price / AvailableDays / Active / Memo'
+              : '列: 日付 / 店 / 売上 / 惣菜 / 餅 / 花 / 客数 (店は「西店」「南店」「本部」もしくは nishi/minami/honbu)'}
           </div>
 
           <input type="file" accept=".csv,text/csv"
@@ -293,7 +368,7 @@ function ImportContent() {
                         <th style={th}>vendor</th>
                         <th style={th}>active</th>
                       </>
-                    ) : (
+                    ) : parsed.kind === 'order-product' ? (
                       <>
                         <th style={th}>code</th>
                         <th style={th}>name</th>
@@ -302,6 +377,16 @@ function ImportContent() {
                         <th style={th}>days</th>
                         <th style={th}>active</th>
                         <th style={th}>memo</th>
+                      </>
+                    ) : (
+                      <>
+                        <th style={th}>日付</th>
+                        <th style={th}>店</th>
+                        <th style={th}>売上</th>
+                        <th style={th}>惣菜</th>
+                        <th style={th}>餅</th>
+                        <th style={th}>花</th>
+                        <th style={th}>客数</th>
                       </>
                     )}
                   </tr>
@@ -319,7 +404,7 @@ function ImportContent() {
                           <td style={td}>{(r as ProductRow).vendorName}</td>
                           <td style={td}>{String((r as ProductRow).isActive)}</td>
                         </>
-                      ) : (
+                      ) : parsed.kind === 'order-product' ? (
                         <>
                           <td style={td}>{(r as OrderProductRow).productCode}</td>
                           <td style={td}>{(r as OrderProductRow).productName}</td>
@@ -328,6 +413,16 @@ function ImportContent() {
                           <td style={td}>{(r as OrderProductRow).availableDays}</td>
                           <td style={td}>{String((r as OrderProductRow).isActive)}</td>
                           <td style={td}>{(r as OrderProductRow).memo}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={td}>{(r as SaleRow).date}</td>
+                          <td style={td}>{(r as SaleRow).store}</td>
+                          <td style={td}>{(r as SaleRow).amount}</td>
+                          <td style={td}>{(r as SaleRow).souzai}</td>
+                          <td style={td}>{(r as SaleRow).mochi}</td>
+                          <td style={td}>{(r as SaleRow).hana}</td>
+                          <td style={td}>{(r as SaleRow).customer}</td>
                         </>
                       )}
                     </tr>
