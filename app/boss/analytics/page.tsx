@@ -70,6 +70,8 @@ interface ApiData {
 
 interface PastYearStoreEntry {
   amount       : number
+  souzai       : number
+  mochi        : number
   customerCount: number
   businessDays : number
 }
@@ -443,37 +445,48 @@ function UnitPriceRow({ byStore, prevByStore }: {
 // 店舗ごと (西/南/合計) × 売上/客数/客単価/営業日数
 // =====================================
 
-function Past3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) {
-  // 平均行: 売上/客数/営業日数 はそれぞれ単純平均、客単価は (合計売上÷合計客数)
-  const avg = (() => {
-    const out = {
-      byStore: {} as Record<string, PastYearStoreEntry>,
-      total  : { amount: 0, customerCount: 0, businessDays: 0 } as PastYearStoreEntry,
-    }
-    const n = pastYears.length || 1
-    STORES.forEach((s) => {
-      let amt = 0, cust = 0, days = 0
-      pastYears.forEach((py) => {
-        const b = py.byStore[s]
-        if (b) { amt += b.amount; cust += b.customerCount; days += b.businessDays }
-      })
-      out.byStore[s] = {
-        amount: Math.round(amt / n),
-        customerCount: Math.round(cust / n),
-        businessDays: Math.round(days / n),
+function avgPastYears(pastYears: PastYearEntry[]): {
+  byStore: Record<string, PastYearStoreEntry>
+  total  : PastYearStoreEntry
+} {
+  const n = pastYears.length || 1
+  const byStore: Record<string, PastYearStoreEntry> = {}
+  STORES.forEach((s) => {
+    let amt = 0, sou = 0, moc = 0, cust = 0, days = 0
+    pastYears.forEach((py) => {
+      const b = py.byStore[s]
+      if (b) {
+        amt += b.amount; sou += b.souzai; moc += b.mochi
+        cust += b.customerCount; days += b.businessDays
       }
     })
-    let amt = 0, cust = 0, days = 0
-    pastYears.forEach((py) => {
-      amt += py.total.amount; cust += py.total.customerCount; days += py.total.businessDays
-    })
-    out.total = {
-      amount: Math.round(amt / n),
+    byStore[s] = {
+      amount       : Math.round(amt / n),
+      souzai       : Math.round(sou / n),
+      mochi        : Math.round(moc / n),
       customerCount: Math.round(cust / n),
-      businessDays: Math.round(days / n),
+      businessDays : Math.round(days / n),
     }
-    return out
-  })()
+  })
+  let amt = 0, sou = 0, moc = 0, cust = 0, days = 0
+  pastYears.forEach((py) => {
+    amt += py.total.amount; sou += py.total.souzai; moc += py.total.mochi
+    cust += py.total.customerCount; days += py.total.businessDays
+  })
+  return {
+    byStore,
+    total: {
+      amount       : Math.round(amt / n),
+      souzai       : Math.round(sou / n),
+      mochi        : Math.round(moc / n),
+      customerCount: Math.round(cust / n),
+      businessDays : Math.round(days / n),
+    },
+  }
+}
+
+function Past3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) {
+  const avg = avgPastYears(pastYears)
 
   const renderCell = (e: PastYearStoreEntry | undefined) => {
     if (!e || (e.amount === 0 && e.customerCount === 0 && e.businessDays === 0)) {
@@ -733,6 +746,128 @@ function CategoryTable({ data }: { data: ApiData }) {
             <CategoryUnitPriceRow
               byStore={data.total.byStore}
               prevByStore={data.prevTotal.byStore} />
+            <CategoryYoYRow
+              byStore={data.total.byStore}
+              prevByStore={data.prevTotal.byStore} />
+          </tbody>
+        </table>
+      </div>
+
+      {data.pastYears && data.pastYears.length > 0 && (
+        <CategoryPast3YearsTable pastYears={data.pastYears} />
+      )}
+    </div>
+  )
+}
+
+// 店舗×カテゴリ別 前年比を各セルに表示する行
+function CategoryYoYRow({ byStore, prevByStore }: {
+  byStore    : Record<string, Bucket>
+  prevByStore: Record<string, Bucket>
+}) {
+  const total     = sumStores(byStore)
+  const prevTotal = sumStores(prevByStore)
+  const curSM     = total.souzai     + total.mochi
+  const prevSM    = prevTotal.souzai + prevTotal.mochi
+  const yoyCell = (cur: number, prev: number) => prev > 0
+    ? <span style={{ color: yoyColor(cur, prev) }}>{pct(cur, prev)}</span>
+    : <span style={{ color: '#888780' }}>—</span>
+  return (
+    <tr style={{ background:'#FBF8F2', borderTop:'1px solid #E5E1D8' }}>
+      <td style={{ ...tdStyle, fontWeight: 600 }}>前年比</td>
+      {STORES.map((s) => {
+        const b  = byStore[s]     ?? emptyBucket()
+        const pb = prevByStore[s] ?? emptyBucket()
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{yoyCell(b.souzai, pb.souzai)}</td>
+            <td style={tdNumStyle}>{yoyCell(b.mochi , pb.mochi )}</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
+        {yoyCell(curSM, prevSM)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {yoyCell(total.customerCount, prevTotal.customerCount)}
+      </td>
+      <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
+    </tr>
+  )
+}
+
+// カテゴリ別の過去3年売上表
+// 店舗×カテゴリ別売上 + 合計 (惣菜+餅) + 客数 の構成
+function CategoryPast3YearsTable({ pastYears }: { pastYears: PastYearEntry[] }) {
+  const avg = avgPastYears(pastYears)
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
+  type Row = { key: string; label: string; isAvg?: boolean; entry: {
+    byStore: Record<string, PastYearStoreEntry>; total: PastYearStoreEntry
+  } }
+  const rows: Row[] = [
+    ...pastYears.map((py) => ({
+      key: String(py.year), label: `${py.year}年`,
+      entry: { byStore: py.byStore, total: py.total },
+    })),
+    { key: 'AVG', label: '3年平均', isAvg: true, entry: avg },
+  ]
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginTop:'12px' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        📈 過去3年売上 (カテゴリ別)
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'720px',
+          borderCollapse:'collapse', fontSize:'12px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>年</th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'90px' }}>
+                本部合計
+              </th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                客数
+              </th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const sm = r.entry.total.souzai + r.entry.total.mochi
+              return (
+                <tr key={r.key} style={{
+                  borderTop: r.isAvg ? '2px solid #E5E1D8' : '1px solid #F0ECE3',
+                  background: r.isAvg ? '#FBF8F2' : 'white',
+                }}>
+                  <td style={{ ...tdStyle, fontWeight: r.isAvg ? 600 : 500,
+                    whiteSpace:'nowrap' }}>{r.label}</td>
+                  {STORES.map((s) => {
+                    const b = r.entry.byStore[s]
+                    return (
+                      <Fragment key={s}>
+                        <td style={tdNumStyle}>{cell(b?.souzai ?? 0)}</td>
+                        <td style={tdNumStyle}>{cell(b?.mochi  ?? 0)}</td>
+                      </Fragment>
+                    )
+                  })}
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2',
+                    fontWeight: r.isAvg ? 600 : 500 }}>{cell(sm)}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+                    {r.entry.total.customerCount > 0
+                      ? `${r.entry.total.customerCount.toLocaleString()}人` : '—'}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

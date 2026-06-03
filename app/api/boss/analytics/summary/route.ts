@@ -228,16 +228,19 @@ function prevYearRef(ref: Date): Date {
   return new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
 }
 
-// 過去 n 年分の ref Date を古い順で返す (含む現在)
+// 過去 n 年分の ref Date を古い順で返す (現在は含まない: 1年前/2年前/...)
 function pastYearRefs(ref: Date, n: number): Date[] {
   return Array.from({ length: n }, (_, i) =>
-    new Date(ref.getFullYear() - (n - 1 - i), ref.getMonth(), ref.getDate()),
+    // n=3 → i=0→-3, i=1→-2, i=2→-1 で古い順
+    new Date(ref.getFullYear() - (n - i), ref.getMonth(), ref.getDate()),
   )
 }
 
-// 店舗別合計 + 営業日数 (saleDate がユニークに 1 件以上記録された日数)
+// 店舗別合計 + 営業日数 (売上 > 0 の日数) + カテゴリ別売上
 interface PastYearStoreEntry {
   amount       : number
+  souzai       : number
+  mochi        : number
   customerCount: number
   businessDays : number
 }
@@ -254,27 +257,43 @@ function aggregatePastYear(
   const totalDays = new Set<string>()
   const storeDays: Record<string, Set<string>> = {}
   let totalAmount = 0
+  let totalSouzai = 0
+  let totalMochi  = 0
   let totalCust   = 0
   sales.forEach((s) => {
     const name = s.store.storeName
-    if (!byStore[name]) byStore[name] = { amount: 0, customerCount: 0, businessDays: 0 }
+    if (!byStore[name]) byStore[name] = {
+      amount: 0, souzai: 0, mochi: 0, customerCount: 0, businessDays: 0,
+    }
     if (!storeDays[name]) storeDays[name] = new Set()
-    const amt  = toNum(s.amount)
-    const cust = s.customerCount
+    const amt    = toNum(s.amount)
+    const souzai = toNum(s.souzaiAmount)
+    const mochi  = toNum(s.mochiAmount)
+    const cust   = s.customerCount
     byStore[name].amount        += amt
+    byStore[name].souzai        += souzai
+    byStore[name].mochi         += mochi
     byStore[name].customerCount += cust
     totalAmount += amt
+    totalSouzai += souzai
+    totalMochi  += mochi
     totalCust   += cust
-    const key = ymd(new Date(s.saleDate))
-    storeDays[name].add(key)
-    totalDays.add(key)
+    // 営業日 = 売上 > 0 の日のみ
+    if (amt > 0) {
+      const key = ymd(new Date(s.saleDate))
+      storeDays[name].add(key)
+      totalDays.add(key)
+    }
   })
   Object.entries(storeDays).forEach(([name, days]) => {
     byStore[name].businessDays = days.size
   })
   return {
     year, label, byStore,
-    total: { amount: totalAmount, customerCount: totalCust, businessDays: totalDays.size },
+    total: {
+      amount: totalAmount, souzai: totalSouzai, mochi: totalMochi,
+      customerCount: totalCust, businessDays: totalDays.size,
+    },
   }
 }
 
