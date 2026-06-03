@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
 type Granularity = 'year' | 'month' | 'day'
-type ViewKey    = 'category' | 'dow'
+type ViewKey    = 'daily' | 'category' | 'dow'
 
 interface Bucket {
   amount       : number
@@ -64,6 +64,7 @@ const SEGMENTS = [
 ] as const
 
 const VIEWS: { key: ViewKey; label: string; emoji: string }[] = [
+  { key: 'daily'   , label: '日別'      , emoji: '💰' },
   { key: 'category', label: 'カテゴリ別', emoji: '📋' },
   { key: 'dow'     , label: '曜日別'    , emoji: '📊' },
 ]
@@ -131,7 +132,7 @@ function AnalyticsContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [ref, setRef] = useState<string>(todayYmd())
-  const [view, setView] = useState<ViewKey>('category')
+  const [view, setView] = useState<ViewKey>('daily')
   const [data, setData] = useState<ApiData | null>(null)
   const [fetching, setFetching] = useState(true)
 
@@ -154,8 +155,8 @@ function AnalyticsContent() {
   if (loading) return <Center>読み込み中...</Center>
   if (error)   return <Center error>{error}</Center>
 
-  // 曜日別は日粒度では非表示なので、自動でカテゴリ別に倒す
-  const effectiveView: ViewKey = granularity === 'day' && view === 'dow' ? 'category' : view
+  // 曜日別は日粒度では非表示なので、自動で日別に倒す
+  const effectiveView: ViewKey = granularity === 'day' && view === 'dow' ? 'daily' : view
 
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
@@ -238,6 +239,8 @@ function AnalyticsContent() {
         ) : !data ? (
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
             textAlign:'center', color:'#888780' }}>データがありません</div>
+        ) : effectiveView === 'daily' ? (
+          <DailySalesTable data={data} />
         ) : effectiveView === 'category' ? (
           <CategoryTable data={data} />
         ) : (
@@ -250,8 +253,161 @@ function AnalyticsContent() {
 }
 
 // =====================================
+// 日別 (売上) ビュー: 表
+// 列: 日付 | 西店(売上/客数) | 南店(売上/客数) | 本部合計(売上/客数) | 前年比
+// 行: 各日 + 合計 + 平均 (粒度=月/年のみ平均行を表示)
+// =====================================
+
+function avgBucket(rows: RowData[]): Bucket {
+  // データのある行 (西店または南店の amount > 0) を分母にする
+  const out = emptyBucket()
+  let days = 0
+  rows.forEach((r) => {
+    const t = sumStores(r.byStore)
+    if (t.amount <= 0 && t.customerCount <= 0) return
+    days++
+    out.amount        += t.amount
+    out.souzai        += t.souzai
+    out.mochi         += t.mochi
+    out.hana          += t.hana
+    out.customerCount += t.customerCount
+  })
+  if (days === 0) return out
+  out.amount        = Math.round(out.amount        / days)
+  out.souzai        = Math.round(out.souzai        / days)
+  out.mochi         = Math.round(out.mochi         / days)
+  out.hana          = Math.round(out.hana          / days)
+  out.customerCount = Math.round(out.customerCount / days)
+  out.days          = days
+  return out
+}
+
+function DailySalesTable({ data }: { data: ApiData }) {
+  const rows = useMemo(() => buildRows(data), [data])
+  const totalRow: RowData = {
+    key: 'TOTAL', label: '合計',
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }
+  // 平均行: 当期 / 前年同期間 をそれぞれ「データのある日」で平均
+  const showAvg = data.granularity !== 'day' && rows.length > 1
+  const avgByStore: Record<string, Bucket> = {}
+  const avgPrevByStore: Record<string, Bucket> = {}
+  if (showAvg) {
+    STORES.forEach((s) => {
+      avgByStore[s]     = avgBucket(rows.map((r) => ({
+        ...r, byStore: { [s]: r.byStore[s]     ?? emptyBucket() },
+      })))
+      avgPrevByStore[s] = avgBucket(rows.map((r) => ({
+        ...r, byStore: { [s]: r.prevByStore[s] ?? emptyBucket() },
+      })))
+    })
+  }
+  const avgRow: RowData = {
+    key: 'AVG', label: '平均',
+    byStore: avgByStore, prevByStore: avgPrevByStore,
+  }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        💰 売上 一覧
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'640px',
+          borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>
+                {data.granularity === 'year' ? '月' : '日付'}
+              </th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th colSpan={2} style={thTotalGroupStyle}>本部合計</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                前年比
+              </th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>売上</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>客数</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <DailyRow key={r.key} row={r} />
+            ))}
+            <DailyRow row={totalRow} isTotal />
+            {showAvg && <DailyRow row={avgRow} isAvg />}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function DailyRow({ row, isTotal, isAvg }: {
+  row: RowData; isTotal?: boolean; isAvg?: boolean
+}) {
+  const total     = sumStores(row.byStore)
+  const prevTotal = sumStores(row.prevByStore)
+  const curAmt  = total.amount
+  const prevAmt = prevTotal.amount
+
+  const bg = isTotal || isAvg ? '#FBF8F2'
+    : row.dow === 0 ? '#FFF7F6'
+    : row.dow === 6 ? '#F2F7FB'
+    : 'white'
+  const labelColor = isTotal || isAvg ? '#2C2C2A'
+    : row.dow === 0 ? '#E24B4A'
+    : row.dow === 6 ? '#1A5276'
+    : '#2C2C2A'
+  const weight = isTotal || isAvg ? 600 : 500
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
+
+  return (
+    <tr style={{ background: bg, borderTop: isAvg ? '2px solid #E5E1D8' : '1px solid #F0ECE3' }}>
+      <td style={{ ...tdStyle, fontWeight: weight, color: labelColor, whiteSpace:'nowrap' }}>
+        {row.label}
+        {row.sublabel && (
+          <span style={{ marginLeft:'4px', fontSize:'11px', color:'#888780' }}>
+            ({row.sublabel})
+          </span>
+        )}
+      </td>
+      {STORES.map((s) => {
+        const b = row.byStore[s]
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{cell(b?.amount ?? 0)}</td>
+            <td style={tdNumStyle}>
+              {b && b.customerCount > 0 ? `${b.customerCount}人` : '—'}
+            </td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: weight }}>
+        {cell(curAmt)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
+      </td>
+      <td style={{ ...tdNumStyle, color: yoyColor(curAmt, prevAmt) }}>
+        {prevAmt > 0 ? pct(curAmt, prevAmt) : '—'}
+      </td>
+    </tr>
+  )
+}
+
+// =====================================
 // カテゴリ別ビュー: 表
-// 列: 日付 | 西店惣菜 西店餅 | 南店惣菜 南店餅 | 合計惣菜 合計餅 | 客数 | 前年比
+// 列: 日付 | 西店惣菜 西店餅 | 南店惣菜 南店餅 | 本部合計(惣菜+餅) | 客数 | 前年比
 // =====================================
 
 interface RowData {
@@ -354,9 +510,9 @@ function CategoryTable({ data }: { data: ApiData }) {
 function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
   const total     = sumStores(row.byStore)
   const prevTotal = sumStores(row.prevByStore)
-  // 前年比は 売上合計(amount) ベース
-  const curAmount  = total.amount
-  const prevAmount = prevTotal.amount
+  // 本部合計と前年比は 惣菜 + 餅 ベース (花/その他は含めない)
+  const curSM  = total.souzai     + total.mochi
+  const prevSM = prevTotal.souzai + prevTotal.mochi
 
   const bg = isTotal ? '#FBF8F2'
     : row.dow === 0 ? '#FFF7F6'
@@ -390,12 +546,12 @@ function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
         )
       })}
       <td style={{ ...tdNumStyle, background:'#FBF8F2',
-        fontWeight: isTotal ? 600 : 500 }}>{cell(total.amount)}</td>
+        fontWeight: isTotal ? 600 : 500 }}>{cell(curSM)}</td>
       <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
         {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
       </td>
-      <td style={{ ...tdNumStyle, color: yoyColor(curAmount, prevAmount) }}>
-        {prevAmount > 0 ? pct(curAmount, prevAmount) : '—'}
+      <td style={{ ...tdNumStyle, color: yoyColor(curSM, prevSM) }}>
+        {prevSM > 0 ? pct(curSM, prevSM) : '—'}
       </td>
     </tr>
   )
