@@ -34,6 +34,7 @@ type SaleRow = {
   mochi   : string
   hana    : string
   customer: string
+  weather : string
 }
 
 type ImportResult = {
@@ -164,7 +165,11 @@ const SALE_HEADER_ALIASES: Record<keyof SaleRow, string[]> = {
   mochi   : ['餅', 'mochi'],
   hana    : ['花', 'hana'],
   customer: ['客数', 'customer', 'customercount'],
+  weather : ['天気', '天候', 'weather'],
 }
+
+// 「天気」は CSV にない場合もあるので、必須から外す。
+const SALE_OPTIONAL: Set<keyof SaleRow> = new Set(['weather'])
 
 function findSaleHeaderRow(rows: string[][]): {
   idx: number
@@ -173,14 +178,18 @@ function findSaleHeaderRow(rows: string[][]): {
   for (let i = 0; i < rows.length; i++) {
     const headers = rows[i].map((h) => h.trim().toLowerCase())
     const cols: Partial<Record<keyof SaleRow, number>> = {}
-    let allFound = true
+    let requiredMissing = false
     ;(Object.keys(SALE_HEADER_ALIASES) as (keyof SaleRow)[]).forEach((k) => {
       const aliases = SALE_HEADER_ALIASES[k].map((a) => a.toLowerCase())
       const idx = headers.findIndex((h) => aliases.includes(h))
-      if (idx < 0) allFound = false
-      else cols[k] = idx
+      if (idx < 0) {
+        if (!SALE_OPTIONAL.has(k)) requiredMissing = true
+        cols[k] = -1
+      } else {
+        cols[k] = idx
+      }
     })
-    if (allFound) return { idx: i, cols: cols as Record<keyof SaleRow, number> }
+    if (!requiredMissing) return { idx: i, cols: cols as Record<keyof SaleRow, number> }
   }
   return null
 }
@@ -198,14 +207,16 @@ function parseSaleRows(text: string): SaleRow[] {
   for (let i = headerIdx + 1; i < grid.length; i++) {
     const r = grid[i]
     if (!r || r.every((c) => !c?.trim())) continue
+    const at = (idx: number) => idx >= 0 ? (r[idx] ?? '').trim() : ''
     out.push({
-      date    : (r[cols.date]     ?? '').trim(),
-      store   : (r[cols.store]    ?? '').trim(),
-      amount  : (r[cols.amount]   ?? '').trim(),
-      souzai  : (r[cols.souzai]   ?? '').trim(),
-      mochi   : (r[cols.mochi]    ?? '').trim(),
-      hana    : (r[cols.hana]     ?? '').trim(),
-      customer: (r[cols.customer] ?? '').trim(),
+      date    : at(cols.date),
+      store   : at(cols.store),
+      amount  : at(cols.amount),
+      souzai  : at(cols.souzai),
+      mochi   : at(cols.mochi),
+      hana    : at(cols.hana),
+      customer: at(cols.customer),
+      weather : at(cols.weather),
     })
   }
   return out
@@ -311,7 +322,7 @@ function ImportContent() {
               ? '列: ProductID / ProductName / Category / Unit / WeeklyAvg / Vendor / Active'
               : mode === 'order-product'
               ? '列: ProductID / ProductName / Category / Price / AvailableDays / Active / Memo'
-              : '列: 日付 / 店 / 売上 / 惣菜 / 餅 / 花 / 客数 (店は「西店」「南店」「本部」もしくは nishi/minami/honbu)'}
+              : '列: 日付 / 店 / 売上 / 惣菜 / 餅 / 花 / 客数 / 天気 (店は「西店」「南店」「本部」もしくは nishi/minami/honbu。天気は 晴/曇/雨/雪、列なしも可)'}
           </div>
 
           {mode === 'sale' && (
@@ -391,6 +402,7 @@ function ImportContent() {
                         <th style={th}>餅</th>
                         <th style={th}>花</th>
                         <th style={th}>客数</th>
+                        <th style={th}>天気</th>
                       </>
                     )}
                   </tr>
@@ -427,6 +439,7 @@ function ImportContent() {
                           <td style={td}>{(r as SaleRow).mochi}</td>
                           <td style={td}>{(r as SaleRow).hana}</td>
                           <td style={td}>{(r as SaleRow).customer}</td>
+                          <td style={td}>{(r as SaleRow).weather || '-'}</td>
                         </>
                       )}
                     </tr>

@@ -16,7 +16,10 @@ type Row = {
   mochi   : string | number | null
   hana    : string | number | null
   customer: string | number | null
+  weather : string | null
 }
+
+const VALID_WEATHER = new Set(['晴', '曇', '雨', '雪'])
 
 // "2024-01-15" / "2024/1/15" / "2024/01/15" / "1/15/2024" を YYYY-MM-DD に正規化。
 // 不正な場合は null。
@@ -82,7 +85,7 @@ export async function GET(req: NextRequest) {
       orderBy: [{ saleDate: 'asc' }, { storeId: 'asc' }],
     })
 
-    const header = ['日付', '店', '売上', '惣菜', '餅', '花', '客数']
+    const header = ['日付', '店', '売上', '惣菜', '餅', '花', '客数', '天気']
     const lines: string[] = [header.map(csvCell).join(',')]
     sales.forEach((s) => {
       const ymd = s.saleDate.toISOString().slice(0, 10)
@@ -94,6 +97,7 @@ export async function GET(req: NextRequest) {
         Number(s.mochiAmount),
         Number(s.hanaAmount),
         s.customerCount,
+        s.weather ?? '',
       ].map(csvCell).join(','))
     })
     const body = '﻿' + lines.join('\r\n') + '\r\n'
@@ -154,6 +158,7 @@ export async function POST(req: NextRequest) {
       mochiAmount  : number
       hanaAmount   : number
       customerCount: number
+      weather      : string | null
       inputUser    : string
     }[] = []
 
@@ -179,6 +184,8 @@ export async function POST(req: NextRequest) {
       }
       // 同一 CSV 内の重複も先勝ちでスキップ
       existingKey.add(key)
+      const weatherRaw = (r.weather ?? '').trim()
+      const weather    = VALID_WEATHER.has(weatherRaw) ? weatherRaw : null
       toCreate.push({
         saleDate     : new Date(`${dateStr}T00:00:00`),
         storeId      : store.id,
@@ -187,6 +194,7 @@ export async function POST(req: NextRequest) {
         mochiAmount  : toNumber(r.mochi),
         hanaAmount   : toNumber(r.hana),
         customerCount: Math.round(toNumber(r.customer)),
+        weather,
         inputUser    : 'import',
       })
     })
