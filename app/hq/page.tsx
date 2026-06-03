@@ -552,6 +552,35 @@ function StockCards({
   )
 }
 
+function HqWeekNav({ offset, rangeText, onChange }: {
+  offset: number; rangeText: string; onChange: (n: number) => void
+}) {
+  const isCurrent = offset === 0
+  const btn: React.CSSProperties = {
+    padding: '6px 12px', border: '1.5px solid #E5E1D8',
+    borderRadius: '8px', background: 'white', fontSize: '13px',
+    fontFamily: 'inherit', cursor: 'pointer', color: '#2C2C2A',
+    whiteSpace: 'nowrap',
+  }
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:'8px',
+      flexWrap:'wrap' }}>
+      <button onClick={() => onChange(offset - 1)} style={btn}>← 前の週</button>
+      <button onClick={() => onChange(offset + 1)}
+        disabled={isCurrent}
+        style={{ ...btn, opacity: isCurrent ? 0.4 : 1,
+          cursor: isCurrent ? 'not-allowed' : 'pointer' }}>次の週 →</button>
+      {!isCurrent && (
+        <button onClick={() => onChange(0)}
+          style={{ ...btn, borderColor:'#3B6D11', color:'#3B6D11' }}>今週</button>
+      )}
+      <div style={{ fontSize:'13px', color:'#888780', marginLeft:'auto' }}>
+        {rangeText}
+      </div>
+    </div>
+  )
+}
+
 function WeeklyMatrix({ authFetch, queryCategory, label }: {
   authFetch    : AuthFetch
   queryCategory: string | null
@@ -560,13 +589,16 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
   const [data, setData] = useState<Record<string, ProductSummary[]>>({})
   const [loading, setLoading] = useState(true)
   const [activeCat, setActiveCat] = useState<string | null>(null)
+  const [weekOffset, setWeekOffset] = useState(0) // 0=今週, -1=先週, ...
 
   const weekDays = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const dow = today.getDay()
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+    const thisMonday = new Date(today)
+    thisMonday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+    const monday = new Date(thisMonday)
+    monday.setDate(thisMonday.getDate() + weekOffset * 7)
     const out: { date: Date; dateStr: string; label: string; isToday: boolean }[] = []
     for (let i = 0; i < 6; i++) {
       const d = new Date(monday)
@@ -582,7 +614,7 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
       })
     }
     return out
-  }, [])
+  }, [weekOffset])
 
   useEffect(() => {
     let cancelled = false
@@ -645,10 +677,11 @@ function WeeklyMatrix({ authFetch, queryCategory, label }: {
 
   return (
     <div>
-      <div style={{ padding:'0 4px 12px',
-        display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
-        <div style={{ fontWeight:500, fontSize:'16px' }}>📊 {label} 週間発注表</div>
-        <div style={{ fontSize:'13px', color:'#888780' }}>{rangeText}</div>
+      <div style={{ padding:'0 4px 12px' }}>
+        <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'10px' }}>
+          📊 {label} 週間発注表
+        </div>
+        <HqWeekNav offset={weekOffset} rangeText={rangeText} onChange={setWeekOffset} />
       </div>
 
       {loading && (

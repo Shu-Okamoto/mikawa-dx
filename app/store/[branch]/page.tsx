@@ -786,6 +786,35 @@ function BackBar({ onBack, title, backLabel = '← カテゴリ一覧' }: {
   )
 }
 
+function WeekNav({ offset, rangeText, onChange }: {
+  offset: number; rangeText: string; onChange: (n: number) => void
+}) {
+  const isCurrent = offset === 0
+  const btn: React.CSSProperties = {
+    padding: '6px 12px', border: '1.5px solid #E5E1D8',
+    borderRadius: '8px', background: 'white', fontSize: '13px',
+    fontFamily: 'inherit', cursor: 'pointer', color: '#2C2C2A',
+    whiteSpace: 'nowrap',
+  }
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:'8px',
+      marginBottom:'12px', flexWrap:'wrap' }}>
+      <button onClick={() => onChange(offset - 1)} style={btn}>← 前の週</button>
+      <button onClick={() => onChange(offset + 1)}
+        disabled={isCurrent}
+        style={{ ...btn, opacity: isCurrent ? 0.4 : 1,
+          cursor: isCurrent ? 'not-allowed' : 'pointer' }}>次の週 →</button>
+      {!isCurrent && (
+        <button onClick={() => onChange(0)}
+          style={{ ...btn, borderColor:'#3B6D11', color:'#3B6D11' }}>今週</button>
+      )}
+      <div style={{ fontSize:'13px', color:'#888780', marginLeft:'auto' }}>
+        {rangeText}
+      </div>
+    </div>
+  )
+}
+
 function WeeklyScreen({
   authFetch, branch, onBack,
 }: {
@@ -797,13 +826,16 @@ function WeeklyScreen({
   const [memos, setMemos]   = useState<Record<string, Record<string, string>>>({}) // dateStr → cat → memo
   const [loading, setLoading] = useState(true)
   const [activeCat, setActiveCat] = useState<string | null>(null)
+  const [weekOffset, setWeekOffset] = useState(0) // 0=今週, -1=先週, ...
 
   const weekDays = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const dow = today.getDay()
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+    const thisMonday = new Date(today)
+    thisMonday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+    const monday = new Date(thisMonday)
+    monday.setDate(thisMonday.getDate() + weekOffset * 7)
     const out: { date: Date; dateStr: string; label: string; isToday: boolean }[] = []
     for (let i = 0; i < 6; i++) {
       const d = new Date(monday)
@@ -819,7 +851,7 @@ function WeeklyScreen({
       })
     }
     return out
-  }, [])
+  }, [weekOffset])
 
   useEffect(() => {
     let cancelled = false
@@ -908,7 +940,7 @@ function WeeklyScreen({
     <div>
       <BackBar onBack={onBack} title="📊 週間表示" />
       <div style={{ padding: '14px 16px', paddingBottom: '40px' }}>
-        <div style={{ fontSize: '13px', color: '#888780', marginBottom: '12px' }}>{rangeText}</div>
+        <WeekNav offset={weekOffset} rangeText={rangeText} onChange={setWeekOffset} />
 
         {loading && (
           <div style={{ padding: '40px', textAlign: 'center', color: '#888780', fontSize: '14px' }}>
