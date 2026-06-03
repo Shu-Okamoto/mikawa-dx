@@ -19,6 +19,7 @@ interface Bucket {
 interface DailyEntry {
   date    : string
   dow     : number
+  weather : string | null
   byStore : Record<string, Bucket>
 }
 
@@ -404,6 +405,12 @@ function DailyRow({ row, isTotal, isAvg }: {
             ({row.sublabel})
           </span>
         )}
+        {row.weather && (
+          <span style={{ marginLeft:'4px', fontSize:'14px' }}
+            title={row.weather}>
+            {WEATHER_DISPLAY[row.weather]?.emoji ?? ''}
+          </span>
+        )}
       </td>
       {STORES.map((s) => {
         const b = row.byStore[s]
@@ -439,6 +446,7 @@ interface RowData {
   label    : string
   sublabel?: string
   dow?     : number
+  weather? : string | null
   byStore     : Record<string, Bucket>
   prevByStore : Record<string, Bucket>
 }
@@ -455,6 +463,7 @@ function buildRows(data: ApiData): RowData[] {
         label      : `${dt.getMonth()+1}/${dt.getDate()}`,
         sublabel   : ['日','月','火','水','木','金','土'][d.dow],
         dow        : d.dow,
+        weather    : d.weather,
         byStore    : d.byStore,
         prevByStore: p?.byStore ?? {},
       }
