@@ -314,6 +314,10 @@ function ImportContent() {
               : '列: 日付 / 店 / 売上 / 惣菜 / 餅 / 花 / 客数 (店は「西店」「南店」「本部」もしくは nishi/minami/honbu)'}
           </div>
 
+          {mode === 'sale' && (
+            <SaleExportControls authFetch={authFetch} showToast={showToast} />
+          )}
+
           <input type="file" accept=".csv,text/csv"
             onChange={(e) => onFile(e.target.files?.[0])}
             style={{ marginBottom: '10px' }} />
@@ -466,6 +470,80 @@ function ImportContent() {
       </div>
     </div>
   )
+}
+
+function SaleExportControls({ authFetch, showToast }: {
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  showToast: (msg: string) => void
+}) {
+  const [from, setFrom] = useState('')
+  const [to,   setTo]   = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const onExport = async () => {
+    setBusy(true)
+    try {
+      const params = new URLSearchParams()
+      if (from) params.set('from', from)
+      if (to)   params.set('to',   to)
+      const qs = params.toString()
+      const url = '/api/boss/import/sales' + (qs ? `?${qs}` : '')
+      const res = await authFetch(url)
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        showToast('エラー: ' + (j.error ?? res.status))
+        return
+      }
+      const blob = await res.blob()
+      const fileUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = fileUrl
+      // Content-Disposition の filename を尊重したいが、ブラウザ依存なので
+      // 念のためこちらでも指定。
+      const today = new Date().toISOString().slice(0, 10)
+      a.download = `sales_${today}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(fileUrl)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ background: '#FAF8F3', border: '1px solid #E5E1D8',
+      borderRadius: '8px', padding: '10px 12px', marginBottom: '12px',
+      display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '13px', color: '#2C2C2A', fontWeight: 500 }}>
+        既存データを CSV 出力
+      </span>
+      <label style={{ fontSize: '12px', color: '#888780' }}>
+        from{' '}
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+          style={dateInput} />
+      </label>
+      <label style={{ fontSize: '12px', color: '#888780' }}>
+        to{' '}
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+          style={dateInput} />
+      </label>
+      <button onClick={onExport} disabled={busy}
+        style={{ padding: '6px 14px', background: '#1A5276', color: 'white',
+          border: 'none', borderRadius: '6px', cursor: 'pointer',
+          fontSize: '12px', opacity: busy ? 0.5 : 1 }}>
+        {busy ? '出力中...' : 'CSV ダウンロード'}
+      </button>
+      <span style={{ fontSize: '11px', color: '#888780' }}>
+        日付未指定で全期間
+      </span>
+    </div>
+  )
+}
+
+const dateInput: React.CSSProperties = {
+  padding: '4px 6px', border: '1px solid #D9D5CC',
+  borderRadius: '6px', fontSize: '12px', fontFamily: 'inherit',
 }
 
 const th: React.CSSProperties = {

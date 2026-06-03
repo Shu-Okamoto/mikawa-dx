@@ -47,6 +47,73 @@ function toNumber(v: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : 0
 }
 
+// CSV 1 セルを RFC 4180 風にエスケープ
+function csvCell(v: string | number): string {
+  const s = String(v)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+// 既存 Sale を CSV (UTF-8 BOM 付き) で返す。Excel で文字化けしないよう先頭に BOM。
+export async function GET(req: NextRequest) {
+  if (!requireBoss(req)) {
+    return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+  }
+
+  try {
+    const { searchParams } = new URL(req.url)
+    const from = searchParams.get('from') // YYYY-MM-DD (inclusive)
+    const to   = searchParams.get('to')   // YYYY-MM-DD (inclusive)
+
+    const where: { saleDate?: { gte?: Date; lte?: Date } } = {}
+    if (from || to) {
+      where.saleDate = {}
+      if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) {
+        where.saleDate.gte = new Date(`${from}T00:00:00`)
+      }
+      if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+        where.saleDate.lte = new Date(`${to}T23:59:59`)
+      }
+    }
+
+    const sales = await prisma.sale.findMany({
+      where,
+      include: { store: true },
+      orderBy: [{ saleDate: 'asc' }, { storeId: 'asc' }],
+    })
+
+    const header = ['日付', '店', '売上', '惣菜', '餅', '花', '客数']
+    const lines: string[] = [header.map(csvCell).join(',')]
+    sales.forEach((s) => {
+      const ymd = s.saleDate.toISOString().slice(0, 10)
+      lines.push([
+        ymd,
+        s.store.storeName,
+        Number(s.amount),
+        Number(s.souzaiAmount),
+        Number(s.mochiAmount),
+        Number(s.hanaAmount),
+        s.customerCount,
+      ].map(csvCell).join(','))
+    })
+    const body = '﻿' + lines.join('\r\n') + '\r\n'
+
+    const today = new Date().toISOString().slice(0, 10)
+    const filename = `sales_${today}.csv`
+
+    return new NextResponse(body, {
+      status : 200,
+      headers: {
+        'Content-Type'       : 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   if (!requireBoss(req)) {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 })
