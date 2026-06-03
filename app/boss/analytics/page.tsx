@@ -322,7 +322,9 @@ function CategoryTable({ data }: { data: ApiData }) {
               </th>
               <th colSpan={2} style={thGroupStyle}>西店</th>
               <th colSpan={2} style={thGroupStyle}>南店</th>
-              <th colSpan={2} style={thTotalGroupStyle}>合計</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'90px' }}>
+                本部合計
+              </th>
               <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
                 客数
               </th>
@@ -335,8 +337,6 @@ function CategoryTable({ data }: { data: ApiData }) {
               <th style={thSubStyle}>餅</th>
               <th style={thSubStyle}>惣菜</th>
               <th style={thSubStyle}>餅</th>
-              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>惣菜</th>
-              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>餅</th>
             </tr>
           </thead>
           <tbody>
@@ -390,9 +390,7 @@ function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
         )
       })}
       <td style={{ ...tdNumStyle, background:'#FBF8F2',
-        fontWeight: isTotal ? 600 : 500 }}>{cell(total.souzai)}</td>
-      <td style={{ ...tdNumStyle, background:'#FBF8F2',
-        fontWeight: isTotal ? 600 : 500 }}>{cell(total.mochi)}</td>
+        fontWeight: isTotal ? 600 : 500 }}>{cell(total.amount)}</td>
       <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
         {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
       </td>
