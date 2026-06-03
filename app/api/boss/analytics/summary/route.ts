@@ -99,13 +99,14 @@ function aggregateByStore(sales: SaleRow[]): Record<string, Bucket> {
 interface DailyEntry {
   date    : string                       // 'YYYY-MM-DD'
   dow     : number                       // 0=日,6=土
+  weather : string | null                // 同日の最初の非空 weather (店舗共通想定)
   byStore : Record<string, Bucket>
 }
 function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): DailyEntry[] {
   const byDate = new Map<string, DailyEntry>()
   const cur = new Date(start)
   while (cur <= endInclusive) {
-    byDate.set(ymd(cur), { date: ymd(cur), dow: cur.getDay(), byStore: {} })
+    byDate.set(ymd(cur), { date: ymd(cur), dow: cur.getDay(), weather: null, byStore: {} })
     cur.setDate(cur.getDate() + 1)
   }
   sales.forEach((s) => {
@@ -115,6 +116,7 @@ function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): Dail
     const name = s.store.storeName
     if (!entry.byStore[name]) entry.byStore[name] = newBucket()
     addRow(entry.byStore[name], s)
+    if (!entry.weather && s.weather) entry.weather = s.weather
   })
   return Array.from(byDate.values())
 }
