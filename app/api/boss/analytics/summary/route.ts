@@ -228,6 +228,56 @@ function prevYearRef(ref: Date): Date {
   return new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
 }
 
+// 過去 n 年分の ref Date を古い順で返す (含む現在)
+function pastYearRefs(ref: Date, n: number): Date[] {
+  return Array.from({ length: n }, (_, i) =>
+    new Date(ref.getFullYear() - (n - 1 - i), ref.getMonth(), ref.getDate()),
+  )
+}
+
+// 店舗別合計 + 営業日数 (saleDate がユニークに 1 件以上記録された日数)
+interface PastYearStoreEntry {
+  amount       : number
+  customerCount: number
+  businessDays : number
+}
+interface PastYearEntry {
+  year     : number
+  label    : string
+  byStore  : Record<string, PastYearStoreEntry>
+  total    : PastYearStoreEntry
+}
+function aggregatePastYear(
+  sales: SaleRow[], year: number, label: string,
+): PastYearEntry {
+  const byStore: Record<string, PastYearStoreEntry> = {}
+  const totalDays = new Set<string>()
+  const storeDays: Record<string, Set<string>> = {}
+  let totalAmount = 0
+  let totalCust   = 0
+  sales.forEach((s) => {
+    const name = s.store.storeName
+    if (!byStore[name]) byStore[name] = { amount: 0, customerCount: 0, businessDays: 0 }
+    if (!storeDays[name]) storeDays[name] = new Set()
+    const amt  = toNum(s.amount)
+    const cust = s.customerCount
+    byStore[name].amount        += amt
+    byStore[name].customerCount += cust
+    totalAmount += amt
+    totalCust   += cust
+    const key = ymd(new Date(s.saleDate))
+    storeDays[name].add(key)
+    totalDays.add(key)
+  })
+  Object.entries(storeDays).forEach(([name, days]) => {
+    byStore[name].businessDays = days.size
+  })
+  return {
+    year, label, byStore,
+    total: { amount: totalAmount, customerCount: totalCust, businessDays: totalDays.size },
+  }
+}
+
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
   if (!user || user.role !== 'all') {
@@ -245,7 +295,11 @@ export async function GET(req: NextRequest) {
     const cur     = rangeFor(g, ref)
     const prev    = rangeFor(g, prevRef)
 
-    const [curSales, prevSales] = await Promise.all([
+    // 過去 3 年 (古い順, 末尾が今期と同じ)
+    const past3Refs   = pastYearRefs(ref, 3)
+    const past3Ranges = past3Refs.map((r) => rangeFor(g, r))
+
+    const [curSales, prevSales, ...past3SalesByIdx] = await Promise.all([
       prisma.sale.findMany({
         where  : { saleDate: { gte: cur.start, lt: cur.endExclusive } },
         include: { store: true },
@@ -254,7 +308,17 @@ export async function GET(req: NextRequest) {
         where  : { saleDate: { gte: prev.start, lt: prev.endExclusive } },
         include: { store: true },
       }) as unknown as Promise<SaleRow[]>,
+      ...past3Ranges.map((r) =>
+        prisma.sale.findMany({
+          where  : { saleDate: { gte: r.start, lt: r.endExclusive } },
+          include: { store: true },
+        }) as unknown as Promise<SaleRow[]>,
+      ),
     ])
+
+    const pastYears: PastYearEntry[] = past3SalesByIdx.map((sales, i) =>
+      aggregatePastYear(sales, past3Refs[i].getFullYear(), past3Ranges[i].label),
+    )
 
     const total     = { byStore: aggregateByStore(curSales) }
     const prevTotal = { byStore: aggregateByStore(prevSales) }
@@ -292,6 +356,7 @@ export async function GET(req: NextRequest) {
       ...(prevMonthly ? { prevMonthly } : {}),
       ...(dowByStore     ? { dow    : { byStore: dowByStore }     } : {}),
       ...(weatherByStore ? { weather: { byStore: weatherByStore } } : {}),
+      pastYears,
     })
   } catch (e) {
     console.error(e)
