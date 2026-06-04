@@ -575,6 +575,12 @@ function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
             ({row.sublabel})
           </span>
         )}
+        {row.weather && (
+          <span style={{ marginLeft:'4px', fontSize:'14px' }}
+            title={row.weather}>
+            {WEATHER_DISPLAY[row.weather]?.emoji ?? ''}
+          </span>
+        )}
       </td>
       {STORES.map((s) => {
         const b = row.byStore[s]
@@ -957,6 +963,12 @@ function SouzaiLossRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
         {row.sublabel && (
           <span style={{ marginLeft:'4px', fontSize:'11px', color:'#888780' }}>
             ({row.sublabel})
+          </span>
+        )}
+        {row.weather && (
+          <span style={{ marginLeft:'4px', fontSize:'14px' }}
+            title={row.weather}>
+            {WEATHER_DISPLAY[row.weather]?.emoji ?? ''}
           </span>
         )}
       </td>
