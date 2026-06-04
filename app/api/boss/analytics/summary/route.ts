@@ -62,11 +62,13 @@ async function fetchShipments(start: Date, endExclusive: Date): Promise<Shipment
     west_sales : { toNumber: () => number } | number | string | null
     south_sales: { toNumber: () => number } | number | string | null
   }
+  // hq_daily_reports.date は TEXT 'YYYY-MM-DD' 形式。
+  // 辞書順 = 日付順なので、キャストせず文字列比較する。
   const rows = await prisma.$queryRaw<Raw[]>`
     SELECT date, west_sales, south_sales
       FROM public.hq_daily_reports
-     WHERE date >= ${ymd(start)}::date
-       AND date <  ${ymd(endExclusive)}::date
+     WHERE date >= ${ymd(start)}
+       AND date <  ${ymd(endExclusive)}
   `
   const toN = (v: Raw['west_sales']): number => {
     if (v == null) return 0
