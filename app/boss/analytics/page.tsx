@@ -66,6 +66,22 @@ interface ApiData {
   prevMonthly?: MonthlyEntry[]
   dow?        : { byStore: Record<string, DowEntry[]> }
   weather?    : { byStore: Record<string, WeatherEntry[]> }
+  pastYears?  : PastYearEntry[]
+  currentYear?: PastYearEntry
+}
+
+interface PastYearStoreEntry {
+  amount       : number
+  souzai       : number
+  mochi        : number
+  customerCount: number
+  businessDays : number
+}
+interface PastYearEntry {
+  year   : number
+  label  : string
+  byStore: Record<string, PastYearStoreEntry>
+  total  : PastYearStoreEntry
 }
 
 const STORES = ['西店', '南店']
@@ -266,7 +282,15 @@ function AnalyticsContent() {
           <div style={{ background:'white', borderRadius:'16px', padding:'40px',
             textAlign:'center', color:'#888780' }}>データがありません</div>
         ) : effectiveView === 'daily' ? (
-          <DailySalesTable data={data} />
+          <>
+            <DailySalesTable data={data} />
+            {data.pastYears && data.pastYears.length > 0 && (
+              <div style={{ marginTop:'12px' }}>
+                <Past3YearsTable pastYears={data.pastYears}
+                  currentYear={data.currentYear} />
+              </div>
+            )}
+          </>
         ) : effectiveView === 'category' ? (
           <CategoryTable data={data} />
         ) : effectiveView === 'dow' ? (
@@ -377,6 +401,222 @@ function DailySalesTable({ data }: { data: ApiData }) {
             ))}
             <DailyRow row={totalRow} isTotal />
             {showAvg && <DailyRow row={avgRow} isAvg />}
+            <UnitPriceRow byStore={data.total.byStore}
+              prevByStore={data.prevTotal.byStore} />
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// 客単価 = 売上合計 / 客数合計 (期間内, 重み付き)
+function unitPrice(b: { amount: number; customerCount: number }): number {
+  if (!b || b.customerCount <= 0) return 0
+  return b.amount / b.customerCount
+}
+
+function UnitPriceRow({ byStore, prevByStore }: {
+  byStore    : Record<string, Bucket>
+  prevByStore: Record<string, Bucket>
+}) {
+  const total     = sumStores(byStore)
+  const prevTotal = sumStores(prevByStore)
+  const cur  = unitPrice(total)
+  const prev = unitPrice(prevTotal)
+  const cell = (v: number) => v > 0 ? yen(Math.round(v)) : '—'
+  return (
+    <tr style={{ background:'#F1EBDA', borderTop:'2px solid #E5E1D8' }}>
+      <td style={{ ...tdStyle, fontWeight: 600 }}>客単価</td>
+      {STORES.map((s) => {
+        const up = unitPrice(byStore[s] ?? emptyBucket())
+        return (
+          <Fragment key={s}>
+            <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(up)}</td>
+            <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
+        {cell(cur)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', color:'#888780' }}>—</td>
+      <td style={{ ...tdNumStyle, color: yoyColor(cur, prev) }}>
+        {prev > 0 ? pct(cur, prev) : '—'}
+      </td>
+    </tr>
+  )
+}
+
+// =====================================
+// 過去 3 年売上表
+// 行: 各年 + 平均
+// 店舗ごと (西/南/合計) × 売上/客数/客単価/営業日数
+// =====================================
+
+function avgPastYears(pastYears: PastYearEntry[]): {
+  byStore: Record<string, PastYearStoreEntry>
+  total  : PastYearStoreEntry
+} {
+  const n = pastYears.length || 1
+  const byStore: Record<string, PastYearStoreEntry> = {}
+  STORES.forEach((s) => {
+    let amt = 0, sou = 0, moc = 0, cust = 0, days = 0
+    pastYears.forEach((py) => {
+      const b = py.byStore[s]
+      if (b) {
+        amt += b.amount; sou += b.souzai; moc += b.mochi
+        cust += b.customerCount; days += b.businessDays
+      }
+    })
+    byStore[s] = {
+      amount       : Math.round(amt / n),
+      souzai       : Math.round(sou / n),
+      mochi        : Math.round(moc / n),
+      customerCount: Math.round(cust / n),
+      businessDays : Math.round(days / n),
+    }
+  })
+  let amt = 0, sou = 0, moc = 0, cust = 0, days = 0
+  pastYears.forEach((py) => {
+    amt += py.total.amount; sou += py.total.souzai; moc += py.total.mochi
+    cust += py.total.customerCount; days += py.total.businessDays
+  })
+  return {
+    byStore,
+    total: {
+      amount       : Math.round(amt / n),
+      souzai       : Math.round(sou / n),
+      mochi        : Math.round(moc / n),
+      customerCount: Math.round(cust / n),
+      businessDays : Math.round(days / n),
+    },
+  }
+}
+
+function Past3YearsTable({ pastYears, currentYear }: {
+  pastYears: PastYearEntry[]
+  currentYear?: PastYearEntry
+}) {
+  const avg = avgPastYears(pastYears)
+
+  const renderCell = (e: PastYearStoreEntry | undefined) => {
+    if (!e || (e.amount === 0 && e.customerCount === 0 && e.businessDays === 0)) {
+      return { amt: '—', cust: '—', up: '—', days: '—' }
+    }
+    const up = e.customerCount > 0 ? Math.round(e.amount / e.customerCount) : 0
+    return {
+      amt : yen(e.amount),
+      cust: `${e.customerCount.toLocaleString()}人`,
+      up  : up > 0 ? yen(up) : '—',
+      days: `${e.businessDays}日`,
+    }
+  }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        📈 過去3年売上表
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'820px',
+          borderCollapse:'collapse', fontSize:'12px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>年</th>
+              <th colSpan={4} style={thGroupStyle}>西店</th>
+              <th colSpan={4} style={thGroupStyle}>南店</th>
+              <th colSpan={4} style={thTotalGroupStyle}>本部合計</th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={thSubStyle}>客単価</th>
+              <th style={thSubStyle}>営業日</th>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>客数</th>
+              <th style={thSubStyle}>客単価</th>
+              <th style={thSubStyle}>営業日</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>売上</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>客数</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>客単価</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>営業日</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pastYears.map((py) => {
+              const west  = renderCell(py.byStore[STORES[0]])
+              const south = renderCell(py.byStore[STORES[1]])
+              const tot   = renderCell(py.total)
+              return (
+                <tr key={py.year} style={{ borderTop:'1px solid #F0ECE3' }}>
+                  <td style={{ ...tdStyle, fontWeight: 500, whiteSpace:'nowrap' }}>
+                    {py.year}年
+                  </td>
+                  <td style={tdNumStyle}>{west.amt}</td>
+                  <td style={tdNumStyle}>{west.cust}</td>
+                  <td style={tdNumStyle}>{west.up}</td>
+                  <td style={tdNumStyle}>{west.days}</td>
+                  <td style={tdNumStyle}>{south.amt}</td>
+                  <td style={tdNumStyle}>{south.cust}</td>
+                  <td style={tdNumStyle}>{south.up}</td>
+                  <td style={tdNumStyle}>{south.days}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>{tot.amt}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>{tot.cust}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>{tot.up}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>{tot.days}</td>
+                </tr>
+              )
+            })}
+            {currentYear && (() => {
+              const west  = renderCell(currentYear.byStore[STORES[0]])
+              const south = renderCell(currentYear.byStore[STORES[1]])
+              const tot   = renderCell(currentYear.total)
+              return (
+                <tr style={{ background:'#F5EFE0', borderTop:'2px solid #E5E1D8',
+                  fontWeight: 700 }}>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>
+                    今年 ({currentYear.year}年)
+                  </td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.amt}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.cust}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.up}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{west.days}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.amt}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.cust}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.up}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{south.days}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.amt}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.cust}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.up}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 700 }}>{tot.days}</td>
+                </tr>
+              )
+            })()}
+            {(() => {
+              const west  = renderCell(avg.byStore[STORES[0]])
+              const south = renderCell(avg.byStore[STORES[1]])
+              const tot   = renderCell(avg.total)
+              return (
+                <tr style={{ background:'#FBF8F2', borderTop:'1px solid #E5E1D8' }}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>過去3年平均</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 600 }}>{west.amt}</td>
+                  <td style={tdNumStyle}>{west.cust}</td>
+                  <td style={tdNumStyle}>{west.up}</td>
+                  <td style={tdNumStyle}>{west.days}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 600 }}>{south.amt}</td>
+                  <td style={tdNumStyle}>{south.cust}</td>
+                  <td style={tdNumStyle}>{south.up}</td>
+                  <td style={tdNumStyle}>{south.days}</td>
+                  <td style={{ ...tdNumStyle, fontWeight: 600 }}>{tot.amt}</td>
+                  <td style={tdNumStyle}>{tot.cust}</td>
+                  <td style={tdNumStyle}>{tot.up}</td>
+                  <td style={tdNumStyle}>{tot.days}</td>
+                </tr>
+              )
+            })()}
           </tbody>
         </table>
       </div>
@@ -540,10 +780,196 @@ function CategoryTable({ data }: { data: ApiData }) {
               <CategoryRow key={r.key} row={r} />
             ))}
             <CategoryRow row={totalRow} isTotal />
+            <CategoryUnitPriceRow
+              byStore={data.total.byStore}
+              prevByStore={data.prevTotal.byStore} />
+            <CategoryYoYRow
+              byStore={data.total.byStore}
+              prevByStore={data.prevTotal.byStore} />
+          </tbody>
+        </table>
+      </div>
+
+      {data.pastYears && data.pastYears.length > 0 && (
+        <CategoryPast3YearsTable pastYears={data.pastYears}
+          currentYear={data.currentYear} />
+      )}
+    </div>
+  )
+}
+
+// 店舗×カテゴリ別 前年比を各セルに表示する行
+function CategoryYoYRow({ byStore, prevByStore }: {
+  byStore    : Record<string, Bucket>
+  prevByStore: Record<string, Bucket>
+}) {
+  const total     = sumStores(byStore)
+  const prevTotal = sumStores(prevByStore)
+  const curSM     = total.souzai     + total.mochi
+  const prevSM    = prevTotal.souzai + prevTotal.mochi
+  const yoyCell = (cur: number, prev: number) => prev > 0
+    ? <span style={{ color: yoyColor(cur, prev) }}>{pct(cur, prev)}</span>
+    : <span style={{ color: '#888780' }}>—</span>
+  return (
+    <tr style={{ background:'#FBF8F2', borderTop:'1px solid #E5E1D8' }}>
+      <td style={{ ...tdStyle, fontWeight: 600 }}>前年比</td>
+      {STORES.map((s) => {
+        const b  = byStore[s]     ?? emptyBucket()
+        const pb = prevByStore[s] ?? emptyBucket()
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{yoyCell(b.souzai, pb.souzai)}</td>
+            <td style={tdNumStyle}>{yoyCell(b.mochi , pb.mochi )}</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
+        {yoyCell(curSM, prevSM)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {yoyCell(total.customerCount, prevTotal.customerCount)}
+      </td>
+      <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
+    </tr>
+  )
+}
+
+// カテゴリ別の過去3年売上表
+// 店舗×カテゴリ別売上 + 合計 (惣菜+餅) + 客数 の構成
+function CategoryPast3YearsTable({ pastYears, currentYear }: {
+  pastYears: PastYearEntry[]
+  currentYear?: PastYearEntry
+}) {
+  const avg = avgPastYears(pastYears)
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
+  type Row = { key: string; label: string; isAvg?: boolean; isCurrent?: boolean;
+    entry: {
+      byStore: Record<string, PastYearStoreEntry>; total: PastYearStoreEntry
+    } }
+  const rows: Row[] = [
+    ...pastYears.map((py) => ({
+      key: String(py.year), label: `${py.year}年`,
+      entry: { byStore: py.byStore, total: py.total },
+    })),
+    ...(currentYear ? [{
+      key: 'CURRENT', label: `今年 (${currentYear.year}年)`, isCurrent: true,
+      entry: { byStore: currentYear.byStore, total: currentYear.total },
+    }] : []),
+    { key: 'AVG', label: '過去3年平均', isAvg: true, entry: avg },
+  ]
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)', marginTop:'12px' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        📈 過去3年売上 (カテゴリ別)
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'720px',
+          borderCollapse:'collapse', fontSize:'12px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>年</th>
+              <th colSpan={2} style={thGroupStyle}>西店</th>
+              <th colSpan={2} style={thGroupStyle}>南店</th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'90px' }}>
+                本部合計
+              </th>
+              <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'56px' }}>
+                客数
+              </th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+              <th style={thSubStyle}>惣菜</th>
+              <th style={thSubStyle}>餅</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const sm = r.entry.total.souzai + r.entry.total.mochi
+              const weight = r.isCurrent ? 700 : r.isAvg ? 600 : 500
+              const bg = r.isCurrent ? '#F5EFE0'
+                : r.isAvg ? '#FBF8F2' : 'white'
+              const totalBg = r.isCurrent ? '#F5EFE0' : '#FBF8F2'
+              const borderTop = r.isCurrent
+                ? '2px solid #E5E1D8'
+                : r.isAvg
+                ? '1px solid #E5E1D8'
+                : '1px solid #F0ECE3'
+              return (
+                <tr key={r.key} style={{ borderTop, background: bg }}>
+                  <td style={{ ...tdStyle, fontWeight: weight,
+                    whiteSpace:'nowrap' }}>{r.label}</td>
+                  {STORES.map((s) => {
+                    const b = r.entry.byStore[s]
+                    return (
+                      <Fragment key={s}>
+                        <td style={{ ...tdNumStyle, fontWeight: r.isCurrent ? 700 : undefined }}>
+                          {cell(b?.souzai ?? 0)}
+                        </td>
+                        <td style={{ ...tdNumStyle, fontWeight: r.isCurrent ? 700 : undefined }}>
+                          {cell(b?.mochi ?? 0)}
+                        </td>
+                      </Fragment>
+                    )
+                  })}
+                  <td style={{ ...tdNumStyle, background: totalBg,
+                    fontWeight: weight }}>{cell(sm)}</td>
+                  <td style={{ ...tdNumStyle, background: totalBg,
+                    fontWeight: r.isCurrent ? 700 : undefined }}>
+                    {r.entry.total.customerCount > 0
+                      ? `${r.entry.total.customerCount.toLocaleString()}人` : '—'}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
     </div>
+  )
+}
+
+// カテゴリ別タブの客単価行
+// 各セル: 店舗×カテゴリ売上 ÷ その店の客数
+// 本部合計: (西店+南店 の 惣菜+餅) ÷ (西店+南店 客数)
+function CategoryUnitPriceRow({ byStore, prevByStore }: {
+  byStore    : Record<string, Bucket>
+  prevByStore: Record<string, Bucket>
+}) {
+  const total     = sumStores(byStore)
+  const prevTotal = sumStores(prevByStore)
+  // 本部合計の客単価 = (惣菜+餅 全店合計) ÷ 客数全店合計
+  const curSM   = total.souzai     + total.mochi
+  const prevSM  = prevTotal.souzai + prevTotal.mochi
+  const curUP   = total.customerCount > 0     ? curSM  / total.customerCount     : 0
+  const prevUP  = prevTotal.customerCount > 0 ? prevSM / prevTotal.customerCount : 0
+  const cell = (v: number) => v > 0 ? yen(Math.round(v)) : '—'
+  return (
+    <tr style={{ background:'#F1EBDA', borderTop:'2px solid #E5E1D8' }}>
+      <td style={{ ...tdStyle, fontWeight: 600 }}>客単価</td>
+      {STORES.map((s) => {
+        const b = byStore[s] ?? emptyBucket()
+        const cust = b.customerCount
+        const souzaiUP = cust > 0 ? b.souzai / cust : 0
+        const mochiUP  = cust > 0 ? b.mochi  / cust : 0
+        return (
+          <Fragment key={s}>
+            <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(souzaiUP)}</td>
+            <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(mochiUP)}</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
+        {cell(curUP)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', color:'#888780' }}>—</td>
+      <td style={{ ...tdNumStyle, color: yoyColor(curUP, prevUP) }}>
+        {prevUP > 0 ? pct(curUP, prevUP) : '—'}
+      </td>
+    </tr>
   )
 }
 
