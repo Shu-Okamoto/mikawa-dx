@@ -9,15 +9,14 @@ function requireBoss(req: NextRequest) {
 }
 
 type Row = {
-  date           : string
-  store          : string
-  amount         : string | number | null
-  souzai         : string | number | null
-  shipmentSouzai?: string | number | null
-  mochi          : string | number | null
-  hana           : string | number | null
-  customer       : string | number | null
-  weather        : string | null
+  date    : string
+  store   : string
+  amount  : string | number | null
+  souzai  : string | number | null
+  mochi   : string | number | null
+  hana    : string | number | null
+  customer: string | number | null
+  weather : string | null
 }
 
 const VALID_WEATHER = new Set(['晴', '曇', '雨', '雪'])
@@ -86,7 +85,7 @@ export async function GET(req: NextRequest) {
       orderBy: [{ saleDate: 'asc' }, { storeId: 'asc' }],
     })
 
-    const header = ['日付', '店', '天気', '売上', '客数', '惣菜', '惣菜出荷', '餅']
+    const header = ['日付', '店', '天気', '売上', '客数', '惣菜', '餅']
     const lines: string[] = [header.map(csvCell).join(',')]
     sales.forEach((s) => {
       const ymd = s.saleDate.toISOString().slice(0, 10)
@@ -97,7 +96,6 @@ export async function GET(req: NextRequest) {
         Number(s.amount),
         s.customerCount,
         Number(s.souzaiAmount),
-        Number(s.shipmentSouzai),
         Number(s.mochiAmount),
       ].map(csvCell).join(','))
     })
@@ -152,16 +150,15 @@ export async function POST(req: NextRequest) {
     const skipped: { code: string; reason: string }[] = []
 
     const toCreate: {
-      saleDate      : Date
-      storeId       : number
-      amount        : number
-      souzaiAmount  : number
-      shipmentSouzai: number
-      mochiAmount   : number
-      hanaAmount    : number
-      customerCount : number
-      weather       : string | null
-      inputUser     : string
+      saleDate     : Date
+      storeId      : number
+      amount       : number
+      souzaiAmount : number
+      mochiAmount  : number
+      hanaAmount   : number
+      customerCount: number
+      weather      : string | null
+      inputUser    : string
     }[] = []
 
     rows.forEach((r, i) => {
@@ -189,16 +186,15 @@ export async function POST(req: NextRequest) {
       const weatherRaw = (r.weather ?? '').trim()
       const weather    = VALID_WEATHER.has(weatherRaw) ? weatherRaw : null
       toCreate.push({
-        saleDate      : new Date(`${dateStr}T00:00:00`),
-        storeId       : store.id,
-        amount        : toNumber(r.amount),
-        souzaiAmount  : toNumber(r.souzai),
-        shipmentSouzai: toNumber(r.shipmentSouzai),
-        mochiAmount   : toNumber(r.mochi),
-        hanaAmount    : toNumber(r.hana),
-        customerCount : Math.round(toNumber(r.customer)),
+        saleDate     : new Date(`${dateStr}T00:00:00`),
+        storeId      : store.id,
+        amount       : toNumber(r.amount),
+        souzaiAmount : toNumber(r.souzai),
+        mochiAmount  : toNumber(r.mochi),
+        hanaAmount   : toNumber(r.hana),
+        customerCount: Math.round(toNumber(r.customer)),
         weather,
-        inputUser     : 'import',
+        inputUser    : 'import',
       })
     })
 

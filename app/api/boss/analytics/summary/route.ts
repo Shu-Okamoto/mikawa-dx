@@ -3,16 +3,19 @@ import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
 interface SaleRow {
-  saleDate      : Date
-  amount        : { toNumber: () => number } | number
-  souzaiAmount  : { toNumber: () => number } | number
-  shipmentSouzai: { toNumber: () => number } | number
-  mochiAmount   : { toNumber: () => number } | number
-  hanaAmount    : { toNumber: () => number } | number
-  customerCount : number
-  weather       : string | null
-  store         : { storeName: string }
+  saleDate     : Date
+  amount       : { toNumber: () => number } | number
+  souzaiAmount : { toNumber: () => number } | number
+  mochiAmount  : { toNumber: () => number } | number
+  hanaAmount   : { toNumber: () => number } | number
+  customerCount: number
+  weather      : string | null
+  store        : { storeName: string }
 }
+
+// 日付ごと・店舗ごとの惣菜出荷額。public.hq_daily_report の west_sales / south_sales 由来。
+// キー: ymd(date)、値: 店舗名 → 出荷額 (0 = データなし)
+type ShipmentMap = Map<string, Record<string, number>>
 
 const WEATHER_KEYS = ['晴', '曇', '雨', '雪'] as const
 type WeatherKey = typeof WEATHER_KEYS[number] | '未記録'
@@ -38,14 +41,45 @@ function newBucket(): Bucket {
   return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
-function addRow(b: Bucket, s: SaleRow) {
+function addRow(b: Bucket, s: SaleRow, shipment: number) {
   b.amount         += toNum(s.amount)
   b.souzai         += toNum(s.souzaiAmount)
-  b.shipmentSouzai += toNum(s.shipmentSouzai)
+  b.shipmentSouzai += shipment
   b.mochi          += toNum(s.mochiAmount)
   b.hana           += toNum(s.hanaAmount)
   b.customerCount  += s.customerCount
   b.days           += 1
+}
+
+function shipmentFor(s: SaleRow, m: ShipmentMap): number {
+  const e = m.get(ymd(new Date(s.saleDate)))
+  return e?.[s.store.storeName] ?? 0
+}
+
+async function fetchShipments(start: Date, endExclusive: Date): Promise<ShipmentMap> {
+  type Raw = {
+    date       : Date | string
+    west_sales : { toNumber: () => number } | number | string | null
+    south_sales: { toNumber: () => number } | number | string | null
+  }
+  const rows = await prisma.$queryRaw<Raw[]>`
+    SELECT date, west_sales, south_sales
+      FROM public.hq_daily_report
+     WHERE date >= ${ymd(start)}::date
+       AND date <  ${ymd(endExclusive)}::date
+  `
+  const toN = (v: Raw['west_sales']): number => {
+    if (v == null) return 0
+    if (typeof v === 'number') return v
+    if (typeof v === 'string') return Number(v) || 0
+    return v.toNumber()
+  }
+  const m: ShipmentMap = new Map()
+  rows.forEach((r) => {
+    const key = typeof r.date === 'string' ? r.date.slice(0, 10) : ymd(new Date(r.date))
+    m.set(key, { '西店': toN(r.west_sales), '南店': toN(r.south_sales) })
+  })
+  return m
 }
 
 function parseRefDate(s: string | null): Date {
@@ -88,12 +122,12 @@ function rangeFor(granularity: Granularity, ref: Date): {
   }
 }
 
-function aggregateByStore(sales: SaleRow[]): Record<string, Bucket> {
+function aggregateByStore(sales: SaleRow[], ship: ShipmentMap): Record<string, Bucket> {
   const out: Record<string, Bucket> = {}
   sales.forEach((s) => {
     const name = s.store.storeName
     if (!out[name]) out[name] = newBucket()
-    addRow(out[name], s)
+    addRow(out[name], s, shipmentFor(s, ship))
   })
   return out
 }
@@ -105,7 +139,7 @@ interface DailyEntry {
   weather : string | null                // 同日の最初の非空 weather (店舗共通想定)
   byStore : Record<string, Bucket>
 }
-function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): DailyEntry[] {
+function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date, ship: ShipmentMap): DailyEntry[] {
   const byDate = new Map<string, DailyEntry>()
   const cur = new Date(start)
   while (cur <= endInclusive) {
@@ -118,7 +152,7 @@ function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): Dail
     if (!entry) return
     const name = s.store.storeName
     if (!entry.byStore[name]) entry.byStore[name] = newBucket()
-    addRow(entry.byStore[name], s)
+    addRow(entry.byStore[name], s, shipmentFor(s, ship))
     if (!entry.weather && s.weather) entry.weather = s.weather
   })
   return Array.from(byDate.values())
@@ -129,7 +163,7 @@ interface MonthlyEntry {
   month   : number                       // 1〜12
   byStore : Record<string, Bucket>
 }
-function aggregateMonthly(sales: SaleRow[]): MonthlyEntry[] {
+function aggregateMonthly(sales: SaleRow[], ship: ShipmentMap): MonthlyEntry[] {
   const arr: MonthlyEntry[] = Array.from({ length: 12 }, (_, i) => ({
     month: i + 1, byStore: {},
   }))
@@ -138,7 +172,7 @@ function aggregateMonthly(sales: SaleRow[]): MonthlyEntry[] {
     const e  = arr[m]
     const name = s.store.storeName
     if (!e.byStore[name]) e.byStore[name] = newBucket()
-    addRow(e.byStore[name], s)
+    addRow(e.byStore[name], s, shipmentFor(s, ship))
   })
   return arr
 }
@@ -155,13 +189,13 @@ interface DowEntry {
   avgHana     : number
   avgCustomer : number
 }
-function aggregateDow(sales: SaleRow[]): Record<string, DowEntry[]> {
+function aggregateDow(sales: SaleRow[], ship: ShipmentMap): Record<string, DowEntry[]> {
   const accum: Record<string, Bucket[]> = {}
   sales.forEach((s) => {
     const name = s.store.storeName
     const dow  = new Date(s.saleDate).getDay()
     if (!accum[name]) accum[name] = Array.from({ length: 7 }, newBucket)
-    addRow(accum[name][dow], s)
+    addRow(accum[name][dow], s, shipmentFor(s, ship))
   })
   const out: Record<string, DowEntry[]> = {}
   Object.entries(accum).forEach(([name, buckets]) => {
@@ -191,7 +225,7 @@ interface WeatherEntry {
   avgHana     : number
   avgCustomer : number
 }
-function aggregateWeather(sales: SaleRow[]): Record<string, WeatherEntry[]> {
+function aggregateWeather(sales: SaleRow[], ship: ShipmentMap): Record<string, WeatherEntry[]> {
   const accum: Record<string, Record<WeatherKey, Bucket>> = {}
   const allKeys: WeatherKey[] = [...WEATHER_KEYS, '未記録']
   const newEmpty = (): Record<WeatherKey, Bucket> => {
@@ -205,7 +239,7 @@ function aggregateWeather(sales: SaleRow[]): Record<string, WeatherEntry[]> {
       ? (s.weather as WeatherKey)
       : '未記録'
     if (!accum[name]) accum[name] = newEmpty()
-    addRow(accum[name][w], s)
+    addRow(accum[name][w], s, shipmentFor(s, ship))
   })
   const out: Record<string, WeatherEntry[]> = {}
   Object.entries(accum).forEach(([name, byWeather]) => {
@@ -248,7 +282,7 @@ export async function GET(req: NextRequest) {
     const cur     = rangeFor(g, ref)
     const prev    = rangeFor(g, prevRef)
 
-    const [curSales, prevSales] = await Promise.all([
+    const [curSales, prevSales, curShip, prevShip] = await Promise.all([
       prisma.sale.findMany({
         where  : { saleDate: { gte: cur.start, lt: cur.endExclusive } },
         include: { store: true },
@@ -257,10 +291,12 @@ export async function GET(req: NextRequest) {
         where  : { saleDate: { gte: prev.start, lt: prev.endExclusive } },
         include: { store: true },
       }) as unknown as Promise<SaleRow[]>,
+      fetchShipments(cur.start,  cur.endExclusive),
+      fetchShipments(prev.start, prev.endExclusive),
     ])
 
-    const total     = { byStore: aggregateByStore(curSales) }
-    const prevTotal = { byStore: aggregateByStore(prevSales) }
+    const total     = { byStore: aggregateByStore(curSales,  curShip) }
+    const prevTotal = { byStore: aggregateByStore(prevSales, prevShip) }
 
     let daily         : DailyEntry[] | undefined
     let prevDaily     : DailyEntry[] | undefined
@@ -270,15 +306,15 @@ export async function GET(req: NextRequest) {
     let weatherByStore: Record<string, WeatherEntry[]> | undefined
 
     if (g === 'month') {
-      daily          = aggregateDaily(curSales,  cur.start,  cur.endInclusive)
-      prevDaily      = aggregateDaily(prevSales, prev.start, prev.endInclusive)
-      dowByStore     = aggregateDow(curSales)
-      weatherByStore = aggregateWeather(curSales)
+      daily          = aggregateDaily(curSales,  cur.start,  cur.endInclusive,  curShip)
+      prevDaily      = aggregateDaily(prevSales, prev.start, prev.endInclusive, prevShip)
+      dowByStore     = aggregateDow(curSales,  curShip)
+      weatherByStore = aggregateWeather(curSales, curShip)
     } else if (g === 'year') {
-      monthly        = aggregateMonthly(curSales)
-      prevMonthly    = aggregateMonthly(prevSales)
-      dowByStore     = aggregateDow(curSales)
-      weatherByStore = aggregateWeather(curSales)
+      monthly        = aggregateMonthly(curSales,  curShip)
+      prevMonthly    = aggregateMonthly(prevSales, prevShip)
+      dowByStore     = aggregateDow(curSales,  curShip)
+      weatherByStore = aggregateWeather(curSales, curShip)
     }
 
     return NextResponse.json({
