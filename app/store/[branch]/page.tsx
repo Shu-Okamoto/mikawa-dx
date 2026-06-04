@@ -49,7 +49,15 @@ interface SalesData {
   customerCount : string
   staffMorning  : string
   staffAfternoon: string
+  weather       : string  // '' | '晴' | '曇' | '雨' | '雪'
 }
+
+const WEATHER_OPTIONS = [
+  { key: '晴', emoji: '☀️' },
+  { key: '曇', emoji: '☁️' },
+  { key: '雨', emoji: '🌧️' },
+  { key: '雪', emoji: '❄️' },
+] as const
 
 type Screen = 'catselect' | 'input' | 'sales' | 'submitted' | 'weekly'
 
@@ -82,7 +90,7 @@ const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
 
 const EMPTY_SALES: SalesData = {
   amount: '', souzai: '', mochi: '', hana: '',
-  customerCount: '', staffMorning: '', staffAfternoon: '',
+  customerCount: '', staffMorning: '', staffAfternoon: '', weather: '',
 }
 
 const STAFF_OPTIONS = ['2', '2.5', '3', '3.5', '4', '4.5', '5']
@@ -218,6 +226,7 @@ function StorePageContent({ branch }: { branch: string }) {
         customerCount : s.customerCount  ? String(s.customerCount)  : '',
         staffMorning  : s.staffMorning   ? String(s.staffMorning)   : '',
         staffAfternoon: s.staffAfternoon ? String(s.staffAfternoon) : '',
+        weather       : s.weather        ? String(s.weather)        : '',
       }
       setSales(sd)
       setSalesSent({ submittedAt: '', orders: buildSalesOrders(sd) })
@@ -238,6 +247,7 @@ function StorePageContent({ branch }: { branch: string }) {
       { productId: 's5', productName: '客数',      category: '実績', unit: '', status: (Number(s.customerCount) || 0) + '人', qty: '' },
       { productId: 's6', productName: '出勤前半',  category: '実績', unit: '', status: (s.staffMorning   || '-') + '人', qty: '' },
       { productId: 's7', productName: '出勤後半',  category: '実績', unit: '', status: (s.staffAfternoon || '-') + '人', qty: '' },
+      { productId: 's8', productName: '天気',      category: '実績', unit: '', status: s.weather || '-', qty: '' },
     ]
   }
 
@@ -1217,7 +1227,7 @@ function SalesScreen({
           </div>
 
           <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>人数</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
             <div>
               <div style={labelStyle}>客数</div>
               <input type="number" inputMode="numeric"
@@ -1243,6 +1253,29 @@ function SalesScreen({
                 {STAFF_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>天気</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+            {WEATHER_OPTIONS.map((w) => {
+              const active = sales.weather === w.key
+              return (
+                <button key={w.key} type="button"
+                  onClick={() => upd('weather', active ? '' : w.key)}
+                  style={{
+                    padding: '10px', borderRadius: '8px',
+                    border: active ? '2px solid #1A5276' : '1.5px solid #E5E1D8',
+                    background: active ? '#EAF3FB' : 'white',
+                    color: '#2C2C2A', fontFamily: 'inherit',
+                    fontSize: '16px', fontWeight: 500, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '6px',
+                  }}>
+                  <span style={{ fontSize: '20px' }}>{w.emoji}</span>
+                  {w.key}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>

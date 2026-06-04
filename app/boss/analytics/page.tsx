@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
 type Granularity = 'year' | 'month' | 'day'
-type ViewKey    = 'daily' | 'category' | 'dow'
+type ViewKey    = 'daily' | 'category' | 'dow' | 'weather'
 
 interface Bucket {
   amount       : number
@@ -19,6 +19,7 @@ interface Bucket {
 interface DailyEntry {
   date    : string
   dow     : number
+  weather : string | null
   byStore : Record<string, Bucket>
 }
 
@@ -30,6 +31,17 @@ interface MonthlyEntry {
 interface DowEntry {
   dow         : number
   label       : string
+  days        : number
+  totalAmount : number
+  avgAmount   : number
+  avgSouzai   : number
+  avgMochi    : number
+  avgHana     : number
+  avgCustomer : number
+}
+
+interface WeatherEntry {
+  weather     : string  // '晴' | '曇' | '雨' | '雪' | '未記録'
   days        : number
   totalAmount : number
   avgAmount   : number
@@ -52,6 +64,7 @@ interface ApiData {
   monthly?    : MonthlyEntry[]
   prevMonthly?: MonthlyEntry[]
   dow?        : { byStore: Record<string, DowEntry[]> }
+  weather?    : { byStore: Record<string, WeatherEntry[]> }
 }
 
 const STORES = ['西店', '南店']
@@ -67,7 +80,16 @@ const VIEWS: { key: ViewKey; label: string; emoji: string }[] = [
   { key: 'daily'   , label: '日別'      , emoji: '💰' },
   { key: 'category', label: 'カテゴリ別', emoji: '📋' },
   { key: 'dow'     , label: '曜日別'    , emoji: '📊' },
+  { key: 'weather' , label: '天気別'    , emoji: '☀️' },
 ]
+
+const WEATHER_DISPLAY: Record<string, { emoji: string; color: string }> = {
+  '晴'    : { emoji: '☀️', color: '#F1C40F' },
+  '曇'    : { emoji: '☁️', color: '#95A5A6' },
+  '雨'    : { emoji: '🌧️', color: '#1A5276' },
+  '雪'    : { emoji: '❄️', color: '#5DADE2' },
+  '未記録': { emoji: '—'  , color: '#888780' },
+}
 
 // 表示順: 月→日
 const DOW_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
@@ -155,8 +177,9 @@ function AnalyticsContent() {
   if (loading) return <Center>読み込み中...</Center>
   if (error)   return <Center error>{error}</Center>
 
-  // 曜日別は日粒度では非表示なので、自動で日別に倒す
-  const effectiveView: ViewKey = granularity === 'day' && view === 'dow' ? 'daily' : view
+  // 曜日別 / 天気別は日粒度では非表示なので、自動で日別に倒す
+  const effectiveView: ViewKey =
+    granularity === 'day' && (view === 'dow' || view === 'weather') ? 'daily' : view
 
   return (
     <div style={{ fontFamily:"'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif",
@@ -215,7 +238,7 @@ function AnalyticsContent() {
         <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
           {VIEWS.map((v) => {
             const active   = v.key === effectiveView
-            const disabled = v.key === 'dow' && granularity === 'day'
+            const disabled = (v.key === 'dow' || v.key === 'weather') && granularity === 'day'
             return (
               <button key={v.key} onClick={() => !disabled && setView(v.key)}
                 disabled={disabled}
@@ -243,8 +266,10 @@ function AnalyticsContent() {
           <DailySalesTable data={data} />
         ) : effectiveView === 'category' ? (
           <CategoryTable data={data} />
-        ) : (
+        ) : effectiveView === 'dow' ? (
           <DowChartView data={data} />
+        ) : (
+          <WeatherChartView data={data} />
         )}
 
       </div>
@@ -380,6 +405,12 @@ function DailyRow({ row, isTotal, isAvg }: {
             ({row.sublabel})
           </span>
         )}
+        {row.weather && (
+          <span style={{ marginLeft:'4px', fontSize:'14px' }}
+            title={row.weather}>
+            {WEATHER_DISPLAY[row.weather]?.emoji ?? ''}
+          </span>
+        )}
       </td>
       {STORES.map((s) => {
         const b = row.byStore[s]
@@ -415,6 +446,7 @@ interface RowData {
   label    : string
   sublabel?: string
   dow?     : number
+  weather? : string | null
   byStore     : Record<string, Bucket>
   prevByStore : Record<string, Bucket>
 }
@@ -431,6 +463,7 @@ function buildRows(data: ApiData): RowData[] {
         label      : `${dt.getMonth()+1}/${dt.getDate()}`,
         sublabel   : ['日','月','火','水','木','金','土'][d.dow],
         dow        : d.dow,
+        weather    : d.weather,
         byStore    : d.byStore,
         prevByStore: p?.byStore ?? {},
       }
@@ -637,6 +670,132 @@ function DowBarChart({ name, entries }: { name: string; entries: DowEntry[] }) {
               <div style={{ width:'28px', fontSize:'14px', fontWeight:600,
                 color: labelColor, textAlign:'center', flexShrink:0 }}>
                 {e.label}
+              </div>
+              <div style={{ flex:1, position:'relative', height:'28px',
+                background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>
+                {total > 0 && (
+                  <div style={{ position:'absolute', left:0, top:0, bottom:0,
+                    width: widthPct + '%', display:'flex',
+                    borderRadius:'4px', overflow:'hidden' }}>
+                    {SEGMENTS.map((s) => {
+                      const v = segs[s.key]
+                      if (v <= 0) return null
+                      const pct = (v / total) * 100
+                      const segWidthPx = (pct / 100) * widthPct
+                      const showLabel = segWidthPx >= 8
+                      return (
+                        <div key={s.key}
+                          title={`${s.label} ¥${Math.round(v).toLocaleString()} (${pct.toFixed(0)}%)`}
+                          style={{ width: pct + '%', background: s.color,
+                            display:'flex', alignItems:'center',
+                            justifyContent:'center',
+                            color:'white', fontSize:'11px', fontWeight:600,
+                            overflow:'hidden', whiteSpace:'nowrap' }}>
+                          {showLabel ? '¥' + Math.round(v).toLocaleString() : ''}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              <div style={{ width:'92px', fontSize:'12px',
+                textAlign:'right', flexShrink:0, lineHeight:1.3 }}>
+                {e.days > 0 ? (
+                  <>
+                    <div style={{ fontWeight:600, color:'#2C2C2A' }}>
+                      ¥{Math.round(total).toLocaleString()}
+                    </div>
+                    <div style={{ color:'#888780', fontSize:'11px' }}>
+                      {e.avgCustomer}人 · {e.days}日
+                    </div>
+                  </>
+                ) : (
+                  <span style={{ color:'#888780' }}>—</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// =====================================
+// 天気別ビュー: 棒グラフ
+// =====================================
+
+const WEATHER_DISPLAY_ORDER = ['晴', '曇', '雨', '雪', '未記録'] as const
+
+function emptyWeather(): WeatherEntry[] {
+  return WEATHER_DISPLAY_ORDER.map((w) => ({
+    weather: w, days: 0,
+    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+  }))
+}
+
+function reorderWeather(entries: WeatherEntry[]): WeatherEntry[] {
+  const byKey = new Map(entries.map((e) => [e.weather, e]))
+  return WEATHER_DISPLAY_ORDER.map((w) => byKey.get(w) ?? {
+    weather: w, days: 0,
+    totalAmount: 0, avgAmount: 0, avgSouzai: 0, avgMochi: 0, avgHana: 0, avgCustomer: 0,
+  })
+}
+
+function WeatherChartView({ data }: { data: ApiData }) {
+  if (!data.weather) {
+    return (
+      <div style={{ background:'white', borderRadius:'16px', padding:'40px',
+        textAlign:'center', color:'#888780' }}>
+        この粒度では天気別表示は利用できません
+      </div>
+    )
+  }
+  return (
+    <div style={{ background:'white', borderRadius:'16px', padding:'16px',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ fontWeight:500, fontSize:'16px', marginBottom:'4px' }}>
+        ☀️ 天気別 1日平均売上
+      </div>
+      <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
+        ※ {data.label} 内の各天気の1日あたり平均。天気が未入力の日は「未記録」に集計。
+      </div>
+
+      <Legend />
+
+      {STORES.map((s) => (
+        <WeatherBarChart key={s} name={s}
+          entries={reorderWeather(data.weather!.byStore[s] ?? emptyWeather())} />
+      ))}
+    </div>
+  )
+}
+
+function WeatherBarChart({ name, entries }: { name: string; entries: WeatherEntry[] }) {
+  const maxAmount = Math.max(...entries.map((e) => e.avgAmount), 1)
+  const seg = (e: WeatherEntry) => ({
+    souzai: e.avgSouzai, mochi: e.avgMochi, hana: e.avgHana,
+    other : Math.max(0, e.avgAmount - e.avgSouzai - e.avgMochi - e.avgHana),
+  })
+
+  return (
+    <div style={{ marginTop:'12px', marginBottom:'8px' }}>
+      <div style={{ fontSize:'15px', fontWeight:500, color:'#2C2C2A',
+        marginBottom:'8px' }}>{name}</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:'6px',
+        padding:'10px', background:'#FAFAFA', borderRadius:'8px' }}>
+        {entries.map((e) => {
+          const total = e.avgAmount
+          const widthPct = total > 0 ? (total / maxAmount) * 100 : 0
+          const disp = WEATHER_DISPLAY[e.weather] ?? { emoji: '', color: '#888780' }
+          const segs = seg(e)
+          return (
+            <div key={e.weather} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ width:'72px', fontSize:'13px', fontWeight:600,
+                color: disp.color, textAlign:'left', flexShrink:0,
+                display:'flex', alignItems:'center', gap:'4px' }}>
+                <span style={{ fontSize:'15px' }}>{disp.emoji}</span>
+                {e.weather}
               </div>
               <div style={{ flex:1, position:'relative', height:'28px',
                 background:'#EEE', borderRadius:'4px', overflow:'hidden' }}>

@@ -9,8 +9,12 @@ interface SaleRow {
   mochiAmount  : { toNumber: () => number } | number
   hanaAmount   : { toNumber: () => number } | number
   customerCount: number
+  weather      : string | null
   store        : { storeName: string }
 }
+
+const WEATHER_KEYS = ['晴', '曇', '雨', '雪'] as const
+type WeatherKey = typeof WEATHER_KEYS[number] | '未記録'
 
 interface Bucket {
   amount       : number
@@ -95,13 +99,14 @@ function aggregateByStore(sales: SaleRow[]): Record<string, Bucket> {
 interface DailyEntry {
   date    : string                       // 'YYYY-MM-DD'
   dow     : number                       // 0=日,6=土
+  weather : string | null                // 同日の最初の非空 weather (店舗共通想定)
   byStore : Record<string, Bucket>
 }
 function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): DailyEntry[] {
   const byDate = new Map<string, DailyEntry>()
   const cur = new Date(start)
   while (cur <= endInclusive) {
-    byDate.set(ymd(cur), { date: ymd(cur), dow: cur.getDay(), byStore: {} })
+    byDate.set(ymd(cur), { date: ymd(cur), dow: cur.getDay(), weather: null, byStore: {} })
     cur.setDate(cur.getDate() + 1)
   }
   sales.forEach((s) => {
@@ -111,6 +116,7 @@ function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): Dail
     const name = s.store.storeName
     if (!entry.byStore[name]) entry.byStore[name] = newBucket()
     addRow(entry.byStore[name], s)
+    if (!entry.weather && s.weather) entry.weather = s.weather
   })
   return Array.from(byDate.values())
 }
@@ -171,6 +177,52 @@ function aggregateDow(sales: SaleRow[]): Record<string, DowEntry[]> {
   return out
 }
 
+// 天気別 1日平均 (月/年粒度用)
+interface WeatherEntry {
+  weather     : WeatherKey
+  days        : number
+  totalAmount : number
+  avgAmount   : number
+  avgSouzai   : number
+  avgMochi    : number
+  avgHana     : number
+  avgCustomer : number
+}
+function aggregateWeather(sales: SaleRow[]): Record<string, WeatherEntry[]> {
+  const accum: Record<string, Record<WeatherKey, Bucket>> = {}
+  const allKeys: WeatherKey[] = [...WEATHER_KEYS, '未記録']
+  const newEmpty = (): Record<WeatherKey, Bucket> => {
+    const m = {} as Record<WeatherKey, Bucket>
+    allKeys.forEach((k) => { m[k] = newBucket() })
+    return m
+  }
+  sales.forEach((s) => {
+    const name = s.store.storeName
+    const w    = s.weather && (WEATHER_KEYS as readonly string[]).includes(s.weather)
+      ? (s.weather as WeatherKey)
+      : '未記録'
+    if (!accum[name]) accum[name] = newEmpty()
+    addRow(accum[name][w], s)
+  })
+  const out: Record<string, WeatherEntry[]> = {}
+  Object.entries(accum).forEach(([name, byWeather]) => {
+    out[name] = allKeys.map((w) => {
+      const b = byWeather[w]
+      return {
+        weather    : w,
+        days       : b.days,
+        totalAmount: b.amount,
+        avgAmount  : b.days > 0 ? Math.round(b.amount / b.days)        : 0,
+        avgSouzai  : b.days > 0 ? Math.round(b.souzai / b.days)        : 0,
+        avgMochi   : b.days > 0 ? Math.round(b.mochi  / b.days)        : 0,
+        avgHana    : b.days > 0 ? Math.round(b.hana   / b.days)        : 0,
+        avgCustomer: b.days > 0 ? Math.round(b.customerCount / b.days) : 0,
+      }
+    })
+  })
+  return out
+}
+
 // 前年同期間の Date を計算
 function prevYearRef(ref: Date): Date {
   return new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
@@ -207,20 +259,23 @@ export async function GET(req: NextRequest) {
     const total     = { byStore: aggregateByStore(curSales) }
     const prevTotal = { byStore: aggregateByStore(prevSales) }
 
-    let daily      : DailyEntry[] | undefined
-    let prevDaily  : DailyEntry[] | undefined
-    let monthly    : MonthlyEntry[] | undefined
-    let prevMonthly: MonthlyEntry[] | undefined
-    let dowByStore : Record<string, DowEntry[]> | undefined
+    let daily         : DailyEntry[] | undefined
+    let prevDaily     : DailyEntry[] | undefined
+    let monthly       : MonthlyEntry[] | undefined
+    let prevMonthly   : MonthlyEntry[] | undefined
+    let dowByStore    : Record<string, DowEntry[]> | undefined
+    let weatherByStore: Record<string, WeatherEntry[]> | undefined
 
     if (g === 'month') {
-      daily     = aggregateDaily(curSales,  cur.start,  cur.endInclusive)
-      prevDaily = aggregateDaily(prevSales, prev.start, prev.endInclusive)
-      dowByStore = aggregateDow(curSales)
+      daily          = aggregateDaily(curSales,  cur.start,  cur.endInclusive)
+      prevDaily      = aggregateDaily(prevSales, prev.start, prev.endInclusive)
+      dowByStore     = aggregateDow(curSales)
+      weatherByStore = aggregateWeather(curSales)
     } else if (g === 'year') {
-      monthly     = aggregateMonthly(curSales)
-      prevMonthly = aggregateMonthly(prevSales)
-      dowByStore  = aggregateDow(curSales)
+      monthly        = aggregateMonthly(curSales)
+      prevMonthly    = aggregateMonthly(prevSales)
+      dowByStore     = aggregateDow(curSales)
+      weatherByStore = aggregateWeather(curSales)
     }
 
     return NextResponse.json({
@@ -235,7 +290,8 @@ export async function GET(req: NextRequest) {
       ...(prevDaily   ? { prevDaily }   : {}),
       ...(monthly     ? { monthly }     : {}),
       ...(prevMonthly ? { prevMonthly } : {}),
-      ...(dowByStore  ? { dow: { byStore: dowByStore } } : {}),
+      ...(dowByStore     ? { dow    : { byStore: dowByStore }     } : {}),
+      ...(weatherByStore ? { weather: { byStore: weatherByStore } } : {}),
     })
   } catch (e) {
     console.error(e)

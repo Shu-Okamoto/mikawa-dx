@@ -192,6 +192,7 @@ model Sale {
   customerCount  Int      @default(0)
   staffMorning   Decimal  @default(0)
   staffAfternoon Decimal  @default(0)
+  weather        String?  // 晴 / 曇 / 雨 / 雪 (空欄=未記録)
   notes          String?
   inputUser      String?
   createdAt      DateTime @default(now())
