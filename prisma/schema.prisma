@@ -187,6 +187,7 @@ model Sale {
   storeId        Int
   amount         Decimal  @default(0)
   souzaiAmount   Decimal  @default(0)
+  shipmentSouzai Decimal  @default(0) // souzai 日報からの出荷金額。ロス率 = (shipment - souzaiAmount) / shipment
   mochiAmount    Decimal  @default(0)
   hanaAmount     Decimal  @default(0)
   customerCount  Int      @default(0)

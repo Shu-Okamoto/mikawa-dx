@@ -3,26 +3,28 @@ import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
 interface SaleRow {
-  saleDate     : Date
-  amount       : { toNumber: () => number } | number
-  souzaiAmount : { toNumber: () => number } | number
-  mochiAmount  : { toNumber: () => number } | number
-  hanaAmount   : { toNumber: () => number } | number
-  customerCount: number
-  weather      : string | null
-  store        : { storeName: string }
+  saleDate      : Date
+  amount        : { toNumber: () => number } | number
+  souzaiAmount  : { toNumber: () => number } | number
+  shipmentSouzai: { toNumber: () => number } | number
+  mochiAmount   : { toNumber: () => number } | number
+  hanaAmount    : { toNumber: () => number } | number
+  customerCount : number
+  weather       : string | null
+  store         : { storeName: string }
 }
 
 const WEATHER_KEYS = ['晴', '曇', '雨', '雪'] as const
 type WeatherKey = typeof WEATHER_KEYS[number] | '未記録'
 
 interface Bucket {
-  amount       : number
-  souzai       : number
-  mochi        : number
-  hana         : number
-  customerCount: number
-  days         : number
+  amount        : number
+  souzai        : number
+  shipmentSouzai: number
+  mochi         : number
+  hana          : number
+  customerCount : number
+  days          : number
 }
 
 type Granularity = 'year' | 'month' | 'day'
@@ -33,16 +35,17 @@ function toNum(v: { toNumber: () => number } | number): number {
 }
 
 function newBucket(): Bucket {
-  return { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
+  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
 function addRow(b: Bucket, s: SaleRow) {
-  b.amount        += toNum(s.amount)
-  b.souzai        += toNum(s.souzaiAmount)
-  b.mochi         += toNum(s.mochiAmount)
-  b.hana          += toNum(s.hanaAmount)
-  b.customerCount += s.customerCount
-  b.days          += 1
+  b.amount         += toNum(s.amount)
+  b.souzai         += toNum(s.souzaiAmount)
+  b.shipmentSouzai += toNum(s.shipmentSouzai)
+  b.mochi          += toNum(s.mochiAmount)
+  b.hana           += toNum(s.hanaAmount)
+  b.customerCount  += s.customerCount
+  b.days           += 1
 }
 
 function parseRefDate(s: string | null): Date {

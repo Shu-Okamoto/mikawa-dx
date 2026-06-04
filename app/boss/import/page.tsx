@@ -27,14 +27,15 @@ type OrderProductRow = {
 }
 
 type SaleRow = {
-  date    : string
-  store   : string
-  amount  : string
-  souzai  : string
-  mochi   : string
-  hana    : string
-  customer: string
-  weather : string
+  date          : string
+  store         : string
+  amount        : string
+  souzai        : string
+  shipmentSouzai: string
+  mochi         : string
+  hana          : string
+  customer      : string
+  weather       : string
 }
 
 type ImportResult = {
@@ -158,18 +159,19 @@ function parseOrderProductRows(text: string): OrderProductRow[] {
 
 // 売上CSV のヘッダー候補 (日本語/英語混在)
 const SALE_HEADER_ALIASES: Record<keyof SaleRow, string[]> = {
-  date    : ['日付', '年月日', 'date', 'saledate'],
-  store   : ['店', '店舗', 'store', 'storename'],
-  amount  : ['売上', '売上合計', '合計', 'amount', 'total'],
-  souzai  : ['惣菜', 'souzai'],
-  mochi   : ['餅', 'mochi'],
-  hana    : ['花', 'hana'],
-  customer: ['客数', 'customer', 'customercount'],
-  weather : ['天気', '天候', 'weather'],
+  date          : ['日付', '年月日', 'date', 'saledate'],
+  store         : ['店', '店舗', 'store', 'storename'],
+  amount        : ['売上', '売上合計', '合計', 'amount', 'total'],
+  souzai        : ['惣菜', 'souzai'],
+  shipmentSouzai: ['惣菜出荷', '出荷', '出荷金額', 'shipment', 'shipmentsouzai'],
+  mochi         : ['餅', 'mochi'],
+  hana          : ['花', 'hana'],
+  customer      : ['客数', 'customer', 'customercount'],
+  weather       : ['天気', '天候', 'weather'],
 }
 
-// 「天気」「花」は CSV にない場合もあるので、必須から外す。
-const SALE_OPTIONAL: Set<keyof SaleRow> = new Set(['weather', 'hana'])
+// 「天気」「花」「惣菜出荷」は CSV にない場合もあるので、必須から外す。
+const SALE_OPTIONAL: Set<keyof SaleRow> = new Set(['weather', 'hana', 'shipmentSouzai'])
 
 function findSaleHeaderRow(rows: string[][]): {
   idx: number
@@ -209,14 +211,15 @@ function parseSaleRows(text: string): SaleRow[] {
     if (!r || r.every((c) => !c?.trim())) continue
     const at = (idx: number) => idx >= 0 ? (r[idx] ?? '').trim() : ''
     out.push({
-      date    : at(cols.date),
-      store   : at(cols.store),
-      amount  : at(cols.amount),
-      souzai  : at(cols.souzai),
-      mochi   : at(cols.mochi),
-      hana    : at(cols.hana),
-      customer: at(cols.customer),
-      weather : at(cols.weather),
+      date          : at(cols.date),
+      store         : at(cols.store),
+      amount        : at(cols.amount),
+      souzai        : at(cols.souzai),
+      shipmentSouzai: at(cols.shipmentSouzai),
+      mochi         : at(cols.mochi),
+      hana          : at(cols.hana),
+      customer      : at(cols.customer),
+      weather       : at(cols.weather),
     })
   }
   return out
@@ -322,7 +325,7 @@ function ImportContent() {
               ? '列: ProductID / ProductName / Category / Unit / WeeklyAvg / Vendor / Active'
               : mode === 'order-product'
               ? '列: ProductID / ProductName / Category / Price / AvailableDays / Active / Memo'
-              : '列: 日付 / 店 / 天気 / 売上 / 客数 / 惣菜 / 餅 (順不同。店は「西店」「南店」「本部」もしくは nishi/minami/honbu。天気は 晴/曇/雨/雪。花列があれば取り込みますが、なくても OK)'}
+              : '列: 日付 / 店 / 天気 / 売上 / 客数 / 惣菜 / 惣菜出荷 / 餅 (順不同。店は「西店」「南店」「本部」もしくは nishi/minami/honbu。天気は 晴/曇/雨/雪。花列・惣菜出荷列・天気列は省略可)'}
           </div>
 
           {mode === 'sale' && (
@@ -401,6 +404,7 @@ function ImportContent() {
                         <th style={th}>売上</th>
                         <th style={th}>客数</th>
                         <th style={th}>惣菜</th>
+                        <th style={th}>惣菜出荷</th>
                         <th style={th}>餅</th>
                       </>
                     )}
@@ -437,6 +441,7 @@ function ImportContent() {
                           <td style={td}>{(r as SaleRow).amount}</td>
                           <td style={td}>{(r as SaleRow).customer}</td>
                           <td style={td}>{(r as SaleRow).souzai}</td>
+                          <td style={td}>{(r as SaleRow).shipmentSouzai || '-'}</td>
                           <td style={td}>{(r as SaleRow).mochi}</td>
                         </>
                       )}

@@ -5,15 +5,16 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
 type Granularity = 'year' | 'month' | 'day'
-type ViewKey    = 'daily' | 'category' | 'dow' | 'weather'
+type ViewKey    = 'daily' | 'category' | 'dow' | 'weather' | 'souzai-loss'
 
 interface Bucket {
-  amount       : number
-  souzai       : number
-  mochi        : number
-  hana         : number
-  customerCount: number
-  days         : number
+  amount        : number
+  souzai        : number
+  shipmentSouzai: number
+  mochi         : number
+  hana          : number
+  customerCount : number
+  days          : number
 }
 
 interface DailyEntry {
@@ -77,10 +78,11 @@ const SEGMENTS = [
 ] as const
 
 const VIEWS: { key: ViewKey; label: string; emoji: string }[] = [
-  { key: 'daily'   , label: '日別'      , emoji: '💰' },
-  { key: 'category', label: 'カテゴリ別', emoji: '📋' },
-  { key: 'dow'     , label: '曜日別'    , emoji: '📊' },
-  { key: 'weather' , label: '天気別'    , emoji: '☀️' },
+  { key: 'daily'      , label: '日別'      , emoji: '💰' },
+  { key: 'category'   , label: 'カテゴリ別', emoji: '📋' },
+  { key: 'dow'        , label: '曜日別'    , emoji: '📊' },
+  { key: 'weather'    , label: '天気別'    , emoji: '☀️' },
+  { key: 'souzai-loss', label: '惣菜ロス'  , emoji: '🥬' },
 ]
 
 const WEATHER_DISPLAY: Record<string, { emoji: string; color: string }> = {
@@ -109,7 +111,7 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
 }
 
 function emptyBucket(): Bucket {
-  return { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
+  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
 function sumStores(byStore: Record<string, Bucket>): Bucket {
@@ -117,11 +119,12 @@ function sumStores(byStore: Record<string, Bucket>): Bucket {
   STORES.forEach((s) => {
     const b = byStore[s]
     if (!b) return
-    out.amount        += b.amount
-    out.souzai        += b.souzai
-    out.mochi         += b.mochi
-    out.hana          += b.hana
-    out.customerCount += b.customerCount
+    out.amount         += b.amount
+    out.souzai         += b.souzai
+    out.shipmentSouzai += b.shipmentSouzai
+    out.mochi          += b.mochi
+    out.hana           += b.hana
+    out.customerCount  += b.customerCount
     out.days = Math.max(out.days, b.days)
   })
   return out
@@ -268,8 +271,10 @@ function AnalyticsContent() {
           <CategoryTable data={data} />
         ) : effectiveView === 'dow' ? (
           <DowChartView data={data} />
-        ) : (
+        ) : effectiveView === 'weather' ? (
           <WeatherChartView data={data} />
+        ) : (
+          <SouzaiLossTable data={data} />
         )}
 
       </div>
@@ -291,19 +296,21 @@ function avgBucket(rows: RowData[]): Bucket {
     const t = sumStores(r.byStore)
     if (t.amount <= 0 && t.customerCount <= 0) return
     days++
-    out.amount        += t.amount
-    out.souzai        += t.souzai
-    out.mochi         += t.mochi
-    out.hana          += t.hana
-    out.customerCount += t.customerCount
+    out.amount         += t.amount
+    out.souzai         += t.souzai
+    out.shipmentSouzai += t.shipmentSouzai
+    out.mochi          += t.mochi
+    out.hana           += t.hana
+    out.customerCount  += t.customerCount
   })
   if (days === 0) return out
-  out.amount        = Math.round(out.amount        / days)
-  out.souzai        = Math.round(out.souzai        / days)
-  out.mochi         = Math.round(out.mochi         / days)
-  out.hana          = Math.round(out.hana          / days)
-  out.customerCount = Math.round(out.customerCount / days)
-  out.days          = days
+  out.amount         = Math.round(out.amount         / days)
+  out.souzai         = Math.round(out.souzai         / days)
+  out.shipmentSouzai = Math.round(out.shipmentSouzai / days)
+  out.mochi          = Math.round(out.mochi          / days)
+  out.hana           = Math.round(out.hana           / days)
+  out.customerCount  = Math.round(out.customerCount  / days)
+  out.days           = days
   return out
 }
 
@@ -844,6 +851,139 @@ function WeatherBarChart({ name, entries }: { name: string; entries: WeatherEntr
         })}
       </div>
     </div>
+  )
+}
+
+// =====================================
+// 惣菜ロス ビュー: 表
+// 列: 日付 | 西店(出荷/売上/ロス/率) | 南店(出荷/売上/ロス/率) | 本部合計(出荷/売上/ロス/率)
+// 行: 各日 + 合計 (粒度=月のみ日別、粒度=年は月別、粒度=日は当日1行)
+// ロス率 = (出荷 − 売上) / 出荷  (出荷=0 のときは「—」)
+// =====================================
+
+function lossRate(shipment: number, sales: number): number | null {
+  if (shipment <= 0) return null
+  return (shipment - sales) / shipment
+}
+
+function lossColor(rate: number | null): string {
+  if (rate == null) return '#888780'
+  if (rate >= 0.15) return '#E24B4A'
+  if (rate >= 0.08) return '#C47A2C'
+  return '#3B6D11'
+}
+
+function fmtPct(rate: number | null): string {
+  if (rate == null) return '—'
+  return (rate * 100).toFixed(1) + '%'
+}
+
+function SouzaiLossTable({ data }: { data: ApiData }) {
+  const rows = useMemo(() => buildRows(data), [data])
+  const totalRow: RowData = {
+    key: 'TOTAL', label: '合計',
+    byStore    : data.total.byStore,
+    prevByStore: data.prevTotal.byStore,
+  }
+
+  return (
+    <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
+        fontWeight:500, fontSize:'16px' }}>
+        🥬 惣菜ロス 一覧
+      </div>
+      <div style={{ padding:'8px 16px', fontSize:'12px', color:'#888780',
+        borderBottom:'1px solid #F0ECE3' }}>
+        ロス率 = (惣菜出荷 − 惣菜売上) / 惣菜出荷
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', minWidth:'780px',
+          borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} style={thStyle}>
+                {data.granularity === 'year' ? '月' : '日付'}
+              </th>
+              <th colSpan={3} style={thGroupStyle}>西店</th>
+              <th colSpan={3} style={thGroupStyle}>南店</th>
+              <th colSpan={3} style={thTotalGroupStyle}>本部合計</th>
+            </tr>
+            <tr>
+              <th style={thSubStyle}>出荷</th>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>ロス率</th>
+              <th style={thSubStyle}>出荷</th>
+              <th style={thSubStyle}>売上</th>
+              <th style={thSubStyle}>ロス率</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>出荷</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>売上</th>
+              <th style={{ ...thSubStyle, background:'#FBF8F2' }}>ロス率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <SouzaiLossRow key={r.key} row={r} />
+            ))}
+            <SouzaiLossRow row={totalRow} isTotal />
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function SouzaiLossRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
+  const total = sumStores(row.byStore)
+  const curShip = total.shipmentSouzai
+  const curSold = total.souzai
+  const curRate = lossRate(curShip, curSold)
+
+  const bg = isTotal ? '#FBF8F2'
+    : row.dow === 0 ? '#FFF7F6'
+    : row.dow === 6 ? '#F2F7FB'
+    : 'white'
+  const labelColor = isTotal ? '#2C2C2A'
+    : row.dow === 0 ? '#E24B4A'
+    : row.dow === 6 ? '#1A5276'
+    : '#2C2C2A'
+  const weight = isTotal ? 600 : 500
+  const cell = (n: number) => n > 0 ? yen(n) : '—'
+
+  return (
+    <tr style={{ background: bg, borderTop:'1px solid #F0ECE3' }}>
+      <td style={{ ...tdStyle, fontWeight: weight, color: labelColor, whiteSpace:'nowrap' }}>
+        {row.label}
+        {row.sublabel && (
+          <span style={{ marginLeft:'4px', fontSize:'11px', color:'#888780' }}>
+            ({row.sublabel})
+          </span>
+        )}
+      </td>
+      {STORES.map((s) => {
+        const b = row.byStore[s] ?? emptyBucket()
+        const rate = lossRate(b.shipmentSouzai, b.souzai)
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{cell(b.shipmentSouzai)}</td>
+            <td style={tdNumStyle}>{cell(b.souzai)}</td>
+            <td style={{ ...tdNumStyle, color: lossColor(rate), fontWeight: rate != null ? 600 : 400 }}>
+              {fmtPct(rate)}
+            </td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: weight }}>
+        {cell(curShip)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: weight }}>
+        {cell(curSold)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2',
+        color: lossColor(curRate), fontWeight: curRate != null ? 600 : 400 }}>
+        {fmtPct(curRate)}
+      </td>
+    </tr>
   )
 }
 
