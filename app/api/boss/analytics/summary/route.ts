@@ -13,7 +13,7 @@ interface SaleRow {
   store        : { storeName: string }
 }
 
-// 日付ごと・店舗ごとの惣菜出荷額。public.hq_daily_report の west_sales / south_sales 由来。
+// 日付ごと・店舗ごとの惣菜出荷額。public.hq_daily_reports の west_sales / south_sales 由来。
 // キー: ymd(date)、値: 店舗名 → 出荷額 (0 = データなし)
 type ShipmentMap = Map<string, Record<string, number>>
 
@@ -64,7 +64,7 @@ async function fetchShipments(start: Date, endExclusive: Date): Promise<Shipment
   }
   const rows = await prisma.$queryRaw<Raw[]>`
     SELECT date, west_sales, south_sales
-      FROM public.hq_daily_report
+      FROM public.hq_daily_reports
      WHERE date >= ${ymd(start)}::date
        AND date <  ${ymd(endExclusive)}::date
   `
