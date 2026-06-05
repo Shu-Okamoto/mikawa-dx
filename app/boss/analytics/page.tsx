@@ -400,6 +400,10 @@ function DailySalesTable({ data }: { data: ApiData }) {
               <DailyRow key={r.key} row={r} />
             ))}
             <DailyRow row={totalRow} isTotal />
+            {showAvg && (
+              <DailyYoYRow byStore={data.total.byStore}
+                prevByStore={data.prevTotal.byStore} />
+            )}
             {showAvg && <DailyRow row={avgRow} isAvg />}
             <UnitPriceRow byStore={data.total.byStore}
               prevByStore={data.prevTotal.byStore} />
@@ -444,6 +448,40 @@ function UnitPriceRow({ byStore, prevByStore }: {
       <td style={{ ...tdNumStyle, color: yoyColor(cur, prev) }}>
         {prev > 0 ? pct(cur, prev) : '—'}
       </td>
+    </tr>
+  )
+}
+
+// 店舗毎の前年比 (売上・客数) を表示する行。平均行の上に置く。
+function DailyYoYRow({ byStore, prevByStore }: {
+  byStore    : Record<string, Bucket>
+  prevByStore: Record<string, Bucket>
+}) {
+  const total     = sumStores(byStore)
+  const prevTotal = sumStores(prevByStore)
+  const yoyCell = (cur: number, prev: number) => prev > 0
+    ? <span style={{ color: yoyColor(cur, prev) }}>{pct(cur, prev)}</span>
+    : <span style={{ color: '#888780' }}>—</span>
+  return (
+    <tr style={{ background:'#FBF8F2', borderTop:'1px solid #E5E1D8' }}>
+      <td style={{ ...tdStyle, fontWeight: 600 }}>前年比</td>
+      {STORES.map((s) => {
+        const b  = byStore[s]     ?? emptyBucket()
+        const pb = prevByStore[s] ?? emptyBucket()
+        return (
+          <Fragment key={s}>
+            <td style={tdNumStyle}>{yoyCell(b.amount, pb.amount)}</td>
+            <td style={tdNumStyle}>{yoyCell(b.customerCount, pb.customerCount)}</td>
+          </Fragment>
+        )
+      })}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
+        {yoyCell(total.amount, prevTotal.amount)}
+      </td>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
+        {yoyCell(total.customerCount, prevTotal.customerCount)}
+      </td>
+      <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
     </tr>
   )
 }
@@ -614,6 +652,40 @@ function Past3YearsTable({ pastYears, currentYear }: {
                   <td style={tdNumStyle}>{tot.cust}</td>
                   <td style={tdNumStyle}>{tot.up}</td>
                   <td style={tdNumStyle}>{tot.days}</td>
+                </tr>
+              )
+            })()}
+            {currentYear && (() => {
+              // 今年 ÷ 過去3年平均 (売上・客数・客単価)。営業日は対象外。
+              const ratioCell = (cur: number, base: number) => base > 0
+                ? <span style={{ color: yoyColor(cur, base) }}>{pct(cur, base)}</span>
+                : <span style={{ color: '#888780' }}>—</span>
+              const upOf = (e?: PastYearStoreEntry) =>
+                e && e.customerCount > 0 ? e.amount / e.customerCount : 0
+              const ratio = (cy?: PastYearStoreEntry, av?: PastYearStoreEntry) => ({
+                amt : ratioCell(cy?.amount        ?? 0, av?.amount        ?? 0),
+                cust: ratioCell(cy?.customerCount ?? 0, av?.customerCount ?? 0),
+                up  : ratioCell(upOf(cy), upOf(av)),
+              })
+              const west  = ratio(currentYear.byStore[STORES[0]], avg.byStore[STORES[0]])
+              const south = ratio(currentYear.byStore[STORES[1]], avg.byStore[STORES[1]])
+              const tot   = ratio(currentYear.total, avg.total)
+              const dash  = <span style={{ color: '#888780' }}>—</span>
+              return (
+                <tr style={{ background:'#F1EBDA', borderTop:'2px solid #E5E1D8' }}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>対過去3年平均</td>
+                  <td style={tdNumStyle}>{west.amt}</td>
+                  <td style={tdNumStyle}>{west.cust}</td>
+                  <td style={tdNumStyle}>{west.up}</td>
+                  <td style={tdNumStyle}>{dash}</td>
+                  <td style={tdNumStyle}>{south.amt}</td>
+                  <td style={tdNumStyle}>{south.cust}</td>
+                  <td style={tdNumStyle}>{south.up}</td>
+                  <td style={tdNumStyle}>{dash}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>{tot.amt}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>{tot.cust}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>{tot.up}</td>
+                  <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>{dash}</td>
                 </tr>
               )
             })()}
