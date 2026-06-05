@@ -158,7 +158,15 @@ function aggregateDow(sales: SaleRow[]): Record<string, DowEntry[]> {
     const name = s.store.storeName
     const dow  = new Date(s.saleDate).getDay()
     if (!accum[name]) accum[name] = Array.from({ length: 7 }, newBucket)
-    addRow(accum[name][dow], s)
+    const b   = accum[name][dow]
+    const amt = toNum(s.amount)
+    b.amount        += amt
+    b.souzai        += toNum(s.souzaiAmount)
+    b.mochi         += toNum(s.mochiAmount)
+    b.hana          += toNum(s.hanaAmount)
+    b.customerCount += s.customerCount
+    // 曜日別の日数は売上 > 0 の日だけ加算する
+    if (amt > 0) b.days += 1
   })
   const out: Record<string, DowEntry[]> = {}
   Object.entries(accum).forEach(([name, buckets]) => {
@@ -226,6 +234,53 @@ function aggregateWeather(sales: SaleRow[]): Record<string, WeatherEntry[]> {
 // 前年同期間の Date を計算
 function prevYearRef(ref: Date): Date {
   return new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
+}
+
+// 前年の同日から最も近い「同じ曜日」の日を返す。
+// 例: 当日が日曜なら、前年同日付の前後 3 日以内にある日曜を選ぶ。
+function prevYearSameDow(ref: Date): Date {
+  const base = new Date(ref.getFullYear() - 1, ref.getMonth(), ref.getDate())
+  let diff = (ref.getDay() - base.getDay() + 7) % 7  // 0..6 (前方向の距離)
+  if (diff > 3) diff -= 7                              // -3..3 の最短側に寄せる
+  base.setDate(base.getDate() + diff)
+  return base
+}
+
+// 'YYYY-MM-DD' をローカル Date に
+function parseYmd(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// 日付キー -> 店舗別 Bucket / 天気 のマップ (前年の同曜日突き合わせ用)
+function aggregateDailyMap(
+  sales: SaleRow[],
+): Map<string, { byStore: Record<string, Bucket>; weather: string | null }> {
+  const map = new Map<string, { byStore: Record<string, Bucket>; weather: string | null }>()
+  sales.forEach((s) => {
+    const key = ymd(new Date(s.saleDate))
+    let e = map.get(key)
+    if (!e) { e = { byStore: {}, weather: null }; map.set(key, e) }
+    const name = s.store.storeName
+    if (!e.byStore[name]) e.byStore[name] = newBucket()
+    addRow(e.byStore[name], s)
+    if (!e.weather && s.weather) e.weather = s.weather
+  })
+  return map
+}
+
+// from の店舗別 Bucket を into にマージ
+function mergeByStore(into: Record<string, Bucket>, from: Record<string, Bucket>) {
+  Object.entries(from).forEach(([name, b]) => {
+    if (!into[name]) into[name] = newBucket()
+    const t = into[name]
+    t.amount        += b.amount
+    t.souzai        += b.souzai
+    t.mochi         += b.mochi
+    t.hana          += b.hana
+    t.customerCount += b.customerCount
+    t.days          += b.days
+  })
 }
 
 // 過去 n 年分の ref Date を古い順で返す (現在は含まない: 1年前/2年前/...)
@@ -310,9 +365,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '不正な粒度' }, { status: 400 })
     }
     const ref     = parseRefDate(searchParams.get('ref'))
-    const prevRef = prevYearRef(ref)
+    // 前年比の比較対象:
+    //  - 日粒度: 前年の同日から最も近い同曜日の日
+    //  - 月粒度: 前年同月 (日別行は下で 1 日ずつ同曜日に突き合わせる)
+    //  - 年粒度: 前年 (月別で突き合わせ。曜日補正は対象外)
+    const prevRef = g === 'day' ? prevYearSameDow(ref) : prevYearRef(ref)
     const cur     = rangeFor(g, ref)
     const prev    = rangeFor(g, prevRef)
+
+    // 月粒度は日別の同曜日補正で月境界をまたぐため、前年の取得範囲を ±4 日広げる
+    const prevFetchStart = g === 'month'
+      ? new Date(prev.start.getTime() - 4 * 86400000) : prev.start
+    const prevFetchEnd   = g === 'month'
+      ? new Date(prev.endExclusive.getTime() + 4 * 86400000) : prev.endExclusive
 
     // 過去 3 年 (古い順, 末尾が今期と同じ)
     const past3Refs   = pastYearRefs(ref, 3)
@@ -324,7 +389,7 @@ export async function GET(req: NextRequest) {
         include: { store: true },
       }) as unknown as Promise<SaleRow[]>,
       prisma.sale.findMany({
-        where  : { saleDate: { gte: prev.start, lt: prev.endExclusive } },
+        where  : { saleDate: { gte: prevFetchStart, lt: prevFetchEnd } },
         include: { store: true },
       }) as unknown as Promise<SaleRow[]>,
       ...past3Ranges.map((r) =>
@@ -342,8 +407,7 @@ export async function GET(req: NextRequest) {
     const currentYear: PastYearEntry =
       aggregatePastYear(curSales, ref.getFullYear(), cur.label)
 
-    const total     = { byStore: aggregateByStore(curSales) }
-    const prevTotal = { byStore: aggregateByStore(prevSales) }
+    const total = { byStore: aggregateByStore(curSales) }
 
     let daily         : DailyEntry[] | undefined
     let prevDaily     : DailyEntry[] | undefined
@@ -351,18 +415,38 @@ export async function GET(req: NextRequest) {
     let prevMonthly   : MonthlyEntry[] | undefined
     let dowByStore    : Record<string, DowEntry[]> | undefined
     let weatherByStore: Record<string, WeatherEntry[]> | undefined
+    let prevTotalByStore: Record<string, Bucket> = {}
 
     if (g === 'month') {
-      daily          = aggregateDaily(curSales,  cur.start,  cur.endInclusive)
-      prevDaily      = aggregateDaily(prevSales, prev.start, prev.endInclusive)
+      daily = aggregateDaily(curSales, cur.start, cur.endInclusive)
+      // 前年: 各当日に対し「前年同日から最も近い同曜日」を突き合わせる
+      const prevMap = aggregateDailyMap(prevSales)
+      prevDaily = daily.map((d) => {
+        const target = prevYearSameDow(parseYmd(d.date))
+        const e = prevMap.get(ymd(target))
+        return {
+          date   : ymd(target),
+          dow    : target.getDay(),
+          weather: e?.weather ?? null,
+          byStore: e?.byStore ?? {},
+        }
+      })
+      // 合計の前年比も同曜日補正後の日の合計に揃える
+      prevDaily.forEach((pd) => mergeByStore(prevTotalByStore, pd.byStore))
       dowByStore     = aggregateDow(curSales)
       weatherByStore = aggregateWeather(curSales)
     } else if (g === 'year') {
-      monthly        = aggregateMonthly(curSales)
-      prevMonthly    = aggregateMonthly(prevSales)
-      dowByStore     = aggregateDow(curSales)
-      weatherByStore = aggregateWeather(curSales)
+      monthly          = aggregateMonthly(curSales)
+      prevMonthly      = aggregateMonthly(prevSales)
+      prevTotalByStore = aggregateByStore(prevSales)
+      dowByStore       = aggregateDow(curSales)
+      weatherByStore   = aggregateWeather(curSales)
+    } else {
+      // 日粒度: prevSales は同曜日補正済みの 1 日
+      prevTotalByStore = aggregateByStore(prevSales)
     }
+
+    const prevTotal = { byStore: prevTotalByStore }
 
     return NextResponse.json({
       granularity: g,
