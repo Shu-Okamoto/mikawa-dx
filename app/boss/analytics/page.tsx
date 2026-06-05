@@ -1057,7 +1057,7 @@ function DowChartView({ data }: { data: ApiData }) {
         📊 曜日別 1日平均売上
       </div>
       <div style={{ fontSize:'13px', color:'#888780', marginBottom:'12px' }}>
-        ※ {data.label} 内の各曜日の1日あたり平均
+        ※ {data.label} 内の各曜日の1日あたり平均（売上があった日のみで計算）
       </div>
 
       <Legend />
