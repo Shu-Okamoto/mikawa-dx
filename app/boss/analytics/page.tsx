@@ -433,21 +433,24 @@ function UnitPriceRow({ byStore, prevByStore }: {
     <tr style={{ background:'#F1EBDA', borderTop:'2px solid #E5E1D8' }}>
       <td style={{ ...tdStyle, fontWeight: 600 }}>客単価</td>
       {STORES.map((s) => {
-        const up = unitPrice(byStore[s] ?? emptyBucket())
+        const up     = unitPrice(byStore[s]     ?? emptyBucket())
+        const prevUp = unitPrice(prevByStore[s] ?? emptyBucket())
         return (
           <Fragment key={s}>
             <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(up)}</td>
-            <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
+            <td style={{ ...tdNumStyle, color: yoyColor(up, prevUp) }}>
+              {prevUp > 0 ? pct(up, prevUp) : '—'}
+            </td>
           </Fragment>
         )
       })}
       <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
         {cell(cur)}
       </td>
-      <td style={{ ...tdNumStyle, background:'#FBF8F2', color:'#888780' }}>—</td>
-      <td style={{ ...tdNumStyle, color: yoyColor(cur, prev) }}>
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', color: yoyColor(cur, prev) }}>
         {prev > 0 ? pct(cur, prev) : '—'}
       </td>
+      <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
     </tr>
   )
 }
