@@ -132,7 +132,8 @@
 
 | キー | 用途 |
 |---|---|
-| `DATABASE_URL` | Postgres 接続文字列。末尾に `?sslmode=verify-full` 必須。 |
+| `DATABASE_URL` | ランタイム用 Postgres 接続文字列。Supabase の **pooler (pgbouncer)** を使う（例: `...pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1`）。サーバーレスでのコネクション枯渇を防ぐため direct ではなく pooler を指定する。 |
+| `DIRECT_URL` | Prisma migrate 用の **direct 接続**（Supabase の 5432、pgbouncer パラメータ無し）。pgbouncer 経由だと migrate が prepared statement で失敗するため direct を使う。未設定だと `prisma migrate` / `db push` は実行できない。 |
 | `JWT_SECRET` | JWT 署名鍵。 |
 | `LINE_CHANNEL_SECRET` | LINE Webhook 署名検証用。 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | replyMessage / プロフィール取得用。 |
@@ -161,6 +162,34 @@ npx prisma studio
 ```
 
 dev サーバー起動後、別端末（スマホ等）から LAN 経由でアクセスする場合は [next.config.ts](next.config.ts) の `allowedDevOrigins` にその端末の IP を追加する。
+
+## マイグレーション運用
+
+スキーマ変更は **必ずマイグレーションファイル経由**で行う。`prisma/migrations` に履歴をコミットし、本番は `prisma migrate deploy`（= `npm run migrate:deploy`）で適用する。**本番に対して `prisma migrate dev` は実行しない**（`migrate dev` はシャドウDBを作るためローカル開発専用）。
+
+migrate 系は `DIRECT_URL`（Supabase の direct / 5432）を使う。`DIRECT_URL` が未設定だと実行できない。
+
+### 既存DBのベースライン（初回のみ）
+
+`prisma/migrations/0_init` は既存 DB（Supabase 移行済み）に合わせた初期マイグレーション。**既にスキーマが存在する DB** では適用せず、適用済みとして記録する：
+
+```bash
+# DIRECT_URL を対象 DB（Supabase direct/5432）に向けた状態で
+npx prisma migrate resolve --applied 0_init
+```
+
+まっさらな DB に対しては通常どおり `npx prisma migrate deploy` で 0_init を流せる。
+
+### 日常の変更
+
+```bash
+# ローカルでスキーマを変更したら（DIRECT_URL = ローカル or 開発用 DB）
+npx prisma migrate dev --name <変更内容>
+git add prisma/migrations && git commit   # 生成された SQL をコミット
+
+# 本番反映
+npm run migrate:deploy
+```
 
 ## テスト用 URL
 
