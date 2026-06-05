@@ -13,16 +13,21 @@ interface SaleRow {
   store        : { storeName: string }
 }
 
+// 日付ごと・店舗ごとの惣菜出荷額。public.hq_daily_reports の west_sales / south_sales 由来。
+// キー: ymd(date)、値: 店舗名 → 出荷額 (0 = データなし)
+type ShipmentMap = Map<string, Record<string, number>>
+
 const WEATHER_KEYS = ['晴', '曇', '雨', '雪'] as const
 type WeatherKey = typeof WEATHER_KEYS[number] | '未記録'
 
 interface Bucket {
-  amount       : number
-  souzai       : number
-  mochi        : number
-  hana         : number
-  customerCount: number
-  days         : number
+  amount        : number
+  souzai        : number
+  shipmentSouzai: number
+  mochi         : number
+  hana          : number
+  customerCount : number
+  days          : number
 }
 
 type Granularity = 'year' | 'month' | 'day'
@@ -33,16 +38,50 @@ function toNum(v: { toNumber: () => number } | number): number {
 }
 
 function newBucket(): Bucket {
-  return { amount: 0, souzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
+  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
-function addRow(b: Bucket, s: SaleRow) {
-  b.amount        += toNum(s.amount)
-  b.souzai        += toNum(s.souzaiAmount)
-  b.mochi         += toNum(s.mochiAmount)
-  b.hana          += toNum(s.hanaAmount)
-  b.customerCount += s.customerCount
-  b.days          += 1
+function addRow(b: Bucket, s: SaleRow, shipment: number) {
+  b.amount         += toNum(s.amount)
+  b.souzai         += toNum(s.souzaiAmount)
+  b.shipmentSouzai += shipment
+  b.mochi          += toNum(s.mochiAmount)
+  b.hana           += toNum(s.hanaAmount)
+  b.customerCount  += s.customerCount
+  b.days           += 1
+}
+
+function shipmentFor(s: SaleRow, m: ShipmentMap): number {
+  const e = m.get(ymd(new Date(s.saleDate)))
+  return e?.[s.store.storeName] ?? 0
+}
+
+async function fetchShipments(start: Date, endExclusive: Date): Promise<ShipmentMap> {
+  type Raw = {
+    date       : Date | string
+    west_sales : { toNumber: () => number } | number | string | null
+    south_sales: { toNumber: () => number } | number | string | null
+  }
+  // hq_daily_reports.date は TEXT 'YYYY-MM-DD' 形式。
+  // 辞書順 = 日付順なので、キャストせず文字列比較する。
+  const rows = await prisma.$queryRaw<Raw[]>`
+    SELECT date, west_sales, south_sales
+      FROM public.hq_daily_reports
+     WHERE date >= ${ymd(start)}
+       AND date <  ${ymd(endExclusive)}
+  `
+  const toN = (v: Raw['west_sales']): number => {
+    if (v == null) return 0
+    if (typeof v === 'number') return v
+    if (typeof v === 'string') return Number(v) || 0
+    return v.toNumber()
+  }
+  const m: ShipmentMap = new Map()
+  rows.forEach((r) => {
+    const key = typeof r.date === 'string' ? r.date.slice(0, 10) : ymd(new Date(r.date))
+    m.set(key, { '西店': toN(r.west_sales), '南店': toN(r.south_sales) })
+  })
+  return m
 }
 
 function parseRefDate(s: string | null): Date {
@@ -85,12 +124,12 @@ function rangeFor(granularity: Granularity, ref: Date): {
   }
 }
 
-function aggregateByStore(sales: SaleRow[]): Record<string, Bucket> {
+function aggregateByStore(sales: SaleRow[], ship: ShipmentMap): Record<string, Bucket> {
   const out: Record<string, Bucket> = {}
   sales.forEach((s) => {
     const name = s.store.storeName
     if (!out[name]) out[name] = newBucket()
-    addRow(out[name], s)
+    addRow(out[name], s, shipmentFor(s, ship))
   })
   return out
 }
@@ -102,7 +141,7 @@ interface DailyEntry {
   weather : string | null                // 同日の最初の非空 weather (店舗共通想定)
   byStore : Record<string, Bucket>
 }
-function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): DailyEntry[] {
+function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date, ship: ShipmentMap): DailyEntry[] {
   const byDate = new Map<string, DailyEntry>()
   const cur = new Date(start)
   while (cur <= endInclusive) {
@@ -115,7 +154,7 @@ function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date): Dail
     if (!entry) return
     const name = s.store.storeName
     if (!entry.byStore[name]) entry.byStore[name] = newBucket()
-    addRow(entry.byStore[name], s)
+    addRow(entry.byStore[name], s, shipmentFor(s, ship))
     if (!entry.weather && s.weather) entry.weather = s.weather
   })
   return Array.from(byDate.values())
@@ -126,7 +165,7 @@ interface MonthlyEntry {
   month   : number                       // 1〜12
   byStore : Record<string, Bucket>
 }
-function aggregateMonthly(sales: SaleRow[]): MonthlyEntry[] {
+function aggregateMonthly(sales: SaleRow[], ship: ShipmentMap): MonthlyEntry[] {
   const arr: MonthlyEntry[] = Array.from({ length: 12 }, (_, i) => ({
     month: i + 1, byStore: {},
   }))
@@ -135,7 +174,7 @@ function aggregateMonthly(sales: SaleRow[]): MonthlyEntry[] {
     const e  = arr[m]
     const name = s.store.storeName
     if (!e.byStore[name]) e.byStore[name] = newBucket()
-    addRow(e.byStore[name], s)
+    addRow(e.byStore[name], s, shipmentFor(s, ship))
   })
   return arr
 }
@@ -152,7 +191,7 @@ interface DowEntry {
   avgHana     : number
   avgCustomer : number
 }
-function aggregateDow(sales: SaleRow[]): Record<string, DowEntry[]> {
+function aggregateDow(sales: SaleRow[], ship: ShipmentMap): Record<string, DowEntry[]> {
   const accum: Record<string, Bucket[]> = {}
   sales.forEach((s) => {
     const name = s.store.storeName
@@ -160,11 +199,12 @@ function aggregateDow(sales: SaleRow[]): Record<string, DowEntry[]> {
     if (!accum[name]) accum[name] = Array.from({ length: 7 }, newBucket)
     const b   = accum[name][dow]
     const amt = toNum(s.amount)
-    b.amount        += amt
-    b.souzai        += toNum(s.souzaiAmount)
-    b.mochi         += toNum(s.mochiAmount)
-    b.hana          += toNum(s.hanaAmount)
-    b.customerCount += s.customerCount
+    b.amount         += amt
+    b.souzai         += toNum(s.souzaiAmount)
+    b.shipmentSouzai += shipmentFor(s, ship)
+    b.mochi          += toNum(s.mochiAmount)
+    b.hana           += toNum(s.hanaAmount)
+    b.customerCount  += s.customerCount
     // 曜日別の日数は売上 > 0 の日だけ加算する
     if (amt > 0) b.days += 1
   })
@@ -196,7 +236,7 @@ interface WeatherEntry {
   avgHana     : number
   avgCustomer : number
 }
-function aggregateWeather(sales: SaleRow[]): Record<string, WeatherEntry[]> {
+function aggregateWeather(sales: SaleRow[], ship: ShipmentMap): Record<string, WeatherEntry[]> {
   const accum: Record<string, Record<WeatherKey, Bucket>> = {}
   const allKeys: WeatherKey[] = [...WEATHER_KEYS, '未記録']
   const newEmpty = (): Record<WeatherKey, Bucket> => {
@@ -210,7 +250,7 @@ function aggregateWeather(sales: SaleRow[]): Record<string, WeatherEntry[]> {
       ? (s.weather as WeatherKey)
       : '未記録'
     if (!accum[name]) accum[name] = newEmpty()
-    addRow(accum[name][w], s)
+    addRow(accum[name][w], s, shipmentFor(s, ship))
   })
   const out: Record<string, WeatherEntry[]> = {}
   Object.entries(accum).forEach(([name, byWeather]) => {
@@ -254,7 +294,7 @@ function parseYmd(s: string): Date {
 
 // 日付キー -> 店舗別 Bucket / 天気 のマップ (前年の同曜日突き合わせ用)
 function aggregateDailyMap(
-  sales: SaleRow[],
+  sales: SaleRow[], ship: ShipmentMap,
 ): Map<string, { byStore: Record<string, Bucket>; weather: string | null }> {
   const map = new Map<string, { byStore: Record<string, Bucket>; weather: string | null }>()
   sales.forEach((s) => {
@@ -263,7 +303,7 @@ function aggregateDailyMap(
     if (!e) { e = { byStore: {}, weather: null }; map.set(key, e) }
     const name = s.store.storeName
     if (!e.byStore[name]) e.byStore[name] = newBucket()
-    addRow(e.byStore[name], s)
+    addRow(e.byStore[name], s, shipmentFor(s, ship))
     if (!e.weather && s.weather) e.weather = s.weather
   })
   return map
@@ -274,12 +314,13 @@ function mergeByStore(into: Record<string, Bucket>, from: Record<string, Bucket>
   Object.entries(from).forEach(([name, b]) => {
     if (!into[name]) into[name] = newBucket()
     const t = into[name]
-    t.amount        += b.amount
-    t.souzai        += b.souzai
-    t.mochi         += b.mochi
-    t.hana          += b.hana
-    t.customerCount += b.customerCount
-    t.days          += b.days
+    t.amount         += b.amount
+    t.souzai         += b.souzai
+    t.shipmentSouzai += b.shipmentSouzai
+    t.mochi          += b.mochi
+    t.hana           += b.hana
+    t.customerCount  += b.customerCount
+    t.days           += b.days
   })
 }
 
@@ -383,21 +424,30 @@ export async function GET(req: NextRequest) {
     const past3Refs   = pastYearRefs(ref, 3)
     const past3Ranges = past3Refs.map((r) => rangeFor(g, r))
 
-    const [curSales, prevSales, ...past3SalesByIdx] = await Promise.all([
-      prisma.sale.findMany({
-        where  : { saleDate: { gte: cur.start, lt: cur.endExclusive } },
-        include: { store: true },
-      }) as unknown as Promise<SaleRow[]>,
-      prisma.sale.findMany({
-        where  : { saleDate: { gte: prevFetchStart, lt: prevFetchEnd } },
-        include: { store: true },
-      }) as unknown as Promise<SaleRow[]>,
-      ...past3Ranges.map((r) =>
+    const [
+      [curSales, prevSales, ...past3SalesByIdx],
+      [curShip, prevShip],
+    ] = await Promise.all([
+      Promise.all([
         prisma.sale.findMany({
-          where  : { saleDate: { gte: r.start, lt: r.endExclusive } },
+          where  : { saleDate: { gte: cur.start, lt: cur.endExclusive } },
           include: { store: true },
         }) as unknown as Promise<SaleRow[]>,
-      ),
+        prisma.sale.findMany({
+          where  : { saleDate: { gte: prevFetchStart, lt: prevFetchEnd } },
+          include: { store: true },
+        }) as unknown as Promise<SaleRow[]>,
+        ...past3Ranges.map((r) =>
+          prisma.sale.findMany({
+            where  : { saleDate: { gte: r.start, lt: r.endExclusive } },
+            include: { store: true },
+          }) as unknown as Promise<SaleRow[]>,
+        ),
+      ]),
+      Promise.all([
+        fetchShipments(cur.start,  cur.endExclusive),
+        fetchShipments(prevFetchStart, prevFetchEnd),
+      ]),
     ])
 
     const pastYears: PastYearEntry[] = past3SalesByIdx.map((sales, i) =>
@@ -407,7 +457,7 @@ export async function GET(req: NextRequest) {
     const currentYear: PastYearEntry =
       aggregatePastYear(curSales, ref.getFullYear(), cur.label)
 
-    const total = { byStore: aggregateByStore(curSales) }
+    const total = { byStore: aggregateByStore(curSales, curShip) }
 
     let daily         : DailyEntry[] | undefined
     let prevDaily     : DailyEntry[] | undefined
@@ -418,9 +468,9 @@ export async function GET(req: NextRequest) {
     let prevTotalByStore: Record<string, Bucket> = {}
 
     if (g === 'month') {
-      daily = aggregateDaily(curSales, cur.start, cur.endInclusive)
+      daily = aggregateDaily(curSales, cur.start, cur.endInclusive, curShip)
       // 前年: 各当日に対し「前年同日から最も近い同曜日」を突き合わせる
-      const prevMap = aggregateDailyMap(prevSales)
+      const prevMap = aggregateDailyMap(prevSales, prevShip)
       prevDaily = daily.map((d) => {
         const target = prevYearSameDow(parseYmd(d.date))
         const e = prevMap.get(ymd(target))
@@ -433,17 +483,17 @@ export async function GET(req: NextRequest) {
       })
       // 合計の前年比も同曜日補正後の日の合計に揃える
       prevDaily.forEach((pd) => mergeByStore(prevTotalByStore, pd.byStore))
-      dowByStore     = aggregateDow(curSales)
-      weatherByStore = aggregateWeather(curSales)
+      dowByStore     = aggregateDow(curSales, curShip)
+      weatherByStore = aggregateWeather(curSales, curShip)
     } else if (g === 'year') {
-      monthly          = aggregateMonthly(curSales)
-      prevMonthly      = aggregateMonthly(prevSales)
-      prevTotalByStore = aggregateByStore(prevSales)
-      dowByStore       = aggregateDow(curSales)
-      weatherByStore   = aggregateWeather(curSales)
+      monthly          = aggregateMonthly(curSales,  curShip)
+      prevMonthly      = aggregateMonthly(prevSales, prevShip)
+      prevTotalByStore = aggregateByStore(prevSales, prevShip)
+      dowByStore       = aggregateDow(curSales, curShip)
+      weatherByStore   = aggregateWeather(curSales, curShip)
     } else {
       // 日粒度: prevSales は同曜日補正済みの 1 日
-      prevTotalByStore = aggregateByStore(prevSales)
+      prevTotalByStore = aggregateByStore(prevSales, prevShip)
     }
 
     const prevTotal = { byStore: prevTotalByStore }
