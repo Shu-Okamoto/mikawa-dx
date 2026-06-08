@@ -16,18 +16,6 @@ type Entry = {
 
 const PIN_ROLE_KEY = 'pinRole'
 
-// 既ログイン時のデフォルト遷移先（role ごとに 1 つ）
-const roleHome: Record<RoleKey, string> = {
-  nishi : '/store/nishi',
-  minami: '/store/minami',
-  honbu : '/store/honbu',
-  hq1   : '/hq',
-  hq2   : '/hq',
-  hq3   : '/hq',
-  all   : '/boss',
-  master: '/boss/users',
-}
-
 const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
     title: '🥬 野菜果物発注',
@@ -100,39 +88,18 @@ export default function HomePage() {
   const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
-    // PIN を入力済み(=sessionStorage に pinRole)ならエントリ選択画面を
-    // 必ず表示する。これがないと、PINロール+残存トークンの組み合わせで
-    // 意図せず roleHome (例: /boss) にリダイレクトされてしまう。
-    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
-    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
-        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
-        saved === 'all'   || saved === 'master') {
-      setPinRole(saved)
-      return
-    }
-    // PIN 未入力でログイン済み(ブックマーク/外部リンク等)はロール別
-    // ホームに案内する。
-    const token = localStorage.getItem('token')
-    const stored = localStorage.getItem('user')
-    if (token && stored) {
-      try {
-        const u = JSON.parse(stored) as { role: RoleKey }
-        const dest = roleHome[u.role]
-        if (dest) {
-          router.push(dest)
-          return
-        }
-      } catch { /* 壊れた値は無視 */ }
-    }
-  }, [router])
+    // ログインは保持しない。入口では常に PIN 入力から始める。
+    // 以前のセッションで残ったトークン / pinRole があれば破棄する。
+    sessionStorage.removeItem(PIN_ROLE_KEY)
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+  }, [])
 
   const onPinVerified = (role: RoleKey) => {
-    sessionStorage.setItem(PIN_ROLE_KEY, role)
     setPinRole(role)
   }
 
   const resetPin = () => {
-    sessionStorage.removeItem(PIN_ROLE_KEY)
     setPinRole(null)
   }
 
