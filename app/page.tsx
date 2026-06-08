@@ -3,13 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all'
+type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
 
 type Entry = {
-  role     : RoleKey
-  path     : string
-  label    : string
-  external?: boolean
+  role         : RoleKey
+  path         : string
+  label        : string
+  external?    : boolean
+  // true の場合、専用 PIN (master / 0000) でのみボタンを押せる
+  requireMaster?: boolean
 }
 
 const PIN_ROLE_KEY = 'pinRole'
@@ -23,6 +25,7 @@ const roleHome: Record<RoleKey, string> = {
   hq2   : '/hq',
   hq3   : '/hq',
   all   : '/boss',
+  master: '/boss/users',
 }
 
 const entryGroups: { title: string; rows: Entry[][] }[] = [
@@ -69,12 +72,16 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     title: '📊 分析・マスタ',
     rows: [[
       { role: 'all', path: '/boss',       label: '売上分析' },
-      { role: 'all', path: '/boss/users', label: 'マスタ管理' },
+      { role: 'all', path: '/boss/users', label: 'マスタ管理', requireMaster: true },
     ]],
   },
 ]
 
 function canAccess(pinRole: RoleKey, entry: Entry): boolean {
+  // マスタ管理など専用ボタンは master PIN (0000) のみ
+  if (entry.requireMaster) return pinRole === 'master'
+  // master PIN は専用ボタン以外は押せない
+  if (pinRole === 'master') return false
   if (pinRole === 'all') return true
   if (pinRole === 'nishi')
     return entry.role === 'nishi' || (entry.role === 'all' && entry.path === '/calendar')
@@ -99,7 +106,7 @@ export default function HomePage() {
     const saved = sessionStorage.getItem(PIN_ROLE_KEY)
     if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
         saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
-        saved === 'all') {
+        saved === 'all'   || saved === 'master') {
       setPinRole(saved)
       return
     }
