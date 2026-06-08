@@ -42,16 +42,23 @@ export async function GET() {
         LEFT JOIN nippo.daily_reports r
           ON r.store_id = s.id AND r.report_date = ${today}::date
         LEFT JOIN (
-          -- 当日の実績シフトから店舗の総労働時間 (休憩控除後) を集計
+          -- 当日の実績シフトから総実働時間を集計 (日報の「総実働時間/人時売」と同一算出)。
+          -- 各シフト: start/end があり end>start のとき (end-start)-休憩、
+          -- それ以外は 0。負値は 0 にクランプ。
           SELECT se.daily_report_id,
                  SUM(
-                   EXTRACT(EPOCH FROM (se.end_time - se.start_time)) / 3600.0
-                   - COALESCE(se.break_minutes, 0) / 60.0
+                   GREATEST(0,
+                     CASE
+                       WHEN se.start_time IS NOT NULL AND se.end_time IS NOT NULL
+                            AND se.end_time > se.start_time
+                       THEN EXTRACT(EPOCH FROM (se.end_time - se.start_time)) / 3600.0
+                            - COALESCE(se.break_minutes, 0) / 60.0
+                       ELSE 0
+                     END
+                   )
                  ) AS total_hours
             FROM nippo.shift_entries se
            WHERE se.entry_type = 'actual'
-             AND se.start_time IS NOT NULL
-             AND se.end_time   IS NOT NULL
            GROUP BY se.daily_report_id
         ) h ON h.daily_report_id = r.id
        WHERE s.slug IN ('nishi', 'minami') AND s.is_active = true
