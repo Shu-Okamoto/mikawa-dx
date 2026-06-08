@@ -9,11 +9,15 @@ interface StoreData {
   salesForecast: number | null
   customerCount: number | null
   weather      : string | null
+  laborHours   : number | null
+  salesPerHour : number | null
 }
 interface ApiData {
-  today      : string
-  stores     : StoreData[]
-  totalActual: number
+  today            : string
+  stores           : StoreData[]
+  totalActual      : number
+  totalHours       : number
+  totalSalesPerHour: number | null
 }
 
 const WEATHER_EMOJI: Record<string, string> = {
@@ -23,6 +27,11 @@ const WEATHER_EMOJI: Record<string, string> = {
 function yen(n: number | null): string {
   if (n == null) return '—'
   return '¥' + Math.round(n).toLocaleString('ja-JP')
+}
+
+function hours(n: number | null): string {
+  if (n == null || n <= 0) return '—'
+  return `${n.toFixed(1)}時間`
 }
 
 function fmtDate(s: string): string {
@@ -129,6 +138,11 @@ export default function PublicDashboardPage() {
                     <span>客数 {s.customerCount != null ? `${s.customerCount}人` : '—'}</span>
                     <span>予測 {yen(s.salesForecast)}</span>
                   </div>
+                  <div style={{ marginTop: '6px', fontSize: '14px', color: '#888780',
+                    display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <span>時間数 {hours(s.laborHours)}</span>
+                    <span>人時売 {yen(s.salesPerHour)}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -146,9 +160,14 @@ export default function PublicDashboardPage() {
               boxShadow    : '0 2px 10px rgba(0,0,0,.08)',
             }}>
               <span style={{ fontSize: '18px', fontWeight: 600 }}>本部合計</span>
-              <span style={{ fontSize: '34px', fontWeight: 700, letterSpacing: '-1px' }}>
-                {yen(data.totalActual)}
-              </span>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '34px', fontWeight: 700, letterSpacing: '-1px' }}>
+                  {yen(data.totalActual)}
+                </div>
+                <div style={{ fontSize: '13px', opacity: .85, marginTop: '2px' }}>
+                  時間数 {hours(data.totalHours)} ・ 人時売 {yen(data.totalSalesPerHour)}
+                </div>
+              </div>
             </div>
           </>
         )}

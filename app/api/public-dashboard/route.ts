@@ -13,6 +13,7 @@ interface RawRow {
   sales_forecast: Decimalish
   customer_count: number | string | null
   weather       : string | null
+  total_hours   : Decimalish
 }
 
 const STORE_ORDER = ['nishi', 'minami'] as const
@@ -35,27 +36,51 @@ export async function GET() {
     const today = todayDateStr()
     const rows = await prisma.$queryRaw<RawRow[]>`
       SELECT s.slug, s.name,
-             r.sales_actual, r.sales_forecast, r.customer_count, r.weather
+             r.sales_actual, r.sales_forecast, r.customer_count, r.weather,
+             COALESCE(h.total_hours, 0) AS total_hours
         FROM nippo.stores s
         LEFT JOIN nippo.daily_reports r
           ON r.store_id = s.id AND r.report_date = ${today}::date
+        LEFT JOIN (
+          -- 当日の実績シフトから店舗の総労働時間 (休憩控除後) を集計
+          SELECT se.daily_report_id,
+                 SUM(
+                   EXTRACT(EPOCH FROM (se.end_time - se.start_time)) / 3600.0
+                   - COALESCE(se.break_minutes, 0) / 60.0
+                 ) AS total_hours
+            FROM nippo.shift_entries se
+           WHERE se.entry_type = 'actual'
+             AND se.start_time IS NOT NULL
+             AND se.end_time   IS NOT NULL
+           GROUP BY se.daily_report_id
+        ) h ON h.daily_report_id = r.id
        WHERE s.slug IN ('nishi', 'minami') AND s.is_active = true
     `
     const bySlug = new Map(rows.map((r) => [r.slug, r]))
     const stores = STORE_ORDER.map((slug) => {
       const r = bySlug.get(slug)
+      const salesActual = r ? num(r.sales_actual) : null
+      const laborHours  = r ? num(r.total_hours)  : null
+      // 人時売 = 売上 ÷ 労働時間
+      const salesPerHour = laborHours && laborHours > 0 && salesActual != null
+        ? salesActual / laborHours
+        : null
       return {
         slug,
         name         : STORE_LABEL[slug],
-        salesActual  : r ? num(r.sales_actual)   : null,
+        salesActual,
         salesForecast: r ? num(r.sales_forecast) : null,
         customerCount: r ? num(r.customer_count) : null,
         weather      : r?.weather ?? null,
+        laborHours,
+        salesPerHour,
       }
     })
     const totalActual = stores.reduce((sum, s) => sum + (s.salesActual ?? 0), 0)
+    const totalHours  = stores.reduce((sum, s) => sum + (s.laborHours ?? 0), 0)
+    const totalSalesPerHour = totalHours > 0 ? totalActual / totalHours : null
 
-    return NextResponse.json({ today, stores, totalActual })
+    return NextResponse.json({ today, stores, totalActual, totalHours, totalSalesPerHour })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
