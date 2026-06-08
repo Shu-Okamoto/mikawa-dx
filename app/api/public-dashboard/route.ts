@@ -1,19 +1,21 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
-// 公開ダッシュボード用。認証なしで本日の売上(日報の sales_actual)を返す。
+// 公開ダッシュボード用。認証なしで本日の売上等を返す。
+// 時間数(total_hours)・人時売(ninjibai)は日報システムのダッシュボードと
+// 同じ nippo.daily_kpi ビューから取得し、値を完全に一致させる。
 export const dynamic = 'force-dynamic'
 
 type Decimalish = { toNumber: () => number } | number | string | null
 
 interface RawRow {
   slug          : string
-  name          : string
   sales_actual  : Decimalish
   sales_forecast: Decimalish
   customer_count: number | string | null
   weather       : string | null
   total_hours   : Decimalish
+  ninjibai      : Decimalish
 }
 
 const STORE_ORDER = ['nishi', 'minami'] as const
@@ -34,53 +36,35 @@ function todayDateStr(): string {
 export async function GET() {
   try {
     const today = todayDateStr()
+    // daily_kpi: 日報システムのダッシュボードと同一ソース(total_hours / ninjibai)。
+    // sales 系は kpi が未生成でも表示できるよう daily_reports でフォールバック。
     const rows = await prisma.$queryRaw<RawRow[]>`
-      SELECT s.slug, s.name,
-             r.sales_actual, r.sales_forecast, r.customer_count, r.weather,
-             COALESCE(h.total_hours, 0) AS total_hours
+      SELECT s.slug,
+             COALESCE(k.sales_actual,   r.sales_actual)   AS sales_actual,
+             COALESCE(k.sales_forecast, r.sales_forecast) AS sales_forecast,
+             COALESCE(k.customer_count, r.customer_count) AS customer_count,
+             r.weather,
+             k.total_hours,
+             k.ninjibai
         FROM nippo.stores s
         LEFT JOIN nippo.daily_reports r
           ON r.store_id = s.id AND r.report_date = ${today}::date
-        LEFT JOIN (
-          -- 当日の実績シフトから総実働時間を集計 (日報の「総実働時間/人時売」と同一算出)。
-          -- 各シフト: start/end があり end>start のとき (end-start)-休憩、
-          -- それ以外は 0。負値は 0 にクランプ。
-          SELECT se.daily_report_id,
-                 SUM(
-                   GREATEST(0,
-                     CASE
-                       WHEN se.start_time IS NOT NULL AND se.end_time IS NOT NULL
-                            AND se.end_time > se.start_time
-                       THEN EXTRACT(EPOCH FROM (se.end_time - se.start_time)) / 3600.0
-                            - COALESCE(se.break_minutes, 0) / 60.0
-                       ELSE 0
-                     END
-                   )
-                 ) AS total_hours
-            FROM nippo.shift_entries se
-           WHERE se.entry_type = 'actual'
-           GROUP BY se.daily_report_id
-        ) h ON h.daily_report_id = r.id
+        LEFT JOIN nippo.daily_kpi k
+          ON k.store_id = s.id AND k.report_date = ${today}::date
        WHERE s.slug IN ('nishi', 'minami') AND s.is_active = true
     `
     const bySlug = new Map(rows.map((r) => [r.slug, r]))
     const stores = STORE_ORDER.map((slug) => {
       const r = bySlug.get(slug)
-      const salesActual = r ? num(r.sales_actual) : null
-      const laborHours  = r ? num(r.total_hours)  : null
-      // 人時売 = 売上 ÷ 労働時間
-      const salesPerHour = laborHours && laborHours > 0 && salesActual != null
-        ? salesActual / laborHours
-        : null
       return {
         slug,
         name         : STORE_LABEL[slug],
-        salesActual,
+        salesActual  : r ? num(r.sales_actual)   : null,
         salesForecast: r ? num(r.sales_forecast) : null,
         customerCount: r ? num(r.customer_count) : null,
         weather      : r?.weather ?? null,
-        laborHours,
-        salesPerHour,
+        laborHours   : r ? num(r.total_hours)    : null,  // 時間数 = daily_kpi.total_hours
+        salesPerHour : r ? num(r.ninjibai)       : null,  // 人時売 = daily_kpi.ninjibai
       }
     })
     const totalActual = stores.reduce((sum, s) => sum + (s.salesActual ?? 0), 0)
