@@ -30,7 +30,7 @@ function yen(n: number | null): string {
 }
 
 function hours(n: number | null): string {
-  if (n == null || n <= 0) return '—'
+  if (n == null) return '—'
   return `${n.toFixed(1)}時間`
 }
 
