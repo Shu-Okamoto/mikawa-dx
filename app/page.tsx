@@ -12,6 +12,8 @@ type Entry = {
   external?    : boolean
   // true の場合、専用 PIN (master / 0000) でのみボタンを押せる
   requireMaster?: boolean
+  // true の場合、ログイン不要の公開ページ。どの PIN でも押せる。
+  public?      : boolean
 }
 
 const PIN_ROLE_KEY = 'pinRole'
@@ -35,12 +37,17 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
   },
   {
     title: '📝 日報',
-    rows: [[
-      { role: 'nishi',  label: '西店',
-        path: 'https://nippo-system-blue.vercel.app/store/nishi/today',  external: true },
-      { role: 'minami', label: '南店',
-        path: 'https://nippo-system-blue.vercel.app/store/minami/today', external: true },
-    ]],
+    rows: [
+      [
+        { role: 'nishi',  label: '西店',
+          path: 'https://nippo-system-blue.vercel.app/store/nishi/today',  external: true },
+        { role: 'minami', label: '南店',
+          path: 'https://nippo-system-blue.vercel.app/store/minami/today', external: true },
+      ],
+      [
+        { role: 'all', path: '/public-dashboard', label: '本日の売上', public: true },
+      ],
+    ],
   },
   {
     title: '📅 注文カレンダー',
@@ -68,6 +75,8 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
 function canAccess(pinRole: RoleKey, entry: Entry): boolean {
   // マスタ管理など専用ボタンは master PIN (0000) のみ
   if (entry.requireMaster) return pinRole === 'master'
+  // 公開ページはどの PIN でも閲覧可
+  if (entry.public) return true
   // master PIN は専用ボタン以外は押せない
   if (pinRole === 'master') return false
   if (pinRole === 'all') return true
@@ -104,6 +113,11 @@ export default function HomePage() {
   }
 
   const login = async (entry: Entry) => {
+    // 公開ページはログインせずそのまま遷移
+    if (entry.public) {
+      router.push(entry.path)
+      return
+    }
     if (entry.external) {
       window.location.href = entry.path
       return
