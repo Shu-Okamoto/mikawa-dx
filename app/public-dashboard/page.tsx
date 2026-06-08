@@ -52,8 +52,6 @@ export default function PublicDashboardPage() {
 
   useEffect(() => {
     load()
-    const id = setInterval(load, 60_000) // 1分ごとに自動更新
-    return () => clearInterval(id)
   }, [load])
 
   return (
