@@ -3,27 +3,18 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all'
+type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
 
 type Entry = {
-  role     : RoleKey
-  path     : string
-  label    : string
-  external?: boolean
+  role         : RoleKey
+  path         : string
+  label        : string
+  external?    : boolean
+  // true の場合、専用 PIN (master / 0000) でのみボタンを押せる
+  requireMaster?: boolean
 }
 
 const PIN_ROLE_KEY = 'pinRole'
-
-// 既ログイン時のデフォルト遷移先（role ごとに 1 つ）
-const roleHome: Record<RoleKey, string> = {
-  nishi : '/store/nishi',
-  minami: '/store/minami',
-  honbu : '/store/honbu',
-  hq1   : '/hq',
-  hq2   : '/hq',
-  hq3   : '/hq',
-  all   : '/boss',
-}
 
 const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
@@ -69,12 +60,16 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     title: '📊 分析・マスタ',
     rows: [[
       { role: 'all', path: '/boss',       label: '売上分析' },
-      { role: 'all', path: '/boss/users', label: 'マスタ管理' },
+      { role: 'all', path: '/boss/users', label: 'マスタ管理', requireMaster: true },
     ]],
   },
 ]
 
 function canAccess(pinRole: RoleKey, entry: Entry): boolean {
+  // マスタ管理など専用ボタンは master PIN (0000) のみ
+  if (entry.requireMaster) return pinRole === 'master'
+  // master PIN は専用ボタン以外は押せない
+  if (pinRole === 'master') return false
   if (pinRole === 'all') return true
   if (pinRole === 'nishi')
     return entry.role === 'nishi' || (entry.role === 'all' && entry.path === '/calendar')
@@ -93,39 +88,18 @@ export default function HomePage() {
   const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
-    // PIN を入力済み(=sessionStorage に pinRole)ならエントリ選択画面を
-    // 必ず表示する。これがないと、PINロール+残存トークンの組み合わせで
-    // 意図せず roleHome (例: /boss) にリダイレクトされてしまう。
-    const saved = sessionStorage.getItem(PIN_ROLE_KEY)
-    if (saved === 'nishi' || saved === 'minami' || saved === 'honbu' ||
-        saved === 'hq1'   || saved === 'hq2'    || saved === 'hq3'   ||
-        saved === 'all') {
-      setPinRole(saved)
-      return
-    }
-    // PIN 未入力でログイン済み(ブックマーク/外部リンク等)はロール別
-    // ホームに案内する。
-    const token = localStorage.getItem('token')
-    const stored = localStorage.getItem('user')
-    if (token && stored) {
-      try {
-        const u = JSON.parse(stored) as { role: RoleKey }
-        const dest = roleHome[u.role]
-        if (dest) {
-          router.push(dest)
-          return
-        }
-      } catch { /* 壊れた値は無視 */ }
-    }
-  }, [router])
+    // ログインは保持しない。入口では常に PIN 入力から始める。
+    // 以前のセッションで残ったトークン / pinRole があれば破棄する。
+    sessionStorage.removeItem(PIN_ROLE_KEY)
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+  }, [])
 
   const onPinVerified = (role: RoleKey) => {
-    sessionStorage.setItem(PIN_ROLE_KEY, role)
     setPinRole(role)
   }
 
   const resetPin = () => {
-    sessionStorage.removeItem(PIN_ROLE_KEY)
     setPinRole(null)
   }
 

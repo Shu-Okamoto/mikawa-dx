@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-type PinRole = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all'
+type PinRole = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
 
-const PIN_MAP: { env: string; role: PinRole }[] = [
+const PIN_MAP: { env: string; role: PinRole; fallback?: string }[] = [
   { env: 'PIN_NISHI',  role: 'nishi'  },
   { env: 'PIN_MINAMI', role: 'minami' },
   { env: 'PIN_HONBU',  role: 'honbu'  },
@@ -10,6 +10,8 @@ const PIN_MAP: { env: string; role: PinRole }[] = [
   { env: 'PIN_HQ2',    role: 'hq2'    },
   { env: 'PIN_HQ3',    role: 'hq3'    },
   { env: 'PIN_ALL',    role: 'all'    },
+  // マスタ管理専用 PIN。未設定時は 0000 を既定値とする。
+  { env: 'PIN_MASTER', role: 'master', fallback: '0000' },
 ]
 
 export async function POST(req: NextRequest) {
@@ -19,8 +21,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'PINは4桁の数字で入力してください' }, { status: 400 })
     }
     const configured: string[] = []
-    for (const { env, role } of PIN_MAP) {
-      const expected = process.env[env]?.trim()
+    for (const { env, role, fallback } of PIN_MAP) {
+      const expected = process.env[env]?.trim() || fallback
       if (!expected) continue
       configured.push(env)
       if (pin === expected) {
