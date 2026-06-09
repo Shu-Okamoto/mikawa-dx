@@ -16,6 +16,7 @@ interface RawRow {
   weather       : string | null
   total_hours   : Decimalish
   ninjibai      : Decimalish
+  kyaku_tanka   : Decimalish
 }
 
 const STORE_ORDER = ['nishi', 'minami'] as const
@@ -45,7 +46,8 @@ export async function GET() {
              COALESCE(k.customer_count, r.customer_count) AS customer_count,
              r.weather,
              k.total_hours,
-             k.ninjibai
+             k.ninjibai,
+             k.kyaku_tanka
         FROM nippo.stores s
         LEFT JOIN nippo.daily_reports r
           ON r.store_id = s.id AND r.report_date = ${today}::date
@@ -65,13 +67,18 @@ export async function GET() {
         weather      : r?.weather ?? null,
         laborHours   : r ? num(r.total_hours)    : null,  // 時間数 = daily_kpi.total_hours
         salesPerHour : r ? num(r.ninjibai)       : null,  // 人時売 = daily_kpi.ninjibai
+        unitPrice    : r ? num(r.kyaku_tanka)    : null,  // 客単価 = daily_kpi.kyaku_tanka
       }
     })
-    const totalActual = stores.reduce((sum, s) => sum + (s.salesActual ?? 0), 0)
-    const totalHours  = stores.reduce((sum, s) => sum + (s.laborHours ?? 0), 0)
+    const totalActual    = stores.reduce((sum, s) => sum + (s.salesActual ?? 0), 0)
+    const totalHours     = stores.reduce((sum, s) => sum + (s.laborHours ?? 0), 0)
+    const totalCustomers = stores.reduce((sum, s) => sum + (s.customerCount ?? 0), 0)
     const totalSalesPerHour = totalHours > 0 ? totalActual / totalHours : null
+    const totalUnitPrice    = totalCustomers > 0 ? totalActual / totalCustomers : null
 
-    return NextResponse.json({ today, stores, totalActual, totalHours, totalSalesPerHour })
+    return NextResponse.json({
+      today, stores, totalActual, totalHours, totalSalesPerHour, totalUnitPrice,
+    })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
