@@ -6,12 +6,12 @@ interface StoreData {
   slug         : string
   name         : string
   salesActual  : number | null
-  salesForecast: number | null
   customerCount: number | null
   weather      : string | null
   laborHours   : number | null
   salesPerHour : number | null
   unitPrice    : number | null
+  prevYearSales: number | null
 }
 interface ApiData {
   today            : string
@@ -20,6 +20,7 @@ interface ApiData {
   totalHours       : number
   totalSalesPerHour: number | null
   totalUnitPrice   : number | null
+  totalPrevYear    : number
 }
 
 const WEATHER_EMOJI: Record<string, string> = {
@@ -139,7 +140,7 @@ export default function PublicDashboardPage() {
                     display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
                     <span>客数 {s.customerCount != null ? `${s.customerCount}人` : '—'}</span>
                     <span>客単価 {yen(s.unitPrice)}</span>
-                    <span>予測 {yen(s.salesForecast)}</span>
+                    <span>前年売上 {yen(s.prevYearSales)}</span>
                   </div>
                   <div style={{ marginTop: '6px', fontSize: '14px', color: '#888780',
                     display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
