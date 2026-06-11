@@ -13,42 +13,37 @@ const TOKEN_KEY = 'token'
 const USER_KEY  = 'user'
 
 // PIN セッション: PIN 入力後、一定時間(アイドル)は PIN 再入力を省略する。
-const PIN_SESSION_KEY = 'pinSession'
+// ★メモリ上のみで保持する。SPA 内の画面遷移(終了するでメニューへ戻る等)では
+//   維持されるが、リロード/起動ではクリアされる(→ PIN 入力画面に戻る)。
 export const PIN_TTL_MS = 4 * 60 * 60 * 1000 // 4 時間
 
 interface PinSession { role: string; expiresAt: number }
+let pinSession: PinSession | null = null
 
 // PIN セッションを開始/延長する(期限を now + TTL に更新)。
 export function setPinSession(role: string): void {
-  if (typeof window === 'undefined') return
-  const s: PinSession = { role, expiresAt: Date.now() + PIN_TTL_MS }
-  localStorage.setItem(PIN_SESSION_KEY, JSON.stringify(s))
+  pinSession = { role, expiresAt: Date.now() + PIN_TTL_MS }
 }
 
 // 有効な PIN セッションがあれば role を返す。期限切れ/無効なら null。
 export function getValidPinRole(): string | null {
-  if (typeof window === 'undefined') return null
-  const raw = localStorage.getItem(PIN_SESSION_KEY)
-  if (!raw) return null
-  try {
-    const s = JSON.parse(raw) as PinSession
-    if (typeof s.role !== 'string' || typeof s.expiresAt !== 'number') return null
-    if (Date.now() > s.expiresAt) return null
-    return s.role
-  } catch {
+  if (!pinSession) return null
+  if (Date.now() > pinSession.expiresAt) {
+    pinSession = null
     return null
   }
+  return pinSession.role
 }
 
 // 有効なら期限を延長する(スライディング)。無効なら何もしない。
 export function touchPinSession(): void {
-  const role = getValidPinRole()
-  if (role) setPinSession(role)
+  if (getValidPinRole() && pinSession) {
+    pinSession.expiresAt = Date.now() + PIN_TTL_MS
+  }
 }
 
 export function clearPinSession(): void {
-  if (typeof window === 'undefined') return
-  localStorage.removeItem(PIN_SESSION_KEY)
+  pinSession = null
 }
 
 export function getStoredAuth(): { token: string; user: AuthUser } | null {
