@@ -8,6 +8,7 @@ import {
   getStoredAuth,
   isTokenExpired,
   setStoredAuth,
+  touchPinSession,
 } from '@/lib/auth-client'
 
 export type { AuthUser }
@@ -193,9 +194,11 @@ export function useAuth(arg?: UseAuthArg, legacyOptions?: LegacyOptions) {
   }, [router])
 
   const logout = useCallback(() => {
-    // 「終了する」: 認証情報を破棄して入口へ。入口(/)は常に PIN 入力から
-    // 始まる(ログインは保持しない)ため、終了すると PIN 入力画面に戻る。
+    // 「終了する」: トークン(現在画面のログイン)は破棄するが、PIN セッションは
+    // 延長して保持する。入口(/)は有効な PIN セッションがあればメニューを表示する
+    // ため、終了すると(PIN 入力ではなく)メニュー画面に戻る。
     clearStoredAuth()
+    touchPinSession()
     router.push('/')
   }, [router])
 

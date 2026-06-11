@@ -2,8 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  clearStoredAuth,
+  clearPinSession,
+  getValidPinRole,
+  setPinSession,
+} from '@/lib/auth-client'
 
 type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
+
+const ROLE_KEYS: readonly RoleKey[] =
+  ['nishi', 'minami', 'honbu', 'hq1', 'hq2', 'hq3', 'all', 'master']
+function isRoleKey(v: string | null): v is RoleKey {
+  return v != null && (ROLE_KEYS as readonly string[]).includes(v)
+}
 
 type Entry = {
   role         : RoleKey
@@ -16,7 +28,6 @@ type Entry = {
   public?      : boolean
 }
 
-const PIN_ROLE_KEY = 'pinRole'
 
 const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
@@ -97,18 +108,28 @@ export default function HomePage() {
   const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
-    // ログインは保持しない。入口では常に PIN 入力から始める。
-    // 以前のセッションで残ったトークン / pinRole があれば破棄する。
-    sessionStorage.removeItem(PIN_ROLE_KEY)
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+    // 有効な PIN セッション(一定時間内)があればメニューを表示し PIN を省略、
+    // 期限を延長(スライディング)する。無効/期限切れならトークン等を破棄して
+    // PIN 入力から始める。
+    const role = getValidPinRole()
+    if (isRoleKey(role)) {
+      setPinSession(role)
+      setPinRole(role)
+    } else {
+      clearPinSession()
+      clearStoredAuth()
+    }
   }, [])
 
   const onPinVerified = (role: RoleKey) => {
+    setPinSession(role)
     setPinRole(role)
   }
 
   const resetPin = () => {
+    // 「別のPINで入り直す」: PIN セッションとトークンを破棄して PIN 入力へ
+    clearPinSession()
+    clearStoredAuth()
     setPinRole(null)
   }
 
