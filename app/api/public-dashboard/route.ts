@@ -57,8 +57,9 @@ export async function GET() {
       // 日報 KPI (本日)
       prisma.$queryRaw<RawRow[]>`
         SELECT s.slug,
-               COALESCE(k.sales_actual, r.sales_actual)   AS sales_actual,
-               COALESCE(k.customer_count, r.customer_count) AS customer_count,
+               -- 本日売上・客数は手入力の日報値を優先(KPIが0/未生成でも正しく表示)
+               COALESCE(r.sales_actual,   k.sales_actual)   AS sales_actual,
+               COALESCE(r.customer_count, k.customer_count) AS customer_count,
                r.weather,
                k.total_hours,
                k.ninjibai,
@@ -88,15 +89,27 @@ export async function GET() {
     const bySlug = new Map(rows.map((r) => [r.slug, r]))
     const stores = STORE_ORDER.map((slug) => {
       const r = bySlug.get(slug)
+      const salesActual   = r ? num(r.sales_actual)   : null
+      const customerCount = r ? num(r.customer_count) : null
+      const laborHours    = r ? num(r.total_hours)    : null  // 時間数 = daily_kpi.total_hours
+      const kpiNinjibai   = r ? num(r.ninjibai)       : null
+      const kpiTanka      = r ? num(r.kyaku_tanka)    : null
+      // 人時売/客単価: KPI が有効ならそれを使い、0/未生成なら売上から再計算
+      const salesPerHour = kpiNinjibai && kpiNinjibai > 0
+        ? kpiNinjibai
+        : (laborHours && laborHours > 0 && salesActual != null ? salesActual / laborHours : null)
+      const unitPrice = kpiTanka && kpiTanka > 0
+        ? kpiTanka
+        : (customerCount && customerCount > 0 && salesActual != null ? salesActual / customerCount : null)
       return {
         slug,
         name         : STORE_LABEL[slug],
-        salesActual  : r ? num(r.sales_actual)   : null,
-        customerCount: r ? num(r.customer_count) : null,
+        salesActual,
+        customerCount,
         weather      : r?.weather ?? null,
-        laborHours   : r ? num(r.total_hours)    : null,  // 時間数 = daily_kpi.total_hours
-        salesPerHour : r ? num(r.ninjibai)       : null,  // 人時売 = daily_kpi.ninjibai
-        unitPrice    : r ? num(r.kyaku_tanka)    : null,  // 客単価 = daily_kpi.kyaku_tanka
+        laborHours,
+        salesPerHour,
+        unitPrice,
         prevYearSales: prevByCode.has(slug) ? (prevByCode.get(slug) as number) : null, // 前年売上
       }
     })
