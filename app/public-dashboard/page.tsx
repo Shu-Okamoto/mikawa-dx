@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface StoreData {
   slug         : string
@@ -47,6 +48,7 @@ export default function PublicDashboardPage() {
   const [data, setData]           = useState<ApiData | null>(null)
   const [error, setError]         = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<string>('')
+  const router = useRouter()
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +77,16 @@ export default function PublicDashboardPage() {
       padding   : '24px 16px',
     }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+
+        {/* 終了する */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <button onClick={() => router.push('/')} style={{
+            padding: '8px 16px', background: 'white',
+            border: '1.5px solid #D9D5CC', borderRadius: '10px',
+            color: '#2C2C2A', fontSize: '14px', cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}>終了する</button>
+        </div>
 
         {/* ヘッダー */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
