@@ -21,7 +21,6 @@ interface ApiData {
   totalHours       : number
   totalSalesPerHour: number | null
   totalUnitPrice   : number | null
-  totalPrevYear    : number
 }
 
 const WEATHER_EMOJI: Record<string, string> = {
