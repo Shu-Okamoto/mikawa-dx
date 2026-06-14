@@ -1,22 +1,23 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
 // 公開ダッシュボード用。認証なしで本日の売上等を返す。
-// 時間数(total_hours)・人時売(ninjibai)・客単価(kyaku_tanka)は日報システムの
-// ダッシュボードと同じ nippo.daily_kpi ビューから取得し値を一致させる。
-// 前年売上は売上分析と同じく「前年の同日から最も近い同曜日の日」を dx.Sale から取得。
+// - 本日売上/客数/天気: mikawa-dx の dx.Sale(本日・店舗別, 店舗ページで入力)を主に、
+//   無ければ日報 nippo(daily_reports → daily_kpi)へフォールバック。
+// - 時間数: nippo.daily_kpi.total_hours(シフト由来)。
+// - 人時売/客単価: 上記の売上から再計算(売上÷時間数, 売上÷客数)。
+// - 前年売上: 売上分析と同じ「前年の同日から最も近い同曜日の日」を dx.Sale から。
 export const dynamic = 'force-dynamic'
 
 type Decimalish = { toNumber: () => number } | number | string | null
 
-interface RawRow {
+interface NippoRow {
   slug          : string
-  sales_actual  : Decimalish
-  customer_count: number | string | null
-  weather       : string | null
-  total_hours   : Decimalish
-  ninjibai      : Decimalish
-  kyaku_tanka   : Decimalish
+  r_sales       : Decimalish      // daily_reports.sales_actual
+  r_cust        : number | string | null
+  r_weather     : string | null
+  k_sales       : Decimalish      // daily_kpi.sales_actual
+  total_hours   : Decimalish      // daily_kpi.total_hours
 }
 
 const STORE_ORDER = ['nishi', 'minami'] as const
@@ -42,28 +43,29 @@ function prevYearSameDow(ref: Date): Date {
   return base
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const debug     = new URL(req.url).searchParams.get('debug') === '1'
     const now       = new Date()
     const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const today     = ymd(todayDate)
 
-    // 前年売上の対象日 (同曜日の最寄り) の範囲
+    const todayStart = todayDate
+    const todayEnd   = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() + 1)
+
     const prevDate  = prevYearSameDow(todayDate)
     const prevStart = prevDate
     const prevEnd   = new Date(prevDate.getFullYear(), prevDate.getMonth(), prevDate.getDate() + 1)
 
-    const [rows, prevSales] = await Promise.all([
-      // 日報 KPI (本日)
-      prisma.$queryRaw<RawRow[]>`
+    const [nippoRows, todaySales, prevSales] = await Promise.all([
+      // 日報側: 時間数(KPI) + 売上/客数/天気のフォールバック
+      prisma.$queryRaw<NippoRow[]>`
         SELECT s.slug,
-               -- 本日売上・客数は手入力の日報値を優先(KPIが0/未生成でも正しく表示)
-               COALESCE(r.sales_actual,   k.sales_actual)   AS sales_actual,
-               COALESCE(r.customer_count, k.customer_count) AS customer_count,
-               r.weather,
-               k.total_hours,
-               k.ninjibai,
-               k.kyaku_tanka
+               r.sales_actual   AS r_sales,
+               r.customer_count AS r_cust,
+               r.weather        AS r_weather,
+               k.sales_actual   AS k_sales,
+               k.total_hours    AS total_hours
           FROM nippo.stores s
           LEFT JOIN nippo.daily_reports r
             ON r.store_id = s.id AND r.report_date = ${today}::date
@@ -71,57 +73,90 @@ export async function GET() {
             ON k.store_id = s.id AND k.report_date = ${today}::date
          WHERE s.slug IN ('nishi', 'minami') AND s.is_active = true
       `,
-      // 前年売上 (dx.Sale, 同曜日の最寄り日)
+      // 本日売上(主ソース): dx.Sale(店舗ページ入力)
+      prisma.sale.findMany({
+        where  : { saleDate: { gte: todayStart, lt: todayEnd } },
+        include: { store: true },
+      }),
+      // 前年売上: dx.Sale(同曜日の最寄り日)
       prisma.sale.findMany({
         where  : { saleDate: { gte: prevStart, lt: prevEnd } },
         include: { store: true },
       }),
     ])
 
-    // 前年売上を storeCode(=slug) 別に集計
+    const nippoBySlug = new Map(nippoRows.map((r) => [r.slug, r]))
+
+    // dx.Sale 本日(店舗コード別)
+    const dxToday = new Map<string, { amount: number; customerCount: number; weather: string | null }>()
+    for (const s of todaySales) {
+      dxToday.set(s.store.storeCode, {
+        amount       : num(s.amount as unknown as Decimalish) ?? 0,
+        customerCount: s.customerCount ?? 0,
+        weather      : s.weather ?? null,
+      })
+    }
+
+    // 前年売上(店舗コード別合計)
     const prevByCode = new Map<string, number>()
     for (const s of prevSales) {
       const code = s.store.storeCode
-      const amt  = num(s.amount as unknown as Decimalish) ?? 0
-      prevByCode.set(code, (prevByCode.get(code) ?? 0) + amt)
+      prevByCode.set(code, (prevByCode.get(code) ?? 0) + (num(s.amount as unknown as Decimalish) ?? 0))
     }
 
-    const bySlug = new Map(rows.map((r) => [r.slug, r]))
     const stores = STORE_ORDER.map((slug) => {
-      const r = bySlug.get(slug)
-      const salesActual   = r ? num(r.sales_actual)   : null
-      const customerCount = r ? num(r.customer_count) : null
-      const laborHours    = r ? num(r.total_hours)    : null  // 時間数 = daily_kpi.total_hours
-      const kpiNinjibai   = r ? num(r.ninjibai)       : null
-      const kpiTanka      = r ? num(r.kyaku_tanka)    : null
-      // 人時売/客単価: KPI が有効ならそれを使い、0/未生成なら売上から再計算
-      const salesPerHour = kpiNinjibai && kpiNinjibai > 0
-        ? kpiNinjibai
-        : (laborHours && laborHours > 0 && salesActual != null ? salesActual / laborHours : null)
-      const unitPrice = kpiTanka && kpiTanka > 0
-        ? kpiTanka
-        : (customerCount && customerCount > 0 && salesActual != null ? salesActual / customerCount : null)
-      return {
+      const dx = dxToday.get(slug)
+      const r  = nippoBySlug.get(slug)
+
+      // 本日売上: dx.Sale を優先、無ければ日報(daily_reports → daily_kpi)
+      const dxAmount   = dx && dx.amount > 0 ? dx.amount : null
+      const nippoSales = r ? (num(r.r_sales) ?? num(r.k_sales)) : null
+      const salesActual = dxAmount ?? (nippoSales && nippoSales > 0 ? nippoSales : null)
+
+      // 客数: dx を優先、無ければ日報
+      const dxCust   = dx && dx.customerCount > 0 ? dx.customerCount : null
+      const nippoCust = r ? num(r.r_cust) : null
+      const customerCount = dxCust ?? (nippoCust && nippoCust > 0 ? nippoCust : null)
+
+      const weather = (dx?.weather ?? null) || (r?.r_weather ?? null)
+
+      // 時間数: 日報(シフト由来)
+      const laborHours = r ? num(r.total_hours) : null
+
+      // 人時売 / 客単価: 上記売上から再計算
+      const salesPerHour = laborHours && laborHours > 0 && salesActual != null
+        ? salesActual / laborHours : null
+      const unitPrice = customerCount && customerCount > 0 && salesActual != null
+        ? salesActual / customerCount : null
+
+      const base = {
         slug,
-        name         : STORE_LABEL[slug],
-        salesActual,
-        customerCount,
-        weather      : r?.weather ?? null,
-        laborHours,
-        salesPerHour,
-        unitPrice,
-        prevYearSales: prevByCode.has(slug) ? (prevByCode.get(slug) as number) : null, // 前年売上
+        name: STORE_LABEL[slug],
+        salesActual, customerCount, weather, laborHours, salesPerHour, unitPrice,
+        prevYearSales: prevByCode.has(slug) ? (prevByCode.get(slug) as number) : null,
+      }
+      if (!debug) return base
+      return {
+        ...base,
+        _debug: {
+          dxAmount   : dx?.amount ?? null,
+          r_sales    : r ? num(r.r_sales) : null,
+          k_sales    : r ? num(r.k_sales) : null,
+          total_hours: r ? num(r.total_hours) : null,
+          dxCustomer : dx?.customerCount ?? null,
+          nippoRowFound: !!r,
+        },
       }
     })
+
     const totalActual    = stores.reduce((sum, s) => sum + (s.salesActual ?? 0), 0)
     const totalHours     = stores.reduce((sum, s) => sum + (s.laborHours ?? 0), 0)
     const totalCustomers = stores.reduce((sum, s) => sum + (s.customerCount ?? 0), 0)
-    const totalPrevYear  = stores.reduce((sum, s) => sum + (s.prevYearSales ?? 0), 0)
     const totalSalesPerHour = totalHours > 0 ? totalActual / totalHours : null
     const totalUnitPrice    = totalCustomers > 0 ? totalActual / totalCustomers : null
 
     return NextResponse.json({
-      today, stores, totalActual, totalHours, totalSalesPerHour, totalUnitPrice, totalPrevYear,
+      today, stores, totalActual, totalHours, totalSalesPerHour, totalUnitPrice,
     })
   } catch (e) {
     console.error(e)
