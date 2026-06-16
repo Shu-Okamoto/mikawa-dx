@@ -137,6 +137,8 @@ export async function GET(req: NextRequest) {
         prisma.dailyOrder.findMany({
           where: {
             orderDate: { gte: start, lte: end },
+            // 本部(honbu)は発注集計に含めない(メモのみ)
+            store: { storeCode: { in: ['nishi', 'minami'] } },
             ...(category ? { product: { category } } : {}),
           },
           include: {
@@ -193,6 +195,8 @@ export async function GET(req: NextRequest) {
       prisma.dailyOrder.findMany({
         where: {
           orderDate,
+          // 本部(honbu)は発注集計に含めない(メモのみ)
+          store: { storeCode: { in: ['nishi', 'minami'] } },
           ...(category ? { product: { category } } : {}),
         },
         include: {
