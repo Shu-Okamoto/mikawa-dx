@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
           se.staff_name_manual,
           dr.store_id,
           dr.report_date,
-          dr.sales_actual,
+          -- 売上は dx.Sale(店舗ページ入力)を使用(日報の売上も dx 由来のため)
+          dxs."amount" AS sales_actual,
           GREATEST(
             0,
             EXTRACT(EPOCH FROM (se.end_time - se.start_time)) / 3600.0
@@ -46,6 +47,10 @@ export async function GET(req: NextRequest) {
           ) AS hours
         FROM nippo.shift_entries se
         JOIN nippo.daily_reports dr ON dr.id = se.daily_report_id
+        LEFT JOIN nippo.stores nst  ON nst.id = dr.store_id
+        LEFT JOIN dx."Store" dst    ON dst."storeCode" = nst.slug
+        LEFT JOIN dx."Sale"  dxs    ON dxs."storeId" = dst.id
+                                   AND dxs."saleDate" = dr.report_date
         WHERE se.entry_type = 'actual'
           AND se.start_time IS NOT NULL
           AND se.end_time   IS NOT NULL
