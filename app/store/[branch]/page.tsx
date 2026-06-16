@@ -317,41 +317,44 @@ function StorePageContent({ branch }: { branch: string }) {
   // 送信
   const submitCategory = async (cat: string) => {
     setBusy(true)
-    const catProducts = products.filter((p) => p.category === cat)
     const orders: SentItem[] = []
 
-    for (const p of catProducts) {
-      const st = orderState[p.id]
-      if (!st) continue
-      const include =
-        st.status === '〇' || st.status === '△' || st.status === '×' ||
-        (st.qty && st.qty.trim() !== '')
-      if (!include) continue
-      orders.push({
-        productId  : p.id,
-        productName: p.productName,
-        category   : cat,
-        unit       : p.unit,
-        status     : st.status || '―',
-        qty        : st.qty || 0,
-      })
-    }
+    // 本部(honbu)はメモのみ。発注(商品数量)は送信しない。
+    if (branch !== 'honbu') {
+      const catProducts = products.filter((p) => p.category === cat)
+      for (const p of catProducts) {
+        const st = orderState[p.id]
+        if (!st) continue
+        const include =
+          st.status === '〇' || st.status === '△' || st.status === '×' ||
+          (st.qty && st.qty.trim() !== '')
+        if (!include) continue
+        orders.push({
+          productId  : p.id,
+          productName: p.productName,
+          category   : cat,
+          unit       : p.unit,
+          status     : st.status || '―',
+          qty        : st.qty || 0,
+        })
+      }
 
-    // +追加 アイテム
-    for (const tempId of tempIds[cat] || []) {
-      const st = orderState[tempId]
-      if (!st) continue
-      const include = st.status || (st.qty && st.qty !== '')
-      if (!include) continue
-      orders.push({
-        productId       : tempId,
-        productName     : st.customName || '(無題)',
-        category        : cat,
-        unit            : '個',
-        status          : st.status || '―',
-        qty             : st.qty || 0,
-        registerToMaster: !!st.registerToMaster,
-      })
+      // +追加 アイテム
+      for (const tempId of tempIds[cat] || []) {
+        const st = orderState[tempId]
+        if (!st) continue
+        const include = st.status || (st.qty && st.qty !== '')
+        if (!include) continue
+        orders.push({
+          productId       : tempId,
+          productName     : st.customName || '(無題)',
+          category        : cat,
+          unit            : '個',
+          status          : st.status || '―',
+          qty             : st.qty || 0,
+          registerToMaster: !!st.registerToMaster,
+        })
+      }
     }
 
     const memo = (memoByCat[cat] || '').trim()
@@ -436,6 +439,7 @@ function StorePageContent({ branch }: { branch: string }) {
       {screen === 'input' && currentCat && currentCat !== '実績' && (
         <InputScreen
           cat={currentCat}
+          memoOnly={branch === 'honbu'}
           products={products.filter((p) => p.category === currentCat)}
           orderState={orderState}
           memoByCat={memoByCat}
@@ -600,12 +604,13 @@ function CatSelectScreen({
 }
 
 function InputScreen({
-  cat, products, orderState, memoByCat, tempIds,
+  cat, memoOnly, products, orderState, memoByCat, tempIds,
   onBack, setStatus, setQty, setCustomName, setRegisterToMaster,
   setMemo, addTempItem, removeTempItem,
   onSubmit, busy,
 }: {
   cat                : string
+  memoOnly?          : boolean
   products           : Product[]
   orderState         : Record<number | string, OrderState>
   memoByCat          : Record<string, string>
@@ -632,6 +637,7 @@ function InputScreen({
       <BackBar onBack={onBack} title={`${icon} ${cat}`} />
 
       <div style={{ background: 'white' }}>
+        {!memoOnly && (<>
         {products.map((p) => {
           const st = orderState[p.id] || { status: null, qty: '', customName: '', registerToMaster: false }
           return (
@@ -674,6 +680,7 @@ function InputScreen({
             fontFamily: 'inherit', cursor: 'pointer',
           }}>＋ 商品を追加する</button>
         </div>
+        </>)}
 
         <div style={{
           padding: '12px 16px', borderTop: '2px solid #F0ECE3',
@@ -699,7 +706,7 @@ function InputScreen({
       </div>
 
       <FooterBar
-        progress={`入力済み: ${filledCount} / ${products.length} 品目`}
+        progress={memoOnly ? 'メモのみ入力' : `入力済み: ${filledCount} / ${products.length} 品目`}
         deadline="締切:17:00"
         buttonLabel={busy ? '送信中...' : `${icon} ${cat}を送信する`}
         onClick={onSubmit}
