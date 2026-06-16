@@ -131,7 +131,16 @@ function aggregateByStore(sales: SaleRow[], ship: ShipmentMap): Record<string, B
   sales.forEach((s) => {
     const name = s.store.storeName
     if (!out[name]) out[name] = newBucket()
-    addRow(out[name], s, shipmentFor(s, ship))
+    addRow(out[name], s, 0)
+  })
+  // 惣菜出荷は売上(dx.Sale)の有無に依らず hq_daily_reports から店舗別に合計
+  ship.forEach((e) => {
+    for (const name of Object.keys(e)) {
+      const v = e[name] || 0
+      if (v <= 0) continue
+      if (!out[name]) out[name] = newBucket()
+      out[name].shipmentSouzai += v
+    }
   })
   return out
 }
@@ -156,8 +165,19 @@ function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date, ship:
     if (!entry) return
     const name = s.store.storeName
     if (!entry.byStore[name]) entry.byStore[name] = newBucket()
-    addRow(entry.byStore[name], s, shipmentFor(s, ship))
+    addRow(entry.byStore[name], s, 0)
     if (!entry.weather && s.weather) entry.weather = s.weather
+  })
+  // 惣菜出荷は売上(dx.Sale)の有無に依らず、日付×店舗で hq_daily_reports から直接セット
+  byDate.forEach((entry) => {
+    const e = ship.get(entry.date)
+    if (!e) return
+    for (const name of Object.keys(e)) {
+      const v = e[name] || 0
+      if (v <= 0) continue
+      if (!entry.byStore[name]) entry.byStore[name] = newBucket()
+      entry.byStore[name].shipmentSouzai = v   // 日×店で 1 値
+    }
   })
   return Array.from(byDate.values())
 }
@@ -176,7 +196,19 @@ function aggregateMonthly(sales: SaleRow[], ship: ShipmentMap): MonthlyEntry[] {
     const e  = arr[m]
     const name = s.store.storeName
     if (!e.byStore[name]) e.byStore[name] = newBucket()
-    addRow(e.byStore[name], s, shipmentFor(s, ship))
+    addRow(e.byStore[name], s, 0)
+  })
+  // 惣菜出荷は売上の有無に依らず、月×店舗で hq_daily_reports から合計
+  ship.forEach((e, dateKey) => {
+    const month = Number(dateKey.slice(5, 7)) - 1 // 'YYYY-MM-DD' → 0..11
+    if (month < 0 || month > 11) return
+    const me = arr[month]
+    for (const name of Object.keys(e)) {
+      const v = e[name] || 0
+      if (v <= 0) continue
+      if (!me.byStore[name]) me.byStore[name] = newBucket()
+      me.byStore[name].shipmentSouzai += v
+    }
   })
   return arr
 }
