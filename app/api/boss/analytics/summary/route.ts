@@ -84,9 +84,19 @@ async function fetchShipments(start: Date, endExclusive: Date): Promise<Shipment
     return v.toNumber()
   }
   const m: ShipmentMap = new Map()
+  // hq_daily_reports は同じ日付に複数行が存在し得る(重複/修正入力。0 の空行も混在)。
+  // 0 行は無視し、west+south が最大の「非0行」を採用する(= その日の正しい出荷)。
+  const bestTotal = new Map<string, number>()
   rows.forEach((r) => {
-    const key = typeof r.date === 'string' ? r.date.slice(0, 10) : ymd(new Date(r.date))
-    m.set(key, { '西店': toN(r.west_sales), '南店': toN(r.south_sales) })
+    const key   = typeof r.date === 'string' ? r.date.slice(0, 10) : ymd(new Date(r.date))
+    const west  = toN(r.west_sales)
+    const south = toN(r.south_sales)
+    const total = west + south
+    if (total <= 0) return
+    if (total > (bestTotal.get(key) ?? -1)) {
+      bestTotal.set(key, total)
+      m.set(key, { '西店': west, '南店': south })
+    }
   })
   return m
 }
