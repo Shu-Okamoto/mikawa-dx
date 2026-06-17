@@ -65,15 +65,20 @@ async function fetchShipments(start: Date, endExclusive: Date): Promise<Shipment
   // hq_daily_reports.date は TEXT で書式が揺れる(ゼロ埋め無し '2026-6-15'、
   // スラッシュ '2026/06/15'、時刻付き '2026-06-15 00:00:00' 等)ことがある。
   // スラッシュを '-' に正規化し、正規表現で日付部分(YYYY-M-D)だけ抽出してから
-  // date 型にキャスト・'YYYY-MM-DD' に統一する。これで一部日付の取りこぼしを防ぐ。
+  // hq_daily_reports は (日付 × department_id) の行構成。惣菜出荷は
+  // department_id = 1 (寿司・弁当・惣菜の部門) の west_sales/south_sales を使う。
+  // ※同日には他部門(餅菓子=2 等)や 0 の空行もあり、更新時刻の「最新」は
+  //   別部門の 0 行になり得るため、部門で絞るのが正しい。
+  // date は TEXT で書式が揺れる(スラッシュ/時刻付き/ゼロ埋め無し)ため正規化する。
   const rows = await prisma.$queryRaw<Raw[]>`
     SELECT to_char(d::date, 'YYYY-MM-DD') AS date, west_sales, south_sales
       FROM (
         SELECT substring(trim(replace(date, '/', '-')) from '[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}') AS d,
-               west_sales, south_sales
+               west_sales, south_sales, department_id
           FROM public.hq_daily_reports
       ) t
      WHERE d IS NOT NULL
+       AND department_id = 1
        AND d::date >= ${ymd(start)}::date
        AND d::date <  ${ymd(endExclusive)}::date
   `
