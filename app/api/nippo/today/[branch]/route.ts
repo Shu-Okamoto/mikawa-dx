@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJstYmd } from '@/lib/serverDate'
 
 const VALID_SLUGS = new Set(['nishi', 'minami'])
 
@@ -64,10 +65,7 @@ function canAccessBranch(role: string, branch: string): boolean {
   return role === branch
 }
 
-function todayDateStr(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-}
+const todayDateStr = todayJstYmd
 
 export async function GET(
   req: NextRequest,

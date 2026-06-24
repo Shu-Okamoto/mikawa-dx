@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJstYmd } from '@/lib/serverDate'
 
 function requireBoss(req: NextRequest) {
   const user = verifyToken(req)
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest) {
     })
     const body = '﻿' + lines.join('\r\n') + '\r\n'
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayJstYmd()
     const filename = `sales_${today}.csv`
 
     return new NextResponse(body, {

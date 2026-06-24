@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { nowJst } from '@/lib/serverDate'
 
 interface Row {
   staff_id     : number | null
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     const yearParam = searchParams.get('year')
     const year = yearParam && /^\d{4}$/.test(yearParam)
       ? Number(yearParam)
-      : new Date().getFullYear()
+      : nowJst().getFullYear()
 
     const start = `${year}-01-01`
     const end   = `${year}-12-31`

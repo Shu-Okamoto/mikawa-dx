@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJst } from '@/lib/serverDate'
 
 const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const VALID_CATEGORIES = new Set(['野菜', '果物', '餅・乾物菓子類'])
@@ -10,11 +11,8 @@ function canAccessBranch(role: string, branch: string): boolean {
   return role === branch
 }
 
-function today() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+// JST の今日(UTC 0:00)。parseDateParam と同じ規約。
+const today = todayJst
 
 function toDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
