@@ -5,13 +5,14 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav } from '../_shared'
 
 type Granularity = 'year' | 'month' | 'day'
-type ViewKey    = 'daily' | 'category' | 'dow' | 'weather' | 'souzai-loss'
+type ViewKey    = 'daily' | 'category' | 'dow' | 'weather' | 'souzai-loss' | 'mochi-loss'
 
 interface Bucket {
   amount        : number
   souzai        : number
   shipmentSouzai: number
   mochi         : number
+  shipmentMochi : number
   hana          : number
   customerCount : number
   days          : number
@@ -99,6 +100,7 @@ const VIEWS: { key: ViewKey; label: string; emoji: string }[] = [
   { key: 'dow'        , label: '曜日別'    , emoji: '📊' },
   { key: 'weather'    , label: '天気別'    , emoji: '☀️' },
   { key: 'souzai-loss', label: '惣菜ロス'  , emoji: '🥬' },
+  { key: 'mochi-loss' , label: '餅ロス'    , emoji: '🍡' },
 ]
 
 const WEATHER_DISPLAY: Record<string, { emoji: string; color: string }> = {
@@ -127,7 +129,7 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
 }
 
 function emptyBucket(): Bucket {
-  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
+  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, shipmentMochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
 function sumStores(byStore: Record<string, Bucket>): Bucket {
@@ -139,6 +141,7 @@ function sumStores(byStore: Record<string, Bucket>): Bucket {
     out.souzai         += b.souzai
     out.shipmentSouzai += b.shipmentSouzai
     out.mochi          += b.mochi
+    out.shipmentMochi  += b.shipmentMochi
     out.hana           += b.hana
     out.customerCount  += b.customerCount
     out.days = Math.max(out.days, b.days)
@@ -297,8 +300,10 @@ function AnalyticsContent() {
           <DowChartView data={data} />
         ) : effectiveView === 'weather' ? (
           <WeatherChartView data={data} />
+        ) : effectiveView === 'souzai-loss' ? (
+          <LossTable data={data} kind="souzai" />
         ) : (
-          <SouzaiLossTable data={data} />
+          <LossTable data={data} kind="mochi" />
         )}
 
       </div>
@@ -324,6 +329,7 @@ function avgBucket(rows: RowData[]): Bucket {
     out.souzai         += t.souzai
     out.shipmentSouzai += t.shipmentSouzai
     out.mochi          += t.mochi
+    out.shipmentMochi  += t.shipmentMochi
     out.hana           += t.hana
     out.customerCount  += t.customerCount
   })
@@ -332,6 +338,7 @@ function avgBucket(rows: RowData[]): Bucket {
   out.souzai         = Math.round(out.souzai         / days)
   out.shipmentSouzai = Math.round(out.shipmentSouzai / days)
   out.mochi          = Math.round(out.mochi          / days)
+  out.shipmentMochi  = Math.round(out.shipmentMochi  / days)
   out.hana           = Math.round(out.hana           / days)
   out.customerCount  = Math.round(out.customerCount  / days)
   out.days           = days
@@ -1362,11 +1369,28 @@ function WeatherBarChart({ name, entries }: { name: string; entries: WeatherEntr
 }
 
 // =====================================
-// 惣菜ロス ビュー: 表
-// 列: 日付 | 西店(出荷/売上/ロス/率) | 南店(出荷/売上/ロス/率) | 本部合計(出荷/売上/ロス/率)
+// ロス ビュー (惣菜ロス / 餅ロス): 表
+// 列: 日付 | 西店(出荷/売上/ロス率) | 南店(出荷/売上/ロス率) | 本部合計(出荷/売上/ロス率)
 // 行: 各日 + 合計 (粒度=月のみ日別、粒度=年は月別、粒度=日は当日1行)
 // ロス率 = (出荷 − 売上) / 出荷  (出荷=0 のときは「—」)
+// kind で惣菜 / 餅を切替 (出荷=shipmentSouzai/shipmentMochi, 売上=souzai/mochi)
 // =====================================
+
+const LOSS_CONFIG = {
+  souzai: {
+    title  : '🥬 惣菜ロス 一覧',
+    desc   : 'ロス率 = (惣菜出荷 − 惣菜売上) / 惣菜出荷',
+    shipKey: 'shipmentSouzai' as const,
+    soldKey: 'souzai'         as const,
+  },
+  mochi: {
+    title  : '🍡 餅ロス 一覧',
+    desc   : 'ロス率 = (餅出荷 − 餅売上) / 餅出荷',
+    shipKey: 'shipmentMochi'  as const,
+    soldKey: 'mochi'          as const,
+  },
+}
+type LossKind = keyof typeof LOSS_CONFIG
 
 function lossRate(shipment: number, sales: number): number | null {
   if (shipment <= 0) return null
@@ -1385,7 +1409,8 @@ function fmtPct(rate: number | null): string {
   return (rate * 100).toFixed(1) + '%'
 }
 
-function SouzaiLossTable({ data }: { data: ApiData }) {
+function LossTable({ data, kind }: { data: ApiData; kind: LossKind }) {
+  const cfg = LOSS_CONFIG[kind]
   const rows = useMemo(() => buildRows(data), [data])
   const totalRow: RowData = {
     key: 'TOTAL', label: '合計',
@@ -1398,11 +1423,11 @@ function SouzaiLossTable({ data }: { data: ApiData }) {
       boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
       <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
         fontWeight:500, fontSize:'16px' }}>
-        🥬 惣菜ロス 一覧
+        {cfg.title}
       </div>
       <div style={{ padding:'8px 16px', fontSize:'12px', color:'#888780',
         borderBottom:'1px solid #F0ECE3' }}>
-        ロス率 = (惣菜出荷 − 惣菜売上) / 惣菜出荷
+        {cfg.desc}
       </div>
       <div style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', minWidth:'780px',
@@ -1430,9 +1455,9 @@ function SouzaiLossTable({ data }: { data: ApiData }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <SouzaiLossRow key={r.key} row={r} />
+              <LossRow key={r.key} row={r} cfg={cfg} />
             ))}
-            <SouzaiLossRow row={totalRow} isTotal />
+            <LossRow row={totalRow} cfg={cfg} isTotal />
           </tbody>
         </table>
       </div>
@@ -1440,10 +1465,12 @@ function SouzaiLossTable({ data }: { data: ApiData }) {
   )
 }
 
-function SouzaiLossRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
+function LossRow({ row, cfg, isTotal }: {
+  row: RowData; cfg: typeof LOSS_CONFIG[LossKind]; isTotal?: boolean
+}) {
   const total = sumStores(row.byStore)
-  const curShip = total.shipmentSouzai
-  const curSold = total.souzai
+  const curShip = total[cfg.shipKey]
+  const curSold = total[cfg.soldKey]
   const curRate = lossRate(curShip, curSold)
 
   const bg = isTotal ? '#FBF8F2'
@@ -1475,11 +1502,13 @@ function SouzaiLossRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
       </td>
       {STORES.map((s) => {
         const b = row.byStore[s] ?? emptyBucket()
-        const rate = lossRate(b.shipmentSouzai, b.souzai)
+        const ship = b[cfg.shipKey]
+        const sold = b[cfg.soldKey]
+        const rate = lossRate(ship, sold)
         return (
           <Fragment key={s}>
-            <td style={tdNumStyle}>{cell(b.shipmentSouzai)}</td>
-            <td style={tdNumStyle}>{cell(b.souzai)}</td>
+            <td style={tdNumStyle}>{cell(ship)}</td>
+            <td style={tdNumStyle}>{cell(sold)}</td>
             <td style={{ ...tdNumStyle, color: lossColor(rate), fontWeight: rate != null ? 600 : 400 }}>
               {fmtPct(rate)}
             </td>
