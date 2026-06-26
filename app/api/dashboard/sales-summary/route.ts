@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { nowJst } from '@/lib/serverDate'
 
 interface SaleRow {
   saleDate     : Date
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const now        = new Date()
+    const now        = nowJst()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const dow        = todayStart.getDay()
     const weekStart  = new Date(todayStart)

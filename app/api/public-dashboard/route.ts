@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { nowJst } from '@/lib/serverDate'
 
 // 公開ダッシュボード用。認証なしで本日の売上等を返す。
 // - 本日売上/客数/天気: mikawa-dx の dx.Sale(本日・店舗別, 店舗ページで入力)を主に、
@@ -46,7 +47,7 @@ function prevYearSameDow(ref: Date): Date {
 export async function GET(req: NextRequest) {
   try {
     const debug     = new URL(req.url).searchParams.get('debug') === '1'
-    const now       = new Date()
+    const now       = nowJst()
     const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const today     = ymd(todayDate)
 

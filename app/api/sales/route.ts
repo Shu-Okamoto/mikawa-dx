@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJst } from '@/lib/serverDate'
 
 const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const VALID_WEATHER  = new Set(['晴', '曇', '雨', '雪'])
@@ -10,11 +11,7 @@ function canAccessBranch(role: string, branch: string): boolean {
   return role === branch
 }
 
-function today() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+const today = todayJst
 
 // 売上取得（全店舗ぶん。キー: storeCode）
 export async function GET(req: NextRequest) {

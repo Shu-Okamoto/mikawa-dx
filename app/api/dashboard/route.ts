@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJst } from '@/lib/serverDate'
 
-function today() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+const today = todayJst
 
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)

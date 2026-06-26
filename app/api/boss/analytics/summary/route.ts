@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { nowJst } from '@/lib/serverDate'
 
 interface SaleRow {
   saleDate     : Date
@@ -111,7 +112,7 @@ function parseRefDate(s: string | null): Date {
     const [y, m, d] = s.split('-').map(Number)
     return new Date(y, m - 1, d)
   }
-  const now = new Date()
+  const now = nowJst()
   return new Date(now.getFullYear(), now.getMonth(), now.getDate())
 }
 

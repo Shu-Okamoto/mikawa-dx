@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJst, nowJst } from '@/lib/serverDate'
 
 const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
@@ -11,11 +12,7 @@ function canAccessBranch(role: string, branch: string): boolean {
   return role === branch
 }
 
-function today() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+const today = todayJst
 
 // 注文一覧取得
 export async function GET(req: NextRequest) {
@@ -103,7 +100,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '店舗が見つかりません' }, { status: 404 })
     }
 
-    const now       = new Date()
+    const now       = nowJst()
     const orderCode = 'ORD' +
       now.getFullYear().toString() +
       ('0' + (now.getMonth() + 1)).slice(-2) +

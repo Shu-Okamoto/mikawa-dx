@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { todayJst } from '@/lib/serverDate'
 
 const ROLE_TO_CATEGORY: Record<string, string> = {
   hq1: '野菜',
@@ -18,11 +19,7 @@ function categoryFromQuery(role: string, queryCategory: string | null): string |
   return ROLE_TO_CATEGORY[role] ?? null
 }
 
-function today() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+const today = todayJst
 
 // 'YYYY-MM-DD' or 'YYYY/MM/DD' を 0:00 の Date に
 function parseDateParam(s: string | null): Date | null {
