@@ -14,9 +14,14 @@ interface SaleRow {
   store        : { storeName: string }
 }
 
-// 日付ごと・店舗ごとの惣菜出荷額。public.hq_daily_reports の west_sales / south_sales 由来。
-// キー: ymd(date)、値: 店舗名 → 出荷額 (0 = データなし)
-type ShipmentMap = Map<string, Record<string, number>>
+// 日付ごと・店舗ごとの出荷額(惣菜/餅)。public.hq_daily_reports の west_sales / south_sales 由来。
+// キー: ymd(date)、値: 店舗名 → { souzai, mochi } 出荷額 (0 = データなし)
+type StoreShipment = { souzai: number; mochi: number }
+type ShipmentMap = Map<string, Record<string, StoreShipment>>
+
+// hq_daily_reports.department_id: 1 = 寿司・弁当・惣菜, 2 = 餅菓子
+const DEPT_SOUZAI = 1
+const DEPT_MOCHI  = 2
 
 const WEATHER_KEYS = ['晴', '曇', '雨', '雪'] as const
 type WeatherKey = typeof WEATHER_KEYS[number] | '未記録'
@@ -26,6 +31,7 @@ interface Bucket {
   souzai        : number
   shipmentSouzai: number
   mochi         : number
+  shipmentMochi : number
   hana          : number
   customerCount : number
   days          : number
@@ -39,47 +45,49 @@ function toNum(v: { toNumber: () => number } | number): number {
 }
 
 function newBucket(): Bucket {
-  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, hana: 0, customerCount: 0, days: 0 }
+  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, shipmentMochi: 0, hana: 0, customerCount: 0, days: 0 }
 }
 
-function addRow(b: Bucket, s: SaleRow, shipment: number) {
+function addRow(b: Bucket, s: SaleRow, shipSouzai: number, shipMochi: number) {
   b.amount         += toNum(s.amount)
   b.souzai         += toNum(s.souzaiAmount)
-  b.shipmentSouzai += shipment
+  b.shipmentSouzai += shipSouzai
   b.mochi          += toNum(s.mochiAmount)
+  b.shipmentMochi  += shipMochi
   b.hana           += toNum(s.hanaAmount)
   b.customerCount  += s.customerCount
   b.days           += 1
 }
 
-function shipmentFor(s: SaleRow, m: ShipmentMap): number {
-  const e = m.get(ymd(new Date(s.saleDate)))
-  return e?.[s.store.storeName] ?? 0
+function shipSouzaiFor(s: SaleRow, m: ShipmentMap): number {
+  return m.get(ymd(new Date(s.saleDate)))?.[s.store.storeName]?.souzai ?? 0
+}
+function shipMochiFor(s: SaleRow, m: ShipmentMap): number {
+  return m.get(ymd(new Date(s.saleDate)))?.[s.store.storeName]?.mochi ?? 0
 }
 
 async function fetchShipments(start: Date, endExclusive: Date): Promise<ShipmentMap> {
   type Raw = {
-    date       : Date | string
-    west_sales : { toNumber: () => number } | number | string | null
-    south_sales: { toNumber: () => number } | number | string | null
+    date         : Date | string
+    west_sales   : { toNumber: () => number } | number | string | null
+    south_sales  : { toNumber: () => number } | number | string | null
+    department_id: number | string | null
   }
-  // hq_daily_reports.date は TEXT で書式が揺れる(ゼロ埋め無し '2026-6-15'、
-  // スラッシュ '2026/06/15'、時刻付き '2026-06-15 00:00:00' 等)ことがある。
-  // スラッシュを '-' に正規化し、正規表現で日付部分(YYYY-M-D)だけ抽出してから
-  // hq_daily_reports は (日付 × department_id) の行構成。惣菜出荷は
-  // department_id = 1 (寿司・弁当・惣菜の部門) の west_sales/south_sales を使う。
-  // ※同日には他部門(餅菓子=2 等)や 0 の空行もあり、更新時刻の「最新」は
-  //   別部門の 0 行になり得るため、部門で絞るのが正しい。
-  // date は TEXT で書式が揺れる(スラッシュ/時刻付き/ゼロ埋め無し)ため正規化する。
+  // hq_daily_reports は (日付 × department_id) の行構成。
+  //   department_id = 1 → 寿司・弁当・惣菜、 = 2 → 餅菓子。
+  // west_sales/south_sales が当日その部門の出荷額。惣菜ロス・餅ロス用に両部門を取得する。
+  // date は TEXT で書式が揺れる(ゼロ埋め無し '2026-6-15'、スラッシュ '2026/06/15'、
+  // 時刻付き '2026-06-15 00:00:00' 等)ため、スラッシュを '-' に正規化し正規表現で
+  // 日付部分(YYYY-M-D)だけ抽出してから date 比較する。
   const rows = await prisma.$queryRaw<Raw[]>`
-    SELECT to_char(d::date, 'YYYY-MM-DD') AS date, west_sales, south_sales
+    SELECT to_char(d::date, 'YYYY-MM-DD') AS date, west_sales, south_sales, department_id
       FROM (
         SELECT substring(trim(replace(date, '/', '-')) from '[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}') AS d,
                west_sales, south_sales, department_id
           FROM public.hq_daily_reports
       ) t
      WHERE d IS NOT NULL
-       AND department_id = 1
+       AND department_id IN (${DEPT_SOUZAI}, ${DEPT_MOCHI})
        AND d::date >= ${ymd(start)}::date
        AND d::date <  ${ymd(endExclusive)}::date
   `
@@ -90,18 +98,33 @@ async function fetchShipments(start: Date, endExclusive: Date): Promise<Shipment
     return v.toNumber()
   }
   const m: ShipmentMap = new Map()
-  // hq_daily_reports は同じ日付に複数行が存在し得る(重複/修正入力。0 の空行も混在)。
-  // 0 行は無視し、west+south が最大の「非0行」を採用する(= その日の正しい出荷)。
-  const bestTotal = new Map<string, number>()
+  // 同じ (日付 × 部門) に複数行が存在し得る(重複/修正入力。0 の空行も混在)。
+  // 0 行は無視し、west+south が最大の「非0行」を部門ごとに採用する。
+  const bestTotal = new Map<string, number>()   // key: `${date}|${department_id}`
+  const ensure = (key: string): Record<string, StoreShipment> => {
+    let e = m.get(key)
+    if (!e) { e = {}; m.set(key, e) }
+    return e
+  }
   rows.forEach((r) => {
     const key   = typeof r.date === 'string' ? r.date.slice(0, 10) : ymd(new Date(r.date))
+    const dept  = Number(r.department_id)
     const west  = toN(r.west_sales)
     const south = toN(r.south_sales)
     const total = west + south
     if (total <= 0) return
-    if (total > (bestTotal.get(key) ?? -1)) {
-      bestTotal.set(key, total)
-      m.set(key, { '西店': west, '南店': south })
+    const bk = `${key}|${dept}`
+    if (total <= (bestTotal.get(bk) ?? -1)) return
+    bestTotal.set(bk, total)
+    const e = ensure(key)
+    if (!e['西店']) e['西店'] = { souzai: 0, mochi: 0 }
+    if (!e['南店']) e['南店'] = { souzai: 0, mochi: 0 }
+    if (dept === DEPT_MOCHI) {
+      e['西店'].mochi = west
+      e['南店'].mochi = south
+    } else {
+      e['西店'].souzai = west
+      e['南店'].souzai = south
     }
   })
   return m
@@ -152,15 +175,16 @@ function aggregateByStore(sales: SaleRow[], ship: ShipmentMap): Record<string, B
   sales.forEach((s) => {
     const name = s.store.storeName
     if (!out[name]) out[name] = newBucket()
-    addRow(out[name], s, 0)
+    addRow(out[name], s, 0, 0)
   })
-  // 惣菜出荷は売上(dx.Sale)の有無に依らず hq_daily_reports から店舗別に合計
+  // 出荷(惣菜/餅)は売上(dx.Sale)の有無に依らず hq_daily_reports から店舗別に合計
   ship.forEach((e) => {
     for (const name of Object.keys(e)) {
-      const v = e[name] || 0
-      if (v <= 0) continue
+      const v = e[name]
+      if (!v || (v.souzai <= 0 && v.mochi <= 0)) continue
       if (!out[name]) out[name] = newBucket()
-      out[name].shipmentSouzai += v
+      if (v.souzai > 0) out[name].shipmentSouzai += v.souzai
+      if (v.mochi  > 0) out[name].shipmentMochi  += v.mochi
     }
   })
   return out
@@ -186,18 +210,19 @@ function aggregateDaily(sales: SaleRow[], start: Date, endInclusive: Date, ship:
     if (!entry) return
     const name = s.store.storeName
     if (!entry.byStore[name]) entry.byStore[name] = newBucket()
-    addRow(entry.byStore[name], s, 0)
+    addRow(entry.byStore[name], s, 0, 0)
     if (!entry.weather && s.weather) entry.weather = s.weather
   })
-  // 惣菜出荷は売上(dx.Sale)の有無に依らず、日付×店舗で hq_daily_reports から直接セット
+  // 出荷(惣菜/餅)は売上(dx.Sale)の有無に依らず、日付×店舗で hq_daily_reports から直接セット
   byDate.forEach((entry) => {
     const e = ship.get(entry.date)
     if (!e) return
     for (const name of Object.keys(e)) {
-      const v = e[name] || 0
-      if (v <= 0) continue
+      const v = e[name]
+      if (!v || (v.souzai <= 0 && v.mochi <= 0)) continue
       if (!entry.byStore[name]) entry.byStore[name] = newBucket()
-      entry.byStore[name].shipmentSouzai = v   // 日×店で 1 値
+      entry.byStore[name].shipmentSouzai = v.souzai   // 日×店で 1 値
+      entry.byStore[name].shipmentMochi  = v.mochi
     }
   })
   return Array.from(byDate.values())
@@ -217,18 +242,19 @@ function aggregateMonthly(sales: SaleRow[], ship: ShipmentMap): MonthlyEntry[] {
     const e  = arr[m]
     const name = s.store.storeName
     if (!e.byStore[name]) e.byStore[name] = newBucket()
-    addRow(e.byStore[name], s, 0)
+    addRow(e.byStore[name], s, 0, 0)
   })
-  // 惣菜出荷は売上の有無に依らず、月×店舗で hq_daily_reports から合計
+  // 出荷(惣菜/餅)は売上の有無に依らず、月×店舗で hq_daily_reports から合計
   ship.forEach((e, dateKey) => {
     const month = Number(dateKey.slice(5, 7)) - 1 // 'YYYY-MM-DD' → 0..11
     if (month < 0 || month > 11) return
     const me = arr[month]
     for (const name of Object.keys(e)) {
-      const v = e[name] || 0
-      if (v <= 0) continue
+      const v = e[name]
+      if (!v) continue
       if (!me.byStore[name]) me.byStore[name] = newBucket()
-      me.byStore[name].shipmentSouzai += v
+      if (v.souzai > 0) me.byStore[name].shipmentSouzai += v.souzai
+      if (v.mochi  > 0) me.byStore[name].shipmentMochi  += v.mochi
     }
   })
   return arr
@@ -256,8 +282,9 @@ function aggregateDow(sales: SaleRow[], ship: ShipmentMap): Record<string, DowEn
     const amt = toNum(s.amount)
     b.amount         += amt
     b.souzai         += toNum(s.souzaiAmount)
-    b.shipmentSouzai += shipmentFor(s, ship)
+    b.shipmentSouzai += shipSouzaiFor(s, ship)
     b.mochi          += toNum(s.mochiAmount)
+    b.shipmentMochi  += shipMochiFor(s, ship)
     b.hana           += toNum(s.hanaAmount)
     b.customerCount  += s.customerCount
     // 曜日別の日数は売上 > 0 の日だけ加算する
@@ -305,7 +332,7 @@ function aggregateWeather(sales: SaleRow[], ship: ShipmentMap): Record<string, W
       ? (s.weather as WeatherKey)
       : '未記録'
     if (!accum[name]) accum[name] = newEmpty()
-    addRow(accum[name][w], s, shipmentFor(s, ship))
+    addRow(accum[name][w], s, shipSouzaiFor(s, ship), shipMochiFor(s, ship))
   })
   const out: Record<string, WeatherEntry[]> = {}
   Object.entries(accum).forEach(([name, byWeather]) => {
@@ -358,7 +385,7 @@ function aggregateDailyMap(
     if (!e) { e = { byStore: {}, weather: null }; map.set(key, e) }
     const name = s.store.storeName
     if (!e.byStore[name]) e.byStore[name] = newBucket()
-    addRow(e.byStore[name], s, shipmentFor(s, ship))
+    addRow(e.byStore[name], s, shipSouzaiFor(s, ship), shipMochiFor(s, ship))
     if (!e.weather && s.weather) e.weather = s.weather
   })
   return map
@@ -373,6 +400,7 @@ function mergeByStore(into: Record<string, Bucket>, from: Record<string, Bucket>
     t.souzai         += b.souzai
     t.shipmentSouzai += b.shipmentSouzai
     t.mochi          += b.mochi
+    t.shipmentMochi  += b.shipmentMochi
     t.hana           += b.hana
     t.customerCount  += b.customerCount
     t.days           += b.days
