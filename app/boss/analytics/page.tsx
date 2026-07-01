@@ -371,12 +371,140 @@ function DailySalesTable({ data }: { data: ApiData }) {
     byStore: avgByStore, prevByStore: avgPrevByStore,
   }
 
+  // 印刷: 画面の「売上 一覧」表をそのまま別ウィンドウに描画して window.print()
+  const handlePrint = () => {
+    const w = window.open('', '_blank')
+    if (!w) { alert('ポップアップがブロックされました。ブラウザの設定を確認してください。'); return }
+
+    const money   = (n: number) => (n > 0 ? yen(n) : '—')
+    const custStr = (b?: Bucket) => (b && b.customerCount > 0 ? `${b.customerCount}人` : '—')
+    const yoyStr  = (cur: number, prev: number) => (prev > 0 ? pct(cur, prev) : '—')
+    const colLabel = data.granularity === 'year' ? '月' : '日付'
+
+    // 通常行 / 合計 / 平均 (売上・客数・前年比)
+    const dataRow = (r: RowData, cls = '') => {
+      const wb = r.byStore['西店']
+      const sb = r.byStore['南店']
+      const tot  = sumStores(r.byStore)
+      const ptot = sumStores(r.prevByStore)
+      const sub  = r.sublabel ? ` <span class="sub">(${r.sublabel})</span>` : ''
+      const wx   = r.weather ? ` ${WEATHER_DISPLAY[r.weather]?.emoji ?? ''}` : ''
+      return `<tr class="${cls}">
+        <td class="lbl">${r.label}${sub}${wx}</td>
+        <td class="num">${money(wb?.amount ?? 0)}</td>
+        <td class="num">${custStr(wb)}</td>
+        <td class="num">${money(sb?.amount ?? 0)}</td>
+        <td class="num">${custStr(sb)}</td>
+        <td class="num tot">${money(tot.amount)}</td>
+        <td class="num tot">${tot.customerCount > 0 ? tot.customerCount + '人' : '—'}</td>
+        <td class="num">${yoyStr(tot.amount, ptot.amount)}</td>
+      </tr>`
+    }
+
+    const bodyRows  = rows.map((r) => dataRow(r)).join('')
+    const totalHtml = dataRow(totalRow, 'total')
+
+    // 前年比 行 + 平均 行 (粒度=月/年 のみ)
+    let extraRows = ''
+    if (showAvg) {
+      const yb = data.total.byStore
+      const pb = data.prevTotal.byStore
+      const wY = yb['西店'] ?? emptyBucket(); const wP = pb['西店'] ?? emptyBucket()
+      const sY = yb['南店'] ?? emptyBucket(); const sP = pb['南店'] ?? emptyBucket()
+      const tY = sumStores(yb); const tP = sumStores(pb)
+      extraRows += `<tr class="total">
+        <td class="lbl">前年比</td>
+        <td class="num">${yoyStr(wY.amount, wP.amount)}</td>
+        <td class="num">${yoyStr(wY.customerCount, wP.customerCount)}</td>
+        <td class="num">${yoyStr(sY.amount, sP.amount)}</td>
+        <td class="num">${yoyStr(sY.customerCount, sP.customerCount)}</td>
+        <td class="num tot">${yoyStr(tY.amount, tP.amount)}</td>
+        <td class="num tot">${yoyStr(tY.customerCount, tP.customerCount)}</td>
+        <td class="num">—</td>
+      </tr>`
+      extraRows += dataRow(avgRow, 'total')
+    }
+
+    // 客単価 行 (売上合計 / 客数合計)
+    const tb  = data.total.byStore
+    const tpb = data.prevTotal.byStore
+    const upStr = (b?: Bucket) => { const v = unitPrice(b ?? emptyBucket()); return v > 0 ? yen(Math.round(v)) : '—' }
+    const upYoy = (b?: Bucket, p?: Bucket) => {
+      const cur = unitPrice(b ?? emptyBucket()); const prev = unitPrice(p ?? emptyBucket())
+      return prev > 0 ? pct(cur, prev) : '—'
+    }
+    const totUp     = unitPrice(sumStores(tb))
+    const totUpPrev = unitPrice(sumStores(tpb))
+    const upRow = `<tr class="up">
+      <td class="lbl">客単価</td>
+      <td class="num">${upStr(tb['西店'])}</td>
+      <td class="num">${upYoy(tb['西店'], tpb['西店'])}</td>
+      <td class="num">${upStr(tb['南店'])}</td>
+      <td class="num">${upYoy(tb['南店'], tpb['南店'])}</td>
+      <td class="num tot">${totUp > 0 ? yen(Math.round(totUp)) : '—'}</td>
+      <td class="num tot">${totUpPrev > 0 ? pct(totUp, totUpPrev) : '—'}</td>
+      <td class="num">—</td>
+    </tr>`
+
+    w.document.write(`<!DOCTYPE html><html lang="ja"><head>
+      <meta charset="UTF-8"><title>売上一覧 ${data.label}</title>
+      <style>
+        body{font-family:'BIZ UDPGothic',-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;padding:20px;font-size:12px;color:#2C2C2A;}
+        h2{color:#1A5276;font-size:16px;margin-bottom:4px;}
+        p{font-size:11px;color:#888;margin-bottom:14px;}
+        table{width:100%;border-collapse:collapse;}
+        th{background:#1A5276;color:white;padding:6px 8px;font-size:11px;text-align:center;border:1px solid #14496b;}
+        th.tot{background:#123f5e;}
+        td{padding:6px 8px;border-bottom:1px solid #E5E1D8;font-size:11px;}
+        td.lbl{white-space:nowrap;}
+        td.num{text-align:right;font-variant-numeric:tabular-nums;}
+        td.tot{background:#FBF8F2;}
+        span.sub{color:#888;font-size:10px;}
+        tr.total td{font-weight:600;background:#FBF8F2;}
+        tr.up td{font-weight:600;background:#F1EBDA;border-top:2px solid #E5E1D8;}
+        @media print{body{padding:10px;}tr{page-break-inside:avoid;}}
+      </style>
+    </head><body>
+      <h2>💰 売上一覧</h2>
+      <p>${data.label} · ${new Date().toLocaleDateString('ja-JP')} 印刷</p>
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">${colLabel}</th>
+            <th colspan="2">西店</th>
+            <th colspan="2">南店</th>
+            <th colspan="2" class="tot">本部合計</th>
+            <th rowspan="2">前年比</th>
+          </tr>
+          <tr>
+            <th>売上</th><th>客数</th>
+            <th>売上</th><th>客数</th>
+            <th class="tot">売上</th><th class="tot">客数</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${bodyRows}
+          ${totalHtml}
+          ${extraRows}
+          ${upRow}
+        </tbody>
+      </table>
+    </body></html>`)
+    w.document.close()
+    setTimeout(() => w.print(), 500)
+  }
+
   return (
     <div style={{ background:'white', borderRadius:'16px', overflow:'hidden',
       boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
       <div style={{ padding:'12px 16px', borderBottom:'1px solid #F0ECE3',
-        fontWeight:500, fontSize:'16px' }}>
-        💰 売上 一覧
+        fontWeight:500, fontSize:'16px', display:'flex', alignItems:'center',
+        justifyContent:'space-between' }}>
+        <span>💰 売上 一覧</span>
+        <button onClick={handlePrint}
+          style={{ fontFamily:'inherit', fontSize:'13px', fontWeight:500, cursor:'pointer',
+            border:'1.5px solid #1A5276', color:'#1A5276', background:'white',
+            borderRadius:'10px', padding:'6px 12px' }}>🖨 印刷</button>
       </div>
       <div style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', minWidth:'640px',
