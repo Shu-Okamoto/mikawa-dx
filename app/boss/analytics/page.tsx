@@ -446,6 +446,59 @@ function DailySalesTable({ data }: { data: ApiData }) {
       <td class="num">—</td>
     </tr>`
 
+    // 過去3年売上表 (画面と同じく pastYears があるときだけ付ける)
+    let pastHtml = ''
+    if (data.pastYears && data.pastYears.length > 0) {
+      const avg = avgPastYears(data.pastYears)
+      const pyCell = (e?: PastYearStoreEntry) => {
+        if (!e || (e.amount === 0 && e.customerCount === 0 && e.businessDays === 0)) {
+          return { amt: '—', cust: '—', up: '—', days: '—' }
+        }
+        const up = e.customerCount > 0 ? Math.round(e.amount / e.customerCount) : 0
+        return {
+          amt : yen(e.amount),
+          cust: `${e.customerCount.toLocaleString()}人`,
+          up  : up > 0 ? yen(up) : '—',
+          days: `${e.businessDays}日`,
+        }
+      }
+      const pyRow = (label: string, ew?: PastYearStoreEntry, es?: PastYearStoreEntry,
+        et?: PastYearStoreEntry, cls = '') => {
+        const cw = pyCell(ew); const cs = pyCell(es); const ct = pyCell(et)
+        return `<tr class="${cls}">
+          <td class="lbl">${label}</td>
+          <td class="num">${cw.amt}</td><td class="num">${cw.cust}</td><td class="num">${cw.up}</td><td class="num">${cw.days}</td>
+          <td class="num">${cs.amt}</td><td class="num">${cs.cust}</td><td class="num">${cs.up}</td><td class="num">${cs.days}</td>
+          <td class="num tot">${ct.amt}</td><td class="num tot">${ct.cust}</td><td class="num tot">${ct.up}</td><td class="num tot">${ct.days}</td>
+        </tr>`
+      }
+      const pyRows = data.pastYears
+        .map((py) => pyRow(`${py.year}年`, py.byStore[STORES[0]], py.byStore[STORES[1]], py.total))
+        .join('')
+      const curRow = data.currentYear
+        ? pyRow(`今年 (${data.currentYear.year}年)`, data.currentYear.byStore[STORES[0]],
+            data.currentYear.byStore[STORES[1]], data.currentYear.total, 'cur')
+        : ''
+      const avgRow2 = pyRow('過去3年平均', avg.byStore[STORES[0]], avg.byStore[STORES[1]], avg.total, 'total')
+      pastHtml = `<h2 class="sec">📈 過去3年売上表</h2>
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">年</th>
+              <th colspan="4">西店</th>
+              <th colspan="4">南店</th>
+              <th colspan="4" class="tot">本部合計</th>
+            </tr>
+            <tr>
+              <th>売上</th><th>客数</th><th>客単価</th><th>営業日</th>
+              <th>売上</th><th>客数</th><th>客単価</th><th>営業日</th>
+              <th class="tot">売上</th><th class="tot">客数</th><th class="tot">客単価</th><th class="tot">営業日</th>
+            </tr>
+          </thead>
+          <tbody>${pyRows}${curRow}${avgRow2}</tbody>
+        </table>`
+    }
+
     w.document.write(`<!DOCTYPE html><html lang="ja"><head>
       <meta charset="UTF-8"><title>売上一覧 ${data.label}</title>
       <style>
@@ -462,6 +515,8 @@ function DailySalesTable({ data }: { data: ApiData }) {
         span.sub{color:#888;font-size:10px;}
         tr.total td{font-weight:600;background:#FBF8F2;}
         tr.up td{font-weight:600;background:#F1EBDA;border-top:2px solid #E5E1D8;}
+        tr.cur td{font-weight:700;background:#F5EFE0;border-top:2px solid #E5E1D8;}
+        h2.sec{margin-top:22px;page-break-before:auto;}
         @media print{body{padding:10px;}tr{page-break-inside:avoid;}}
       </style>
     </head><body>
@@ -489,6 +544,7 @@ function DailySalesTable({ data }: { data: ApiData }) {
           ${upRow}
         </tbody>
       </table>
+      ${pastHtml}
     </body></html>`)
     w.document.close()
     setTimeout(() => w.print(), 500)
