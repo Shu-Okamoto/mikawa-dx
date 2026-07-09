@@ -88,8 +88,8 @@ function canAccess(pinRole: RoleKey, entry: Entry): boolean {
   if (entry.requireMaster) return pinRole === 'master'
   // 公開ページはどの PIN でも閲覧可
   if (entry.public) return true
-  // master PIN は専用ボタン以外は押せない
-  if (pinRole === 'master') return false
+  // master PIN (0000) はマスタ管理に加えて全ボタンにアクセス可
+  if (pinRole === 'master') return true
   if (pinRole === 'all') return true
   if (pinRole === 'nishi')
     return entry.role === 'nishi' || (entry.role === 'all' && entry.path === '/calendar')
