@@ -32,10 +32,20 @@ export async function GET(req: NextRequest) {
     const end   = `${year}-12-31`
 
     // 月別×メンバー×店舗の実績シフト集計
+    // staff_by_name: 手入力(staff_id NULL)の記録をスタッフマスタへ名前で紐づける。
+    // 同名スタッフが複数登録されている場合は誤マージを避けるため対象外(count=1のみ)。
+    // これが無いと、同一人物でも「マスタ選択の記録」と「名前手入力の記録」が
+    // 別キーになり、人時売上分析に同じ名前が2行並ぶ。
     const rows = await prisma.$queryRaw<Row[]>`
-      WITH actual_shifts AS (
+      WITH staff_by_name AS (
+        SELECT trim(name) AS tname, min(id) AS id
+        FROM nippo.staff
+        GROUP BY trim(name)
+        HAVING count(*) = 1
+      ),
+      actual_shifts AS (
         SELECT
-          se.staff_id,
+          COALESCE(se.staff_id, sbn.id) AS staff_id,
           se.staff_name_manual,
           dr.store_id,
           dr.report_date,
@@ -48,6 +58,8 @@ export async function GET(req: NextRequest) {
           ) AS hours
         FROM nippo.shift_entries se
         JOIN nippo.daily_reports dr ON dr.id = se.daily_report_id
+        LEFT JOIN staff_by_name sbn ON se.staff_id IS NULL
+                                   AND sbn.tname = trim(se.staff_name_manual)
         LEFT JOIN nippo.stores nst  ON nst.id = dr.store_id
         LEFT JOIN dx."Store" dst    ON dst."storeCode" = nst.slug
         LEFT JOIN dx."Sale"  dxs    ON dxs."storeId" = dst.id
