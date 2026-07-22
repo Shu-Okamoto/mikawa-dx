@@ -46,6 +46,32 @@ export function clearPinSession(): void {
   pinSession = null
 }
 
+// master PIN(0000/9999)でログインしたことを示すフラグ。
+// pinSession はメモリ上のみで SPA 内遷移でしか残らないため、/store/[branch] を
+// リロードしても「過去日の実績修正」カードの表示状態を保てるよう localStorage に
+// 保存する。有効期限は PIN セッションと同じ TTL。
+const MASTER_ACCESS_KEY = 'masterAccessExpiresAt'
+
+export function setMasterAccessFlag(): void {
+  localStorage.setItem(MASTER_ACCESS_KEY, String(Date.now() + PIN_TTL_MS))
+}
+
+export function getValidMasterAccess(): boolean {
+  if (typeof window === 'undefined') return false
+  const raw = localStorage.getItem(MASTER_ACCESS_KEY)
+  if (!raw) return false
+  const expiresAt = Number(raw)
+  if (!expiresAt || Date.now() > expiresAt) {
+    localStorage.removeItem(MASTER_ACCESS_KEY)
+    return false
+  }
+  return true
+}
+
+export function clearMasterAccessFlag(): void {
+  localStorage.removeItem(MASTER_ACCESS_KEY)
+}
+
 export function getStoredAuth(): { token: string; user: AuthUser } | null {
   if (typeof window === 'undefined') return null
   const token = localStorage.getItem(TOKEN_KEY)
