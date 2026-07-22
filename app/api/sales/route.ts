@@ -13,16 +13,32 @@ function canAccessBranch(role: string, branch: string): boolean {
 
 const today = todayJst
 
+// 'YYYY-MM-DD' を UTC 00:00 の Date に変換。書式不正なら null。
+function parseDateParam(s: string | null): Date | null {
+  if (!s) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return null
+  const d = new Date(s + 'T00:00:00Z')
+  return isNaN(d.getTime()) ? null : d
+}
+
 // 売上取得（全店舗ぶん。キー: storeCode）
+// ?date=YYYY-MM-DD で過去日を指定可能（省略時は当日）。過去日の実績修正で使用。
 export async function GET(req: NextRequest) {
   const user = verifyToken(req)
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
   }
 
+  const dateParam = req.nextUrl.searchParams.get('date')
+  const saleDate   = dateParam ? parseDateParam(dateParam) : today()
+  if (!saleDate) {
+    return NextResponse.json({ error: 'date が不正です (YYYY-MM-DD)' }, { status: 400 })
+  }
+
   try {
     const sales = await prisma.sale.findMany({
-      where  : { saleDate: today() },
+      where  : { saleDate },
       include: { store: true },
     })
 
@@ -50,6 +66,8 @@ export async function GET(req: NextRequest) {
 }
 
 // 売上保存
+// body.date (YYYY-MM-DD) を指定すると過去日の実績を修正できる。省略時は当日。
+// 実績＝過去の記録なので、未来日は拒否する。
 export async function POST(req: NextRequest) {
   const user = verifyToken(req)
   if (!user) {
@@ -74,7 +92,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '店舗が見つかりません' }, { status: 404 })
     }
 
-    const saleDate = today()
+    const saleDate = data.date ? parseDateParam(data.date) : today()
+    if (!saleDate) {
+      return NextResponse.json({ error: 'date が不正です (YYYY-MM-DD)' }, { status: 400 })
+    }
+    if (saleDate > today()) {
+      return NextResponse.json({ error: '未来日の実績は登録できません' }, { status: 400 })
+    }
 
     // 天気: 晴/曇/雨/雪 のみ受け付ける。空文字や不明値は null。
     const weatherRaw = typeof data.weather === 'string' ? data.weather.trim() : ''
