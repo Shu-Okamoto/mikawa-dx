@@ -12,6 +12,8 @@ const PIN_MAP: { env: string; role: PinRole; fallback?: string }[] = [
   { env: 'PIN_ALL',    role: 'all'    },
   // マスタ管理専用 PIN。未設定時は 0000 を既定値とする。
   { env: 'PIN_MASTER', role: 'master', fallback: '0000' },
+  // マスタと同じ扱いの予備 PIN。未設定時は 9999 を既定値とする。
+  { env: 'PIN_MASTER2', role: 'master', fallback: '9999' },
 ]
 
 export async function POST(req: NextRequest) {

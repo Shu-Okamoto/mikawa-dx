@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { themeForBranch, type StoreTheme } from '@/lib/storeColors'
 import { HONBU_TRUSTED_REFERRERS } from '@/lib/trusted-referrers'
+import { getValidMasterAccess } from '@/lib/auth-client'
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>
 
@@ -265,7 +266,9 @@ function StorePageContent({ branch }: { branch: string }) {
   const backToCatSelect = () => { setScreen('catselect'); setCurrentCat('') }
 
   const showWeekly = () => { setScreen('weekly') }
-  const showPastSales = () => { setScreen('pastSales') }
+  // 過去日の実績修正は master PIN(0000/9999)でログインした場合のみ表示・押下可能
+  const canEditPastSales = getValidMasterAccess()
+  const showPastSales = () => { if (canEditPastSales) setScreen('pastSales') }
 
   const setStatus = (id: number | string, status: string) => {
     setOrderState((prev) => ({
@@ -427,6 +430,7 @@ function StorePageContent({ branch }: { branch: string }) {
           onSelect={onCatSelected}
           onShowWeekly={showWeekly}
           onShowPastSales={showPastSales}
+          canEditPastSales={canEditPastSales}
         />
       )}
 
@@ -438,7 +442,7 @@ function StorePageContent({ branch }: { branch: string }) {
         />
       )}
 
-      {screen === 'pastSales' && (
+      {screen === 'pastSales' && canEditPastSales && (
         <PastSalesScreen
           authFetch={authFetch}
           branch={branch}
@@ -532,13 +536,15 @@ function Header({
 
 function CatSelectScreen({
   requiredCats, sentByCat, salesSent, onSelect, onShowWeekly, onShowPastSales,
+  canEditPastSales,
 }: {
-  requiredCats   : string[]
-  sentByCat      : Record<string, SentCategory>
-  salesSent      : SentCategory | null
-  onSelect       : (cat: string) => void
-  onShowWeekly   : () => void
-  onShowPastSales: () => void
+  requiredCats    : string[]
+  sentByCat       : Record<string, SentCategory>
+  salesSent       : SentCategory | null
+  onSelect        : (cat: string) => void
+  onShowWeekly    : () => void
+  onShowPastSales : () => void
+  canEditPastSales: boolean
 }) {
   const all = [...requiredCats, '実績']
   return (
@@ -611,30 +617,32 @@ function CatSelectScreen({
         }}>閲覧する</button>
       </div>
 
-      {/* 過去日の実績修正カード */}
-      <div onClick={onShowPastSales} style={{
-        background  : '#FAFAFA',
-        borderRadius: '16px', padding: '18px 20px',
-        marginBottom: '12px',
-        boxShadow   : '0 2px 8px rgba(0,0,0,.04)',
-        display     : 'flex', alignItems: 'center', justifyContent: 'space-between',
-        border      : '2px solid #E5E1D8',
-        cursor      : 'pointer',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <span style={{ fontSize: '32px' }}>🗓️</span>
-          <div>
-            <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>過去日の実績修正</div>
-            <div style={{ fontSize: '12px', color: '#888780' }}>日付を選んで売上・客数等を修正</div>
+      {/* 過去日の実績修正カード: master PIN(0000/9999)のみ表示 */}
+      {canEditPastSales && (
+        <div onClick={onShowPastSales} style={{
+          background  : '#FAFAFA',
+          borderRadius: '16px', padding: '18px 20px',
+          marginBottom: '12px',
+          boxShadow   : '0 2px 8px rgba(0,0,0,.04)',
+          display     : 'flex', alignItems: 'center', justifyContent: 'space-between',
+          border      : '2px solid #E5E1D8',
+          cursor      : 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <span style={{ fontSize: '32px' }}>🗓️</span>
+            <div>
+              <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>過去日の実績修正</div>
+              <div style={{ fontSize: '12px', color: '#888780' }}>日付を選んで売上・客数等を修正</div>
+            </div>
           </div>
+          <button style={{
+            padding: '10px 18px', borderRadius: '10px', fontSize: '18px',
+            fontWeight: 500, border: '1.5px solid #E5E1D8',
+            background: '#F5F1EA', color: '#888780',
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>修正する</button>
         </div>
-        <button style={{
-          padding: '10px 18px', borderRadius: '10px', fontSize: '18px',
-          fontWeight: 500, border: '1.5px solid #E5E1D8',
-          background: '#F5F1EA', color: '#888780',
-          cursor: 'pointer', fontFamily: 'inherit',
-        }}>修正する</button>
-      </div>
+      )}
     </div>
   )
 }

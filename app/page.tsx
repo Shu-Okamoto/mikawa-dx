@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import {
   clearStoredAuth,
   clearPinSession,
+  clearMasterAccessFlag,
   getValidPinRole,
   setPinSession,
+  setMasterAccessFlag,
 } from '@/lib/auth-client'
 
 type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
@@ -114,15 +116,19 @@ export default function HomePage() {
     const role = getValidPinRole()
     if (isRoleKey(role)) {
       setPinSession(role)
+      if (role === 'master') setMasterAccessFlag()
       setPinRole(role)
     } else {
       clearPinSession()
       clearStoredAuth()
+      clearMasterAccessFlag()
     }
   }, [])
 
   const onPinVerified = (role: RoleKey) => {
     setPinSession(role)
+    if (role === 'master') setMasterAccessFlag()
+    else clearMasterAccessFlag()
     setPinRole(role)
   }
 
@@ -130,6 +136,7 @@ export default function HomePage() {
     // 「別のPINで入り直す」: PIN セッションとトークンを破棄して PIN 入力へ
     clearPinSession()
     clearStoredAuth()
+    clearMasterAccessFlag()
     setPinRole(null)
   }
 
