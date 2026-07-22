@@ -59,7 +59,7 @@ const WEATHER_OPTIONS = [
   { key: '雪', emoji: '❄️' },
 ] as const
 
-type Screen = 'catselect' | 'input' | 'sales' | 'submitted' | 'weekly'
+type Screen = 'catselect' | 'input' | 'sales' | 'submitted' | 'weekly' | 'pastSales'
 
 interface BranchOrder {
   productId  : number | string
@@ -265,6 +265,7 @@ function StorePageContent({ branch }: { branch: string }) {
   const backToCatSelect = () => { setScreen('catselect'); setCurrentCat('') }
 
   const showWeekly = () => { setScreen('weekly') }
+  const showPastSales = () => { setScreen('pastSales') }
 
   const setStatus = (id: number | string, status: string) => {
     setOrderState((prev) => ({
@@ -425,11 +426,20 @@ function StorePageContent({ branch }: { branch: string }) {
           salesSent={salesSent}
           onSelect={onCatSelected}
           onShowWeekly={showWeekly}
+          onShowPastSales={showPastSales}
         />
       )}
 
       {screen === 'weekly' && (
         <WeeklyScreen
+          authFetch={authFetch}
+          branch={branch}
+          onBack={backToCatSelect}
+        />
+      )}
+
+      {screen === 'pastSales' && (
+        <PastSalesScreen
           authFetch={authFetch}
           branch={branch}
           onBack={backToCatSelect}
@@ -521,13 +531,14 @@ function Header({
 }
 
 function CatSelectScreen({
-  requiredCats, sentByCat, salesSent, onSelect, onShowWeekly,
+  requiredCats, sentByCat, salesSent, onSelect, onShowWeekly, onShowPastSales,
 }: {
-  requiredCats : string[]
-  sentByCat    : Record<string, SentCategory>
-  salesSent    : SentCategory | null
-  onSelect     : (cat: string) => void
-  onShowWeekly : () => void
+  requiredCats   : string[]
+  sentByCat      : Record<string, SentCategory>
+  salesSent      : SentCategory | null
+  onSelect       : (cat: string) => void
+  onShowWeekly   : () => void
+  onShowPastSales: () => void
 }) {
   const all = [...requiredCats, '実績']
   return (
@@ -598,6 +609,31 @@ function CatSelectScreen({
           background: '#F5F1EA', color: '#888780',
           cursor: 'pointer', fontFamily: 'inherit',
         }}>閲覧する</button>
+      </div>
+
+      {/* 過去日の実績修正カード */}
+      <div onClick={onShowPastSales} style={{
+        background  : '#FAFAFA',
+        borderRadius: '16px', padding: '18px 20px',
+        marginBottom: '12px',
+        boxShadow   : '0 2px 8px rgba(0,0,0,.04)',
+        display     : 'flex', alignItems: 'center', justifyContent: 'space-between',
+        border      : '2px solid #E5E1D8',
+        cursor      : 'pointer',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span style={{ fontSize: '32px' }}>🗓️</span>
+          <div>
+            <div style={{ fontSize: '22px', fontWeight: 500, marginBottom: '2px' }}>過去日の実績修正</div>
+            <div style={{ fontSize: '12px', color: '#888780' }}>日付を選んで売上・客数等を修正</div>
+          </div>
+        </div>
+        <button style={{
+          padding: '10px 18px', borderRadius: '10px', fontSize: '18px',
+          fontWeight: 500, border: '1.5px solid #E5E1D8',
+          background: '#F5F1EA', color: '#888780',
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>修正する</button>
       </div>
     </div>
   )
@@ -1293,6 +1329,212 @@ function SalesScreen({
         buttonLabel={busy ? '登録中...' : '実績を登録する'}
         onClick={onSubmit}
         disabled={busy}
+      />
+    </div>
+  )
+}
+
+// 過去日の実績修正: 当日の入力フロー(sales/salesSent 等)には触れず、
+// 日付を選んでその日の実績を取得・修正できる独立画面。
+function todayLocalYmd(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function PastSalesScreen({
+  authFetch, branch, onBack,
+}: {
+  authFetch: AuthFetch
+  branch   : string
+  onBack   : () => void
+}) {
+  const maxDate = useMemo(() => todayLocalYmd(), [])
+  const [date, setDate]     = useState<string>(maxDate)
+  const [sales, setSales]   = useState<SalesData>(EMPTY_SALES)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy]       = useState(false)
+  const [toast, setToast]     = useState('')
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      try {
+        const res  = await authFetch(`/api/sales?date=${date}`)
+        const data = await res.json()
+        if (cancelled) return
+        const s = data?.[branch]
+        setSales(s ? {
+          amount        : s.amount         ? String(s.amount)         : '',
+          souzai        : s.souzai         ? String(s.souzai)         : '',
+          mochi         : s.mochi          ? String(s.mochi)          : '',
+          hana          : s.hana           ? String(s.hana)           : '',
+          customerCount : s.customerCount  ? String(s.customerCount)  : '',
+          staffMorning  : s.staffMorning   ? String(s.staffMorning)   : '',
+          staffAfternoon: s.staffAfternoon ? String(s.staffAfternoon) : '',
+          weather       : s.weather        ? String(s.weather)        : '',
+        } : EMPTY_SALES)
+      } catch {
+        if (!cancelled) setSales(EMPTY_SALES)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [authFetch, branch, date])
+
+  const upd = (k: keyof SalesData, v: string) => setSales((prev) => ({ ...prev, [k]: v }))
+
+  const onSubmit = async () => {
+    setBusy(true)
+    try {
+      const res  = await authFetch('/api/sales', {
+        method: 'POST',
+        body  : JSON.stringify({ branch, date, ...sales }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        showToast('エラー: ' + (data.error ?? '不明'))
+        return
+      }
+      showToast(`${date} の実績を保存しました`)
+    } catch {
+      showToast('サーバーエラーが発生しました')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '10px',
+    border: '1.5px solid #E5E1D8', borderRadius: '8px',
+    fontSize: '20px', fontFamily: 'inherit',
+    background: 'white', color: '#2C2C2A', textAlign: 'right',
+    boxSizing: 'border-box',
+  }
+  const labelStyle: React.CSSProperties = {
+    fontSize: '14px', color: '#2C2C2A', marginBottom: '4px',
+  }
+
+  return (
+    <div>
+      <BackBar onBack={onBack} title="🗓️ 過去日の実績修正" />
+
+      <div style={{ padding: '16px', paddingBottom: '100px' }}>
+        <div style={{
+          background: 'white', borderRadius: '16px',
+          boxShadow: '0 2px 8px rgba(0,0,0,.04)', padding: '16px',
+          marginBottom: '12px',
+        }}>
+          <div style={labelStyle}>修正する日付</div>
+          <input type="date" value={date} max={maxDate}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
+            style={{ ...inputStyle, textAlign: 'left', fontSize: '16px' }} />
+        </div>
+
+        <div style={{
+          background: 'white', borderRadius: '16px',
+          boxShadow: '0 2px 8px rgba(0,0,0,.04)', padding: '16px',
+          opacity: loading ? 0.5 : 1, pointerEvents: loading ? 'none' : 'auto',
+        }}>
+          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>売上</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+            {(['amount', 'souzai', 'mochi', 'hana'] as const).map((k) => (
+              <div key={k}>
+                <div style={labelStyle}>
+                  {k === 'amount' ? '売上金額' :
+                   k === 'souzai' ? '惣菜売上' :
+                   k === 'mochi'  ? '餅売上'   : '花売上'}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute', left: '10px', top: '50%',
+                    transform: 'translateY(-50%)', color: '#888780', pointerEvents: 'none',
+                  }}>¥</span>
+                  <input type="number" inputMode="numeric"
+                    value={sales[k]} onChange={(e) => upd(k, e.target.value)}
+                    style={{ ...inputStyle, paddingLeft: '24px' }} placeholder="0" />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>人数</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+            <div>
+              <div style={labelStyle}>客数</div>
+              <input type="number" inputMode="numeric"
+                value={sales.customerCount}
+                onChange={(e) => upd('customerCount', e.target.value)}
+                style={inputStyle} placeholder="0" />
+            </div>
+            <div>
+              <div style={labelStyle}>出勤前半</div>
+              <select value={sales.staffMorning}
+                onChange={(e) => upd('staffMorning', e.target.value)}
+                style={{ ...inputStyle, textAlign: 'left' }}>
+                <option value="">-</option>
+                {STAFF_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={labelStyle}>出勤後半</div>
+              <select value={sales.staffAfternoon}
+                onChange={(e) => upd('staffAfternoon', e.target.value)}
+                style={{ ...inputStyle, textAlign: 'left' }}>
+                <option value="">-</option>
+                {STAFF_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>天気</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+            {WEATHER_OPTIONS.map((w) => {
+              const active = sales.weather === w.key
+              return (
+                <button key={w.key} type="button"
+                  onClick={() => upd('weather', active ? '' : w.key)}
+                  style={{
+                    padding: '10px', borderRadius: '8px',
+                    border: active ? '2px solid #1A5276' : '1.5px solid #E5E1D8',
+                    background: active ? '#EAF3FB' : 'white',
+                    color: '#2C2C2A', fontFamily: 'inherit',
+                    fontSize: '16px', fontWeight: 500, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '6px',
+                  }}>
+                  <span style={{ fontSize: '20px' }}>{w.emoji}</span>
+                  {w.key}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: '90px', left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(44,44,42,.9)', color: 'white',
+          padding: '10px 20px', borderRadius: '20px', fontSize: '13px',
+          zIndex: 100, whiteSpace: 'nowrap',
+        }}>{toast}</div>
+      )}
+
+      <FooterBar
+        progress=""
+        deadline={date}
+        buttonLabel={busy ? '保存中...' : `${date} の実績を保存`}
+        onClick={onSubmit}
+        disabled={busy || loading}
       />
     </div>
   )
