@@ -31,7 +31,7 @@ function normalizeAvailableDays(input: string): string {
 }
 
 // CSV 1 セルを RFC 4180 風にエスケープ
-function csvCell(v: string | number): string {
+function csvCell(v: string | number | boolean): string {
   const s = String(v)
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
   return s
