@@ -329,6 +329,16 @@ function ImportContent() {
             <SaleExportControls authFetch={authFetch} showToast={showToast} />
           )}
 
+          {mode === 'product' && (
+            <SimpleExportControls authFetch={authFetch} showToast={showToast}
+              url="/api/boss/import/products" filenamePrefix="products" />
+          )}
+
+          {mode === 'order-product' && (
+            <SimpleExportControls authFetch={authFetch} showToast={showToast}
+              url="/api/boss/import/order-products" filenamePrefix="order-products" />
+          )}
+
           <input type="file" accept=".csv,text/csv"
             onChange={(e) => onFile(e.target.files?.[0])}
             style={{ marginBottom: '10px' }} />
@@ -547,6 +557,60 @@ function SaleExportControls({ authFetch, showToast }: {
       </button>
       <span style={{ fontSize: '11px', color: '#888780' }}>
         日付未指定で全期間
+      </span>
+    </div>
+  )
+}
+
+// 商品 / 注文商品の現在の登録内容を CSV 出力。インポートと同じ列構成なので
+// そのまま再インポート(バックアップ・一括編集・別環境への移行)に使える。
+function SimpleExportControls({ authFetch, showToast, url, filenamePrefix }: {
+  authFetch     : (url: string, options?: RequestInit) => Promise<Response>
+  showToast     : (msg: string) => void
+  url           : string
+  filenamePrefix: string
+}) {
+  const [busy, setBusy] = useState(false)
+
+  const onExport = async () => {
+    setBusy(true)
+    try {
+      const res = await authFetch(url)
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        showToast('エラー: ' + (j.error ?? res.status))
+        return
+      }
+      const blob = await res.blob()
+      const fileUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = fileUrl
+      const today = new Date().toISOString().slice(0, 10)
+      a.download = `${filenamePrefix}_${today}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(fileUrl)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ background: '#FAF8F3', border: '1px solid #E5E1D8',
+      borderRadius: '8px', padding: '10px 12px', marginBottom: '12px',
+      display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '13px', color: '#2C2C2A', fontWeight: 500 }}>
+        既存データを CSV 出力
+      </span>
+      <button onClick={onExport} disabled={busy}
+        style={{ padding: '6px 14px', background: '#1A5276', color: 'white',
+          border: 'none', borderRadius: '6px', cursor: 'pointer',
+          fontSize: '12px', opacity: busy ? 0.5 : 1 }}>
+        {busy ? '出力中...' : 'CSV ダウンロード'}
+      </button>
+      <span style={{ fontSize: '11px', color: '#888780' }}>
+        インポートと同じ列構成 (再インポート可)
       </span>
     </div>
   )
