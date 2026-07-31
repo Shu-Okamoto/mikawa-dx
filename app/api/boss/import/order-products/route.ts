@@ -30,6 +30,53 @@ function normalizeAvailableDays(input: string): string {
   return found.join(',')
 }
 
+// CSV 1 セルを RFC 4180 風にエスケープ
+function csvCell(v: string | number): string {
+  const s = String(v)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+// 既存 OrderProduct を CSV (UTF-8 BOM 付き) で返す。インポート機能と同じ列構成なので
+// そのまま再インポート(バックアップからの復元や一括編集)に使える。
+export async function GET(req: NextRequest) {
+  if (!requireBoss(req)) {
+    return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+  }
+
+  try {
+    const orderProducts = await prisma.orderProduct.findMany({
+      orderBy: [{ category: 'asc' }, { displayOrder: 'asc' }, { productCode: 'asc' }],
+    })
+
+    const header = ['ProductID', 'ProductName', 'Category', 'Price', 'AvailableDays', 'Active', 'Memo']
+    const lines: string[] = [header.map(csvCell).join(',')]
+    orderProducts.forEach((p) => {
+      lines.push([
+        p.productCode,
+        p.productName,
+        p.category,
+        Number(p.price),
+        p.availableDays,
+        p.isActive,
+        p.memo ?? '',
+      ].map(csvCell).join(','))
+    })
+    const body = '﻿' + lines.join('\r\n') + '\r\n'
+
+    return new NextResponse(body, {
+      status : 200,
+      headers: {
+        'Content-Type'       : 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="order-products.csv"',
+      },
+    })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   if (!requireBoss(req)) {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 })
