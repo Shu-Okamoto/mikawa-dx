@@ -132,6 +132,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 表示順(displayOrder)を CSV の並び順に合わせる。カテゴリごとに CSV の
+    // 出現順で連番を振り直す(/boss/products 等は category → displayOrder の順で表示するため)。
+    const displayOrderByCategory = new Map<string, number>()
+
     for (const r of rows) {
       const code = (r.productCode || '').trim()
       const name = (r.productName || '').trim()
@@ -156,6 +160,9 @@ export async function POST(req: NextRequest) {
         ? vendorMap.get(r.vendorName.trim()) ?? null
         : null
 
+      const displayOrder = (displayOrderByCategory.get(category) ?? 0) + 1
+      displayOrderByCategory.set(category, displayOrder)
+
       const existing = await prisma.product.findUnique({ where: { productCode: code } })
 
       if (existing) {
@@ -168,6 +175,7 @@ export async function POST(req: NextRequest) {
             weeklyAvg,
             vendorId,
             isActive: r.isActive ?? true,
+            displayOrder,
           },
         })
         updated.push(code)
@@ -181,6 +189,7 @@ export async function POST(req: NextRequest) {
             weeklyAvg,
             vendorId,
             isActive: r.isActive ?? true,
+            displayOrder,
           },
         })
         created.push(code)
