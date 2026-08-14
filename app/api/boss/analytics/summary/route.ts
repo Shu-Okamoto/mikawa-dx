@@ -407,6 +407,29 @@ function mergeByStore(into: Record<string, Bucket>, from: Record<string, Bucket>
   })
 }
 
+// 途中経過の期間(今月/今年など)の合計で前年比が過小評価されないようにする補正合計。
+// 経過済みの日は実績を、未経過(未来)の日は前年の同曜日実績をそのまま採用する
+// (= 残り期間は前年比100%と仮定)。期間が既に完了していれば実績合計と一致する。
+function projectedTotal(
+  periodStart: Date, periodEndInclusive: Date, today: Date,
+  curMap : Map<string, { byStore: Record<string, Bucket> }>,
+  prevMap: Map<string, { byStore: Record<string, Bucket> }>,
+): Record<string, Bucket> {
+  const out: Record<string, Bucket> = {}
+  const cur = new Date(periodStart)
+  while (cur <= periodEndInclusive) {
+    if (cur <= today) {
+      const e = curMap.get(ymd(cur))
+      if (e) mergeByStore(out, e.byStore)
+    } else {
+      const e = prevMap.get(ymd(prevYearSameDow(cur)))
+      if (e) mergeByStore(out, e.byStore)
+    }
+    cur.setDate(cur.getDate() + 1)
+  }
+  return out
+}
+
 // 過去 n 年分の ref Date を古い順で返す (現在は含まない: 1年前/2年前/...)
 function pastYearRefs(ref: Date, n: number): Date[] {
   return Array.from({ length: n }, (_, i) =>
@@ -497,7 +520,10 @@ export async function GET(req: NextRequest) {
     const cur     = rangeFor(g, ref)
     const prev    = rangeFor(g, prevRef)
 
-    // 月粒度は日別の同曜日補正で月境界をまたぐため、前年の取得範囲を ±4 日広げる
+    // 月粒度は日別の同曜日補正で月境界をまたぐため、前年の取得範囲を ±4 日広げる。
+    // 年粒度は広げない: prevSales は prevMonthly/prevTotal の集計にもそのまま使われており、
+    // 広げると前年12月の集計に一昨年12月が、前年1月の集計に今年1月が混入してしまう。
+    // (年境界付近数日の投影計算は該当日が見つからず0扱いになるだけで実害はない)
     const prevFetchStart = g === 'month'
       ? new Date(prev.start.getTime() - 4 * 86400000) : prev.start
     const prevFetchEnd   = g === 'month'
@@ -541,6 +567,9 @@ export async function GET(req: NextRequest) {
       aggregatePastYear(curSales, ref.getFullYear(), cur.label)
 
     const total = { byStore: aggregateByStore(curSales, curShip) }
+    // 「今日」時点の日付(JST, 時刻無視)。途中経過の期間で前年比の補正合計を出す基準。
+    const now = nowJst()
+    const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
     let daily         : DailyEntry[] | undefined
     let prevDaily     : DailyEntry[] | undefined
@@ -549,6 +578,9 @@ export async function GET(req: NextRequest) {
     let dowByStore    : Record<string, DowEntry[]> | undefined
     let weatherByStore: Record<string, WeatherEntry[]> | undefined
     let prevTotalByStore: Record<string, Bucket> = {}
+    // 前年比用の補正合計(途中経過の残りは前年比100%と仮定)。既定は実績合計と同じ
+    // (日粒度、または期間が完了済みの場合はこの既定のまま = 実績合計に一致)。
+    let totalProjectedByStore: Record<string, Bucket> = total.byStore
 
     if (g === 'month') {
       daily = aggregateDaily(curSales, cur.start, cur.endInclusive, curShip)
@@ -568,12 +600,19 @@ export async function GET(req: NextRequest) {
       prevDaily.forEach((pd) => mergeByStore(prevTotalByStore, pd.byStore))
       dowByStore     = aggregateDow(curSales, curShip)
       weatherByStore = aggregateWeather(curSales, curShip)
+
+      const curMap = aggregateDailyMap(curSales, curShip)
+      totalProjectedByStore = projectedTotal(cur.start, cur.endInclusive, todayDateOnly, curMap, prevMap)
     } else if (g === 'year') {
       monthly          = aggregateMonthly(curSales,  curShip)
       prevMonthly      = aggregateMonthly(prevSales, prevShip)
       prevTotalByStore = aggregateByStore(prevSales, prevShip)
       dowByStore       = aggregateDow(curSales, curShip)
       weatherByStore   = aggregateWeather(curSales, curShip)
+
+      const curMap  = aggregateDailyMap(curSales,  curShip)
+      const prevMap = aggregateDailyMap(prevSales, prevShip)
+      totalProjectedByStore = projectedTotal(cur.start, cur.endInclusive, todayDateOnly, curMap, prevMap)
     } else {
       // 日粒度: prevSales は同曜日補正済みの 1 日
       prevTotalByStore = aggregateByStore(prevSales, prevShip)
@@ -587,7 +626,7 @@ export async function GET(req: NextRequest) {
       start      : ymd(cur.start),
       end        : ymd(cur.endInclusive),
       label      : cur.label,
-      total,
+      total: { ...total, byStoreProjected: totalProjectedByStore },
       prevTotal,
       ...(daily       ? { daily }       : {}),
       ...(prevDaily   ? { prevDaily }   : {}),

@@ -59,7 +59,11 @@ interface ApiData {
   start       : string
   end         : string
   label       : string
-  total       : { byStore: Record<string, Bucket> }
+  // byStoreProjected: 前年比計算専用。途中経過の期間は、経過済みは実績・残りは
+  // 前年の同曜日実績をそのまま使う(=残りは前年比100%と仮定)ことで、実績合計(未経過分は
+  // まだ0)対 前年フル期間、という不当に低い前年比にならないよう補正した合計。
+  // 完了済み期間や日粒度では byStore と一致する。生の金額表示には使わないこと。
+  total       : { byStore: Record<string, Bucket>; byStoreProjected?: Record<string, Bucket> }
   prevTotal   : { byStore: Record<string, Bucket> }
   daily?      : DailyEntry[]
   prevDaily?  : DailyEntry[]
@@ -382,7 +386,8 @@ function DailySalesTable({ data }: { data: ApiData }) {
     const colLabel = data.granularity === 'year' ? '月' : '日付'
 
     // 通常行 / 合計 / 平均 (売上・客数・前年比)
-    const dataRow = (r: RowData, cls = '') => {
+    // yoyOverride: 前年比セル専用の分子(途中経過の補正合計)。未指定なら tot.amount のまま。
+    const dataRow = (r: RowData, cls = '', yoyOverride?: number) => {
       const wb = r.byStore['西店']
       const sb = r.byStore['南店']
       const tot  = sumStores(r.byStore)
@@ -397,17 +402,19 @@ function DailySalesTable({ data }: { data: ApiData }) {
         <td class="num">${custStr(sb)}</td>
         <td class="num tot">${money(tot.amount)}</td>
         <td class="num tot">${tot.customerCount > 0 ? tot.customerCount + '人' : '—'}</td>
-        <td class="num">${yoyStr(tot.amount, ptot.amount)}</td>
+        <td class="num">${yoyStr(yoyOverride ?? tot.amount, ptot.amount)}</td>
       </tr>`
     }
 
     const bodyRows  = rows.map((r) => dataRow(r)).join('')
-    const totalHtml = dataRow(totalRow, 'total')
+    const totalHtml = dataRow(totalRow, 'total',
+      sumStores(data.total.byStoreProjected ?? data.total.byStore).amount)
 
     // 前年比 行 + 平均 行 (粒度=月/年 のみ)
     let extraRows = ''
     if (showAvg) {
-      const yb = data.total.byStore
+      // 前年比の分子は途中経過の補正合計(残りは前年比100%と仮定)を使う
+      const yb = data.total.byStoreProjected ?? data.total.byStore
       const pb = data.prevTotal.byStore
       const wY = yb['西店'] ?? emptyBucket(); const wP = pb['西店'] ?? emptyBucket()
       const sY = yb['南店'] ?? emptyBucket(); const sP = pb['南店'] ?? emptyBucket()
@@ -425,24 +432,26 @@ function DailySalesTable({ data }: { data: ApiData }) {
       extraRows += dataRow(avgRow, 'total')
     }
 
-    // 客単価 行 (売上合計 / 客数合計)
-    const tb  = data.total.byStore
-    const tpb = data.prevTotal.byStore
+    // 客単価 行 (売上合計 / 客数合計)。表示額は実績、前年比の分子だけ補正合計を使う。
+    const tb     = data.total.byStore
+    const tbProj = data.total.byStoreProjected ?? data.total.byStore
+    const tpb    = data.prevTotal.byStore
     const upStr = (b?: Bucket) => { const v = unitPrice(b ?? emptyBucket()); return v > 0 ? yen(Math.round(v)) : '—' }
     const upYoy = (b?: Bucket, p?: Bucket) => {
       const cur = unitPrice(b ?? emptyBucket()); const prev = unitPrice(p ?? emptyBucket())
       return prev > 0 ? pct(cur, prev) : '—'
     }
-    const totUp     = unitPrice(sumStores(tb))
-    const totUpPrev = unitPrice(sumStores(tpb))
+    const totUp      = unitPrice(sumStores(tb))
+    const totUpProj  = unitPrice(sumStores(tbProj))
+    const totUpPrev  = unitPrice(sumStores(tpb))
     const upRow = `<tr class="up">
       <td class="lbl">客単価</td>
       <td class="num">${upStr(tb['西店'])}</td>
-      <td class="num">${upYoy(tb['西店'], tpb['西店'])}</td>
+      <td class="num">${upYoy(tbProj['西店'], tpb['西店'])}</td>
       <td class="num">${upStr(tb['南店'])}</td>
-      <td class="num">${upYoy(tb['南店'], tpb['南店'])}</td>
+      <td class="num">${upYoy(tbProj['南店'], tpb['南店'])}</td>
       <td class="num tot">${totUp > 0 ? yen(Math.round(totUp)) : '—'}</td>
-      <td class="num tot">${totUpPrev > 0 ? pct(totUp, totUpPrev) : '—'}</td>
+      <td class="num tot">${totUpPrev > 0 ? pct(totUpProj, totUpPrev) : '—'}</td>
       <td class="num">—</td>
     </tr>`
 
@@ -590,14 +599,16 @@ function DailySalesTable({ data }: { data: ApiData }) {
             {rows.map((r) => (
               <DailyRow key={r.key} row={r} />
             ))}
-            <DailyRow row={totalRow} isTotal />
+            <DailyRow row={totalRow} isTotal
+              yoyAmt={sumStores(data.total.byStoreProjected ?? data.total.byStore).amount} />
             {showAvg && (
-              <DailyYoYRow byStore={data.total.byStore}
+              <DailyYoYRow byStore={data.total.byStoreProjected ?? data.total.byStore}
                 prevByStore={data.prevTotal.byStore} />
             )}
             {showAvg && <DailyRow row={avgRow} isAvg />}
             <UnitPriceRow byStore={data.total.byStore}
-              prevByStore={data.prevTotal.byStore} />
+              prevByStore={data.prevTotal.byStore}
+              projByStore={data.total.byStoreProjected} />
           </tbody>
         </table>
       </div>
@@ -611,26 +622,31 @@ function unitPrice(b: { amount: number; customerCount: number }): number {
   return b.amount / b.customerCount
 }
 
-function UnitPriceRow({ byStore, prevByStore }: {
+function UnitPriceRow({ byStore, prevByStore, projByStore }: {
   byStore    : Record<string, Bucket>
   prevByStore: Record<string, Bucket>
+  // 前年比セル専用(途中経過の補正合計)。未指定なら byStore をそのまま使う。
+  projByStore?: Record<string, Bucket>
 }) {
   const total     = sumStores(byStore)
   const prevTotal = sumStores(prevByStore)
-  const cur  = unitPrice(total)
-  const prev = unitPrice(prevTotal)
+  const projTotal = projByStore ? sumStores(projByStore) : total
+  const cur     = unitPrice(total)
+  const projCur = unitPrice(projTotal)
+  const prev    = unitPrice(prevTotal)
   const cell = (v: number) => v > 0 ? yen(Math.round(v)) : '—'
   return (
     <tr style={{ background:'#F1EBDA', borderTop:'2px solid #E5E1D8' }}>
       <td style={{ ...tdStyle, fontWeight: 600 }}>客単価</td>
       {STORES.map((s) => {
         const up     = unitPrice(byStore[s]     ?? emptyBucket())
+        const projUp = unitPrice((projByStore ?? byStore)[s] ?? emptyBucket())
         const prevUp = unitPrice(prevByStore[s] ?? emptyBucket())
         return (
           <Fragment key={s}>
             <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(up)}</td>
-            <td style={{ ...tdNumStyle, color: yoyColor(up, prevUp) }}>
-              {prevUp > 0 ? pct(up, prevUp) : '—'}
+            <td style={{ ...tdNumStyle, color: yoyColor(projUp, prevUp) }}>
+              {prevUp > 0 ? pct(projUp, prevUp) : '—'}
             </td>
           </Fragment>
         )
@@ -638,8 +654,8 @@ function UnitPriceRow({ byStore, prevByStore }: {
       <td style={{ ...tdNumStyle, background:'#FBF8F2', fontWeight: 600 }}>
         {cell(cur)}
       </td>
-      <td style={{ ...tdNumStyle, background:'#FBF8F2', color: yoyColor(cur, prev) }}>
-        {prev > 0 ? pct(cur, prev) : '—'}
+      <td style={{ ...tdNumStyle, background:'#FBF8F2', color: yoyColor(projCur, prev) }}>
+        {prev > 0 ? pct(projCur, prev) : '—'}
       </td>
       <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
     </tr>
@@ -890,13 +906,16 @@ function Past3YearsTable({ pastYears, currentYear }: {
   )
 }
 
-function DailyRow({ row, isTotal, isAvg }: {
+function DailyRow({ row, isTotal, isAvg, yoyAmt }: {
   row: RowData; isTotal?: boolean; isAvg?: boolean
+  // 前年比セル専用の分子オーバーライド(途中経過の補正合計)。未指定なら curAmt をそのまま使う。
+  yoyAmt?: number
 }) {
   const total     = sumStores(row.byStore)
   const prevTotal = sumStores(row.prevByStore)
   const curAmt  = total.amount
   const prevAmt = prevTotal.amount
+  const yoyCurAmt = yoyAmt ?? curAmt
 
   const bg = isTotal || isAvg ? '#FBF8F2'
     : row.dow === 0 ? '#FFF7F6'
@@ -942,8 +961,8 @@ function DailyRow({ row, isTotal, isAvg }: {
       <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
         {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
       </td>
-      <td style={{ ...tdNumStyle, color: yoyColor(curAmt, prevAmt) }}>
-        {prevAmt > 0 ? pct(curAmt, prevAmt) : '—'}
+      <td style={{ ...tdNumStyle, color: yoyColor(yoyCurAmt, prevAmt) }}>
+        {prevAmt > 0 ? pct(yoyCurAmt, prevAmt) : '—'}
       </td>
     </tr>
   )
@@ -1045,12 +1064,14 @@ function CategoryTable({ data }: { data: ApiData }) {
             {rows.map((r) => (
               <CategoryRow key={r.key} row={r} />
             ))}
-            <CategoryRow row={totalRow} isTotal />
+            <CategoryRow row={totalRow} isTotal
+              yoyProjByStore={data.total.byStoreProjected} />
             <CategoryUnitPriceRow
               byStore={data.total.byStore}
-              prevByStore={data.prevTotal.byStore} />
+              prevByStore={data.prevTotal.byStore}
+              projByStore={data.total.byStoreProjected} />
             <CategoryYoYRow
-              byStore={data.total.byStore}
+              byStore={data.total.byStoreProjected ?? data.total.byStore}
               prevByStore={data.prevTotal.byStore} />
           </tbody>
         </table>
@@ -1201,16 +1222,21 @@ function CategoryPast3YearsTable({ pastYears, currentYear }: {
 // カテゴリ別タブの客単価行
 // 各セル: 店舗×カテゴリ売上 ÷ その店の客数
 // 本部合計: (西店+南店 の 惣菜+餅) ÷ (西店+南店 客数)
-function CategoryUnitPriceRow({ byStore, prevByStore }: {
+function CategoryUnitPriceRow({ byStore, prevByStore, projByStore }: {
   byStore    : Record<string, Bucket>
   prevByStore: Record<string, Bucket>
+  // 前年比セル専用(途中経過の補正合計)。未指定なら byStore をそのまま使う。
+  projByStore?: Record<string, Bucket>
 }) {
   const total     = sumStores(byStore)
   const prevTotal = sumStores(prevByStore)
+  const projTotal = projByStore ? sumStores(projByStore) : total
   // 本部合計の客単価 = (惣菜+餅 全店合計) ÷ 客数全店合計
   const curSM   = total.souzai     + total.mochi
+  const projSM  = projTotal.souzai + projTotal.mochi
   const prevSM  = prevTotal.souzai + prevTotal.mochi
   const curUP   = total.customerCount > 0     ? curSM  / total.customerCount     : 0
+  const projUP  = projTotal.customerCount > 0 ? projSM / projTotal.customerCount : 0
   const prevUP  = prevTotal.customerCount > 0 ? prevSM / prevTotal.customerCount : 0
   const cell = (v: number) => v > 0 ? yen(Math.round(v)) : '—'
   return (
@@ -1232,18 +1258,24 @@ function CategoryUnitPriceRow({ byStore, prevByStore }: {
         {cell(curUP)}
       </td>
       <td style={{ ...tdNumStyle, background:'#FBF8F2', color:'#888780' }}>—</td>
-      <td style={{ ...tdNumStyle, color: yoyColor(curUP, prevUP) }}>
-        {prevUP > 0 ? pct(curUP, prevUP) : '—'}
+      <td style={{ ...tdNumStyle, color: yoyColor(projUP, prevUP) }}>
+        {prevUP > 0 ? pct(projUP, prevUP) : '—'}
       </td>
     </tr>
   )
 }
 
-function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
+function CategoryRow({ row, isTotal, yoyProjByStore }: {
+  row: RowData; isTotal?: boolean
+  // 前年比セル専用(途中経過の補正合計)。未指定なら row.byStore をそのまま使う。
+  yoyProjByStore?: Record<string, Bucket>
+}) {
   const total     = sumStores(row.byStore)
   const prevTotal = sumStores(row.prevByStore)
+  const projTotal = yoyProjByStore ? sumStores(yoyProjByStore) : total
   // 本部合計と前年比は 惣菜 + 餅 ベース (花/その他は含めない)
   const curSM  = total.souzai     + total.mochi
+  const projSM = projTotal.souzai + projTotal.mochi
   const prevSM = prevTotal.souzai + prevTotal.mochi
 
   const bg = isTotal ? '#FBF8F2'
@@ -1288,8 +1320,8 @@ function CategoryRow({ row, isTotal }: { row: RowData; isTotal?: boolean }) {
       <td style={{ ...tdNumStyle, background:'#FBF8F2' }}>
         {total.customerCount > 0 ? `${total.customerCount}人` : '—'}
       </td>
-      <td style={{ ...tdNumStyle, color: yoyColor(curSM, prevSM) }}>
-        {prevSM > 0 ? pct(curSM, prevSM) : '—'}
+      <td style={{ ...tdNumStyle, color: yoyColor(projSM, prevSM) }}>
+        {prevSM > 0 ? pct(projSM, prevSM) : '—'}
       </td>
     </tr>
   )
