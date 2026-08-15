@@ -146,6 +146,18 @@ function ymd(d: Date): string {
   return `${y}-${m}-${dd}`
 }
 
+// ShipmentMap を [start, endExclusive) の日付キーだけに絞り込む。
+// 'YYYY-MM-DD' キーは辞書順 = 時系列順なので文字列比較で範囲判定できる。
+function filterShipmentByRange(m: ShipmentMap, start: Date, endExclusive: Date): ShipmentMap {
+  const startKey = ymd(start)
+  const endKey   = ymd(endExclusive)
+  const out: ShipmentMap = new Map()
+  m.forEach((v, k) => {
+    if (k >= startKey && k < endKey) out.set(k, v)
+  })
+  return out
+}
+
 function rangeFor(granularity: Granularity, ref: Date): {
   start: Date; endExclusive: Date; endInclusive: Date; label: string
 } {
@@ -596,8 +608,15 @@ export async function GET(req: NextRequest) {
           byStore: e?.byStore ?? {},
         }
       })
-      // 合計の前年比も同曜日補正後の日の合計に揃える
-      prevDaily.forEach((pd) => mergeByStore(prevTotalByStore, pd.byStore))
+      // 「合計」の前年比の分母は、日別行の曜日補正マッチングとは別に、前年同月の
+      // 実績をそのまま単純合計する(曜日補正で月境界をまたぐと、前年同月の一部の日が
+      // 漏れたり、逆に前月/翌月の日が紛れ込んだりして「単純な前年同月合計」とズレるため)。
+      const prevSalesExact = prevSales.filter((s) => {
+        const d = new Date(s.saleDate)
+        return d >= prev.start && d < prev.endExclusive
+      })
+      const prevShipExact = filterShipmentByRange(prevShip, prev.start, prev.endExclusive)
+      prevTotalByStore = aggregateByStore(prevSalesExact, prevShipExact)
       dowByStore     = aggregateDow(curSales, curShip)
       weatherByStore = aggregateWeather(curSales, curShip)
 
