@@ -139,6 +139,7 @@
 | `LINE_CHANNEL_ACCESS_TOKEN` | replyMessage / プロフィール取得用。 |
 | `NEXT_PUBLIC_API_URL` | webhook が返す URL の基底。本番では Vercel URL。 |
 | `API_SECRET` | 予約（未使用）。 |
+| `BLOB_READ_WRITE_TOKEN` | レシート画像アップロード（Vercel Blob）用。Vercel ダッシュボードの Storage で Blob Store を作成すると自動付与される。 |
 
 `.env` は `.gitignore` 済み。コミットしないこと。
 

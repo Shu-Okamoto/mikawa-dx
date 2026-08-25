@@ -45,16 +45,19 @@ export async function GET(req: NextRequest) {
     const result: Record<string, any> = {}
     sales.forEach((s) => {
       result[s.store.storeCode] = {
-        storeName     : s.store.storeName,
-        amount        : Number(s.amount),
-        souzai        : Number(s.souzaiAmount),
-        mochi         : Number(s.mochiAmount),
-        hana          : Number(s.hanaAmount),
-        customerCount : s.customerCount,
-        staffMorning  : Number(s.staffMorning),
-        staffAfternoon: Number(s.staffAfternoon),
-        weather       : s.weather ?? '',
-        notes         : s.notes ?? '',
+        storeName      : s.store.storeName,
+        amount         : Number(s.amount),
+        souzai         : Number(s.souzaiAmount),
+        mochi          : Number(s.mochiAmount),
+        hana           : Number(s.hanaAmount),
+        paypay         : Number(s.paypayAmount),
+        premiumVoucher : Number(s.premiumVoucherAmount),
+        customerCount  : s.customerCount,
+        staffMorning   : Number(s.staffMorning),
+        staffAfternoon : Number(s.staffAfternoon),
+        weather        : s.weather ?? '',
+        receiptImageUrl: s.receiptImageUrl ?? '',
+        notes          : s.notes ?? '',
       }
     })
 
@@ -105,16 +108,20 @@ export async function POST(req: NextRequest) {
     const weather    = VALID_WEATHER.has(weatherRaw) ? weatherRaw : null
 
     const payload = {
-      amount        : Number(data.amount)         || 0,
-      souzaiAmount  : Number(data.souzai)         || 0,
-      mochiAmount   : Number(data.mochi)          || 0,
-      hanaAmount    : Number(data.hana)           || 0,
-      customerCount : Number(data.customerCount)  || 0,
-      staffMorning  : Number(data.staffMorning)   || 0,
-      staffAfternoon: Number(data.staffAfternoon) || 0,
+      amount              : Number(data.amount)         || 0,
+      souzaiAmount        : Number(data.souzai)         || 0,
+      mochiAmount         : Number(data.mochi)          || 0,
+      hanaAmount          : Number(data.hana)           || 0,
+      paypayAmount        : Number(data.paypay)         || 0,
+      premiumVoucherAmount: Number(data.premiumVoucher) || 0,
+      customerCount       : Number(data.customerCount)  || 0,
+      staffMorning        : Number(data.staffMorning)   || 0,
+      staffAfternoon      : Number(data.staffAfternoon) || 0,
       weather,
-      notes         : data.notes ?? null,
-      inputUser     : user.name,
+      receiptImageUrl     : typeof data.receiptImageUrl === 'string' && data.receiptImageUrl
+        ? data.receiptImageUrl : null,
+      notes               : data.notes ?? null,
+      inputUser           : user.name,
     }
 
     await prisma.sale.upsert({
