@@ -4,14 +4,16 @@ import prisma from '@/lib/prisma'
 import { nowJst } from '@/lib/serverDate'
 
 interface SaleRow {
-  saleDate     : Date
-  amount       : { toNumber: () => number } | number
-  souzaiAmount : { toNumber: () => number } | number
-  mochiAmount  : { toNumber: () => number } | number
-  hanaAmount   : { toNumber: () => number } | number
-  customerCount: number
-  weather      : string | null
-  store        : { storeName: string }
+  saleDate            : Date
+  amount              : { toNumber: () => number } | number
+  souzaiAmount        : { toNumber: () => number } | number
+  mochiAmount         : { toNumber: () => number } | number
+  hanaAmount          : { toNumber: () => number } | number
+  paypayAmount        : { toNumber: () => number } | number
+  premiumVoucherAmount: { toNumber: () => number } | number
+  customerCount       : number
+  weather             : string | null
+  store               : { storeName: string }
 }
 
 // 日付ごと・店舗ごとの出荷額(惣菜/餅)。public.hq_daily_reports の west_sales / south_sales 由来。
@@ -33,6 +35,8 @@ interface Bucket {
   mochi         : number
   shipmentMochi : number
   hana          : number
+  paypay        : number
+  voucher       : number   // プレミアム商品券
   customerCount : number
   days          : number
 }
@@ -45,7 +49,8 @@ function toNum(v: { toNumber: () => number } | number): number {
 }
 
 function newBucket(): Bucket {
-  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, shipmentMochi: 0, hana: 0, customerCount: 0, days: 0 }
+  return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, shipmentMochi: 0,
+    hana: 0, paypay: 0, voucher: 0, customerCount: 0, days: 0 }
 }
 
 function addRow(b: Bucket, s: SaleRow, shipSouzai: number, shipMochi: number) {
@@ -55,6 +60,8 @@ function addRow(b: Bucket, s: SaleRow, shipSouzai: number, shipMochi: number) {
   b.mochi          += toNum(s.mochiAmount)
   b.shipmentMochi  += shipMochi
   b.hana           += toNum(s.hanaAmount)
+  b.paypay         += toNum(s.paypayAmount)
+  b.voucher        += toNum(s.premiumVoucherAmount)
   b.customerCount  += s.customerCount
   b.days           += 1
 }
@@ -298,6 +305,8 @@ function aggregateDow(sales: SaleRow[], ship: ShipmentMap): Record<string, DowEn
     b.mochi          += toNum(s.mochiAmount)
     b.shipmentMochi  += shipMochiFor(s, ship)
     b.hana           += toNum(s.hanaAmount)
+    b.paypay         += toNum(s.paypayAmount)
+    b.voucher        += toNum(s.premiumVoucherAmount)
     b.customerCount  += s.customerCount
     // 曜日別の日数は売上 > 0 の日だけ加算する
     if (amt > 0) b.days += 1
@@ -414,6 +423,8 @@ function mergeByStore(into: Record<string, Bucket>, from: Record<string, Bucket>
     t.mochi          += b.mochi
     t.shipmentMochi  += b.shipmentMochi
     t.hana           += b.hana
+    t.paypay         += b.paypay
+    t.voucher        += b.voucher
     t.customerCount  += b.customerCount
     t.days           += b.days
   })
