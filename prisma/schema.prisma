@@ -181,22 +181,25 @@ model OrderCategoryMemo {
 }
 
 model Sale {
-  id             Int      @id @default(autoincrement())
-  saleDate       DateTime @db.Date
-  store          Store    @relation(fields: [storeId], references: [id])
-  storeId        Int
-  amount         Decimal  @default(0)
-  souzaiAmount   Decimal  @default(0)
-  mochiAmount    Decimal  @default(0)
-  hanaAmount     Decimal  @default(0)
-  customerCount  Int      @default(0)
-  staffMorning   Decimal  @default(0)
-  staffAfternoon Decimal  @default(0)
-  weather        String?  // 晴 / 曇 / 雨 / 雪 (空欄=未記録)
-  notes          String?
-  inputUser      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  id                   Int      @id @default(autoincrement())
+  saleDate             DateTime @db.Date
+  store                Store    @relation(fields: [storeId], references: [id])
+  storeId              Int
+  amount               Decimal  @default(0)
+  souzaiAmount         Decimal  @default(0)
+  mochiAmount          Decimal  @default(0)
+  hanaAmount           Decimal  @default(0)
+  paypayAmount         Decimal  @default(0)
+  premiumVoucherAmount Decimal  @default(0)
+  customerCount        Int      @default(0)
+  staffMorning         Decimal  @default(0)
+  staffAfternoon       Decimal  @default(0)
+  weather              String?  // 晴 / 曇 / 雨 / 雪 (空欄=未記録)
+  receiptImageUrl      String?
+  notes                String?
+  inputUser            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
 
   @@unique([saleDate, storeId])
   @@schema("dx")

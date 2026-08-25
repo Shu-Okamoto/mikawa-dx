@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  useEffect, useState, useCallback, useMemo, Suspense, use,
+  useEffect, useState, useCallback, useMemo, useRef, Suspense, use,
 } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -43,14 +43,17 @@ interface SentCategory {
 }
 
 interface SalesData {
-  amount        : string
-  souzai        : string
-  mochi         : string
-  hana          : string
-  customerCount : string
-  staffMorning  : string
-  staffAfternoon: string
-  weather       : string  // '' | '晴' | '曇' | '雨' | '雪'
+  amount         : string
+  souzai         : string
+  mochi          : string
+  hana           : string
+  paypay         : string
+  premiumVoucher : string
+  customerCount  : string
+  staffMorning   : string
+  staffAfternoon : string
+  weather        : string  // '' | '晴' | '曇' | '雨' | '雪'
+  receiptImageUrl: string
 }
 
 const WEATHER_OPTIONS = [
@@ -90,8 +93,9 @@ const CAT_ICONS: Record<string, string> = {
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
 
 const EMPTY_SALES: SalesData = {
-  amount: '', souzai: '', mochi: '', hana: '',
+  amount: '', souzai: '', mochi: '', hana: '', paypay: '', premiumVoucher: '',
   customerCount: '', staffMorning: '', staffAfternoon: '', weather: '',
+  receiptImageUrl: '',
 }
 
 const STAFF_OPTIONS = ['2', '2.5', '3', '3.5', '4', '4.5', '5']
@@ -220,14 +224,17 @@ function StorePageContent({ branch }: { branch: string }) {
     const s = salesData?.[branch]
     if (s) {
       const sd: SalesData = {
-        amount        : s.amount         ? String(s.amount)         : '',
-        souzai        : s.souzai         ? String(s.souzai)         : '',
-        mochi         : s.mochi          ? String(s.mochi)          : '',
-        hana          : s.hana           ? String(s.hana)           : '',
-        customerCount : s.customerCount  ? String(s.customerCount)  : '',
-        staffMorning  : s.staffMorning   ? String(s.staffMorning)   : '',
-        staffAfternoon: s.staffAfternoon ? String(s.staffAfternoon) : '',
-        weather       : s.weather        ? String(s.weather)        : '',
+        amount         : s.amount         ? String(s.amount)         : '',
+        souzai         : s.souzai         ? String(s.souzai)         : '',
+        mochi          : s.mochi          ? String(s.mochi)          : '',
+        hana           : s.hana           ? String(s.hana)           : '',
+        paypay         : s.paypay         ? String(s.paypay)         : '',
+        premiumVoucher : s.premiumVoucher ? String(s.premiumVoucher) : '',
+        customerCount  : s.customerCount  ? String(s.customerCount)  : '',
+        staffMorning   : s.staffMorning   ? String(s.staffMorning)   : '',
+        staffAfternoon : s.staffAfternoon ? String(s.staffAfternoon) : '',
+        weather        : s.weather        ? String(s.weather)        : '',
+        receiptImageUrl: s.receiptImageUrl ? String(s.receiptImageUrl) : '',
       }
       setSales(sd)
       setSalesSent({ submittedAt: '', orders: buildSalesOrders(sd) })
@@ -241,14 +248,17 @@ function StorePageContent({ branch }: { branch: string }) {
   function buildSalesOrders(s: SalesData): SentItem[] {
     const yen = (v: string) => '¥' + (Number(v) || 0).toLocaleString()
     return [
-      { productId: 's1', productName: '売上金額',  category: '実績', unit: '', status: yen(s.amount),        qty: '' },
-      { productId: 's2', productName: '惣菜売上',  category: '実績', unit: '', status: yen(s.souzai),        qty: '' },
-      { productId: 's3', productName: '餅売上',    category: '実績', unit: '', status: yen(s.mochi),         qty: '' },
-      { productId: 's4', productName: '花売上',    category: '実績', unit: '', status: yen(s.hana),          qty: '' },
-      { productId: 's5', productName: '客数',      category: '実績', unit: '', status: (Number(s.customerCount) || 0) + '人', qty: '' },
-      { productId: 's6', productName: '出勤前半',  category: '実績', unit: '', status: (s.staffMorning   || '-') + '人', qty: '' },
-      { productId: 's7', productName: '出勤後半',  category: '実績', unit: '', status: (s.staffAfternoon || '-') + '人', qty: '' },
-      { productId: 's8', productName: '天気',      category: '実績', unit: '', status: s.weather || '-', qty: '' },
+      { productId: 's1', productName: '売上金額',    category: '実績', unit: '', status: yen(s.amount),        qty: '' },
+      { productId: 's2', productName: '惣菜売上',    category: '実績', unit: '', status: yen(s.souzai),        qty: '' },
+      { productId: 's3', productName: '餅売上',      category: '実績', unit: '', status: yen(s.mochi),         qty: '' },
+      { productId: 's4', productName: '花売上',      category: '実績', unit: '', status: yen(s.hana),          qty: '' },
+      { productId: 's9', productName: 'PayPay売上',  category: '実績', unit: '', status: yen(s.paypay),         qty: '' },
+      { productId: 's10', productName: 'プレミアム商品券', category: '実績', unit: '', status: yen(s.premiumVoucher), qty: '' },
+      { productId: 's5', productName: '客数',        category: '実績', unit: '', status: (Number(s.customerCount) || 0) + '人', qty: '' },
+      { productId: 's6', productName: '出勤前半',    category: '実績', unit: '', status: (s.staffMorning   || '-') + '人', qty: '' },
+      { productId: 's7', productName: '出勤後半',    category: '実績', unit: '', status: (s.staffAfternoon || '-') + '人', qty: '' },
+      { productId: 's8', productName: '天気',        category: '実績', unit: '', status: s.weather || '-', qty: '' },
+      { productId: 's11', productName: 'レシート画像', category: '実績', unit: '', status: s.receiptImageUrl ? 'あり' : 'なし', qty: '' },
     ]
   }
 
@@ -478,6 +488,8 @@ function StorePageContent({ branch }: { branch: string }) {
           onBack={backToCatSelect}
           onSubmit={submitSales}
           busy={busy}
+          authFetch={authFetch}
+          branch={branch}
         />
       )}
 
@@ -1227,13 +1239,15 @@ function FooterBar({
 }
 
 function SalesScreen({
-  sales, setSales, onBack, onSubmit, busy,
+  sales, setSales, onBack, onSubmit, busy, authFetch, branch,
 }: {
-  sales   : SalesData
+  sales    : SalesData
   setSales: (s: SalesData) => void
-  onBack  : () => void
-  onSubmit: () => void
-  busy    : boolean
+  onBack   : () => void
+  onSubmit : () => void
+  busy     : boolean
+  authFetch: AuthFetch
+  branch   : string
 }) {
   const upd = (k: keyof SalesData, v: string) => setSales({ ...sales, [k]: v })
   const inputStyle: React.CSSProperties = {
@@ -1257,12 +1271,14 @@ function SalesScreen({
         }}>
           <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>売上</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-            {(['amount', 'souzai', 'mochi', 'hana'] as const).map((k) => (
+            {(['amount', 'souzai', 'mochi', 'hana', 'paypay', 'premiumVoucher'] as const).map((k) => (
               <div key={k}>
                 <div style={labelStyle}>
                   {k === 'amount' ? '売上金額' :
                    k === 'souzai' ? '惣菜売上' :
-                   k === 'mochi'  ? '餅売上'   : '花売上'}
+                   k === 'mochi'  ? '餅売上'   :
+                   k === 'hana'   ? '花売上'   :
+                   k === 'paypay' ? 'PayPay売上' : 'プレミアム商品券'}
                 </div>
                 <div style={{ position: 'relative' }}>
                   <span style={{
@@ -1328,6 +1344,13 @@ function SalesScreen({
               )
             })}
           </div>
+
+          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, margin: '12px 0 8px' }}>
+            レシート画像
+          </div>
+          <ReceiptUpload authFetch={authFetch} branch={branch}
+            value={sales.receiptImageUrl}
+            onChange={(url) => upd('receiptImageUrl', url)} disabled={busy} />
         </div>
       </div>
 
@@ -1378,14 +1401,17 @@ function PastSalesScreen({
         if (cancelled) return
         const s = data?.[branch]
         setSales(s ? {
-          amount        : s.amount         ? String(s.amount)         : '',
-          souzai        : s.souzai         ? String(s.souzai)         : '',
-          mochi         : s.mochi          ? String(s.mochi)          : '',
-          hana          : s.hana           ? String(s.hana)           : '',
-          customerCount : s.customerCount  ? String(s.customerCount)  : '',
-          staffMorning  : s.staffMorning   ? String(s.staffMorning)   : '',
-          staffAfternoon: s.staffAfternoon ? String(s.staffAfternoon) : '',
-          weather       : s.weather        ? String(s.weather)        : '',
+          amount         : s.amount         ? String(s.amount)         : '',
+          souzai         : s.souzai         ? String(s.souzai)         : '',
+          mochi          : s.mochi          ? String(s.mochi)          : '',
+          hana           : s.hana           ? String(s.hana)           : '',
+          paypay         : s.paypay         ? String(s.paypay)         : '',
+          premiumVoucher : s.premiumVoucher ? String(s.premiumVoucher) : '',
+          customerCount  : s.customerCount  ? String(s.customerCount)  : '',
+          staffMorning   : s.staffMorning   ? String(s.staffMorning)   : '',
+          staffAfternoon : s.staffAfternoon ? String(s.staffAfternoon) : '',
+          weather        : s.weather        ? String(s.weather)        : '',
+          receiptImageUrl: s.receiptImageUrl ? String(s.receiptImageUrl) : '',
         } : EMPTY_SALES)
       } catch {
         if (!cancelled) setSales(EMPTY_SALES)
@@ -1453,12 +1479,14 @@ function PastSalesScreen({
         }}>
           <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>売上</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-            {(['amount', 'souzai', 'mochi', 'hana'] as const).map((k) => (
+            {(['amount', 'souzai', 'mochi', 'hana', 'paypay', 'premiumVoucher'] as const).map((k) => (
               <div key={k}>
                 <div style={labelStyle}>
                   {k === 'amount' ? '売上金額' :
                    k === 'souzai' ? '惣菜売上' :
-                   k === 'mochi'  ? '餅売上'   : '花売上'}
+                   k === 'mochi'  ? '餅売上'   :
+                   k === 'hana'   ? '花売上'   :
+                   k === 'paypay' ? 'PayPay売上' : 'プレミアム商品券'}
                 </div>
                 <div style={{ position: 'relative' }}>
                   <span style={{
@@ -1524,6 +1552,13 @@ function PastSalesScreen({
               )
             })}
           </div>
+
+          <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, margin: '12px 0 8px' }}>
+            レシート画像
+          </div>
+          <ReceiptUpload authFetch={authFetch} branch={branch} date={date}
+            value={sales.receiptImageUrl}
+            onChange={(url) => upd('receiptImageUrl', url)} disabled={busy || loading} />
         </div>
       </div>
 
@@ -1544,6 +1579,144 @@ function PastSalesScreen({
         onClick={onSubmit}
         disabled={busy || loading}
       />
+    </div>
+  )
+}
+
+// レシート画像をブラウザ側でリサイズ・圧縮して JPEG Blob にする。
+// スマホカメラの撮って出し(数MB〜)だとサーバー(Vercelの関数)のボディサイズ上限に
+// 引っかかりやすいため、アップロード前に長辺 1600px / 品質 0.8 に落とす。
+const RECEIPT_MAX_DIM = 1600
+async function compressReceiptImage(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file)
+  try {
+    const scale = Math.min(1, RECEIPT_MAX_DIM / Math.max(bitmap.width, bitmap.height))
+    const w = Math.max(1, Math.round(bitmap.width * scale))
+    const h = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('canvas unsupported')
+    ctx.drawImage(bitmap, 0, 0, w, h)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8))
+    if (!blob) throw new Error('圧縮に失敗しました')
+    return blob
+  } finally {
+    bitmap.close()
+  }
+}
+
+const receiptBtnStyle: React.CSSProperties = {
+  padding: '6px 12px', borderRadius: '8px', fontSize: '13px',
+  border: '1.5px solid #E5E1D8', background: 'white', color: '#2C2C2A',
+  fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
+}
+
+// 実績入力(本日 / 過去日)共通のレシート画像アップロード。
+// アップロード自体は /api/sales/receipt が担い、この時点ではまだ Sale には保存しない。
+// 返ってきた URL を親の SalesData.receiptImageUrl に載せ、実績登録の送信時に一緒に保存する。
+function ReceiptUpload({
+  authFetch, branch, date, value, onChange, disabled,
+}: {
+  authFetch: AuthFetch
+  branch   : string
+  date?    : string   // 'YYYY-MM-DD'。省略時はサーバー側で当日扱い
+  value    : string    // 現在の画像URL ('' = 未設定)
+  onChange : (url: string) => void
+  disabled?: boolean
+}) {
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const pick = () => { if (!disabled && !busy) inputRef.current?.click() }
+
+  const onFileSelected = async (file: File) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const compressed = await compressReceiptImage(file)
+      const form = new FormData()
+      form.append('branch', branch)
+      if (date) form.append('date', date)
+      if (value) form.append('oldUrl', value)
+      form.append('file', compressed, 'receipt.jpg')
+      const res  = await authFetch('/api/sales/receipt', { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok || !data.url) {
+        setError(data.error || 'アップロードに失敗しました')
+        return
+      }
+      onChange(data.url)
+    } catch {
+      setError('画像の処理に失敗しました')
+    } finally {
+      setBusy(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  const onRemove = async () => {
+    if (!value || disabled || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await authFetch('/api/sales/receipt', {
+        method: 'DELETE',
+        body  : JSON.stringify({ url: value, branch }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || '削除に失敗しました')
+        return
+      }
+      onChange('')
+    } catch {
+      setError('削除に失敗しました')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div>
+      <input ref={inputRef} type="file" accept="image/*" capture="environment"
+        style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelected(f) }} />
+
+      {value ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={value} alt="レシート画像" style={{
+            width: '72px', height: '72px', objectFit: 'cover',
+            borderRadius: '8px', border: '1.5px solid #E5E1D8', flexShrink: 0,
+          }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <button type="button" onClick={pick} disabled={disabled || busy} style={receiptBtnStyle}>
+              {busy ? '処理中...' : '差し替え'}
+            </button>
+            <button type="button" onClick={onRemove} disabled={disabled || busy}
+              style={{ ...receiptBtnStyle, color: '#E24B4A', borderColor: '#F3C6C4' }}>
+              削除
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={pick} disabled={disabled || busy}
+          style={{
+            width: '100%', padding: '12px', borderRadius: '8px',
+            border: '1.5px dashed #D9D5CC', background: 'white',
+            color: '#2C2C2A', fontFamily: 'inherit', fontSize: '14px',
+            cursor: disabled || busy ? 'not-allowed' : 'pointer',
+          }}>
+          {busy ? 'アップロード中...' : '📷 レシート画像を撮影・選択'}
+        </button>
+      )}
+
+      {error && (
+        <div style={{ color: '#E24B4A', fontSize: '12px', marginTop: '6px' }}>{error}</div>
+      )}
     </div>
   )
 }
