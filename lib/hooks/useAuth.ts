@@ -178,10 +178,15 @@ export function useAuth(arg?: UseAuthArg, legacyOptions?: LegacyOptions) {
   // 認証付き fetch。401 は JWT が本当に期限切れの時だけログアウト扱い。
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const stored = getStoredAuth()
+    // FormData(画像アップロード等)の場合は Content-Type を指定しない。
+    // multipart では boundary 付きのヘッダーをブラウザが自動生成する必要があり、
+    // ここで 'application/json' を被せると boundary が失われてサーバー側の
+    // formData() 解析が必ず失敗するため。
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
     const res = await fetch(url, {
       ...options,
       headers: {
-        'Content-Type' : 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         'Authorization': `Bearer ${stored?.token ?? ''}`,
         ...(options.headers || {}),
       },
