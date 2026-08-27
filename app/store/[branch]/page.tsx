@@ -1615,20 +1615,42 @@ const receiptBtnStyle: React.CSSProperties = {
 
 // 実績入力(本日 / 過去日)共通のレシート画像アップロード。
 // アップロード自体は /api/sales/receipt が担い、この時点ではまだ Sale には保存しない。
-// 返ってきた URL を親の SalesData.receiptImageUrl に載せ、実績登録の送信時に一緒に保存する。
+// 返ってきた pathname を親の SalesData.receiptImageUrl に載せ、実績登録の送信時に保存する。
+// 画像は private blob なので直接 <img src> では表示できず、認証付き GET で取得して
+// objectURL 化して表示する。
 function ReceiptUpload({
   authFetch, branch, date, value, onChange, disabled,
 }: {
   authFetch: AuthFetch
   branch   : string
   date?    : string   // 'YYYY-MM-DD'。省略時はサーバー側で当日扱い
-  value    : string    // 現在の画像URL ('' = 未設定)
-  onChange : (url: string) => void
+  value    : string    // 現在の画像 pathname ('' = 未設定)
+  onChange : (path: string) => void
   disabled?: boolean
 }) {
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // value(pathname) が変わったら認証付きで画像を取得してプレビューを作り直す
+  useEffect(() => {
+    if (!value) { setPreview(null); return }
+    let cancelled = false
+    let objectUrl: string | null = null
+    authFetch(`/api/sales/receipt?path=${encodeURIComponent(value)}`)
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!blob || cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setPreview(objectUrl)
+      })
+      .catch(() => { /* プレビューが出ないだけなので握りつぶす */ })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [value, authFetch])
 
   const pick = () => { if (!disabled && !busy) inputRef.current?.click() }
 
@@ -1640,15 +1662,15 @@ function ReceiptUpload({
       const form = new FormData()
       form.append('branch', branch)
       if (date) form.append('date', date)
-      if (value) form.append('oldUrl', value)
+      if (value) form.append('oldPath', value)
       form.append('file', compressed, 'receipt.jpg')
       const res  = await authFetch('/api/sales/receipt', { method: 'POST', body: form })
       const data = await res.json()
-      if (!res.ok || !data.url) {
+      if (!res.ok || !data.path) {
         setError(data.error || 'アップロードに失敗しました')
         return
       }
-      onChange(data.url)
+      onChange(data.path)
     } catch {
       setError('画像の処理に失敗しました')
     } finally {
@@ -1664,7 +1686,7 @@ function ReceiptUpload({
     try {
       const res = await authFetch('/api/sales/receipt', {
         method: 'DELETE',
-        body  : JSON.stringify({ url: value, branch }),
+        body  : JSON.stringify({ path: value }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -1687,11 +1709,20 @@ function ReceiptUpload({
 
       {value ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={value} alt="レシート画像" style={{
-            width: '72px', height: '72px', objectFit: 'cover',
-            borderRadius: '8px', border: '1.5px solid #E5E1D8', flexShrink: 0,
-          }} />
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={preview} alt="レシート画像" style={{
+              width: '72px', height: '72px', objectFit: 'cover',
+              borderRadius: '8px', border: '1.5px solid #E5E1D8', flexShrink: 0,
+            }} />
+          ) : (
+            <div style={{
+              width: '72px', height: '72px', borderRadius: '8px',
+              border: '1.5px solid #E5E1D8', flexShrink: 0, background: '#F5F1EA',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '11px', color: '#888780',
+            }}>読込中</div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <button type="button" onClick={pick} disabled={disabled || busy} style={receiptBtnStyle}>
               {busy ? '処理中...' : '差し替え'}
