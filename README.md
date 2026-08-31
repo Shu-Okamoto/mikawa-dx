@@ -67,6 +67,7 @@
 | 「注文」 | `/order/<branch>` URL。`all` は両方。 |
 | 「カレンダー」 | `/calendar` URL（全 role 共通）。 |
 | 「売上」 | `/store/<branch>` URL（売上入力は発注ページ内に統合）。 |
+| 「タイムカード」 | 日報システムの勤怠打刻 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
 | 「hq」 | `/hq?category=hqN` URL。`all` は `/hq`（全カテゴリ）。 |
 | 「boss」 | `/boss` URL（`all` のみ）。 |
 | 上記以外 | role に応じたコマンド一覧を返信。 |
