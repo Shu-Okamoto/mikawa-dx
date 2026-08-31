@@ -10,6 +10,7 @@ import {
   setPinSession,
   setMasterAccessFlag,
 } from '@/lib/auth-client'
+import { nippoClockUrl, nippoDailyReportUrl } from '@/lib/external-links'
 
 type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
 
@@ -51,20 +52,16 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
   {
     title: '⏰ 勤怠打刻',
     rows: [[
-      { role: 'nishi',  label: '西店',
-        path: 'https://nippo-system-blue.vercel.app/store/nishi/clock',  external: true },
-      { role: 'minami', label: '南店',
-        path: 'https://nippo-system-blue.vercel.app/store/minami/clock', external: true },
+      { role: 'nishi',  label: '西店',  path: nippoClockUrl('nishi'),  external: true },
+      { role: 'minami', label: '南店', path: nippoClockUrl('minami'), external: true },
     ]],
   },
   {
     title: '📝 日報',
     rows: [
       [
-        { role: 'nishi',  label: '西店',
-          path: 'https://nippo-system-blue.vercel.app/store/nishi/today',  external: true },
-        { role: 'minami', label: '南店',
-          path: 'https://nippo-system-blue.vercel.app/store/minami/today', external: true },
+        { role: 'nishi',  label: '西店',  path: nippoDailyReportUrl('nishi'),  external: true },
+        { role: 'minami', label: '南店', path: nippoDailyReportUrl('minami'), external: true },
       ],
       [
         { role: 'all', path: '/public-dashboard', label: '本日の売上', public: true },

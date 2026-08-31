@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import prisma from '@/lib/prisma'
 import { replyMessage, fetchLineProfile } from '@/lib/line'
+import { nippoClockUrl } from '@/lib/external-links'
 
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
 
 interface RoleRoute {
   label: string
   path : string
+  // 外部システム(日報/勤怠)への直リンク。path をそのまま使い、
+  // baseUrl の付与も lineUserId によるログインも行わない。
+  external?: boolean
 }
 
 const ROUTES_BY_COMMAND: Record<string, Record<string, RoleRoute[]>> = {
@@ -52,6 +56,14 @@ const ROUTES_BY_COMMAND: Record<string, Record<string, RoleRoute[]>> = {
   'boss': {
     all: [{ label: 'ボス画面', path: '/boss' }],
   },
+  'タイムカード': {
+    nishi : [{ label: 'タイムカード', path: nippoClockUrl('nishi'),  external: true }],
+    minami: [{ label: 'タイムカード', path: nippoClockUrl('minami'), external: true }],
+    all   : [
+      { label: '西のタイムカード', path: nippoClockUrl('nishi'),  external: true },
+      { label: '南のタイムカード', path: nippoClockUrl('minami'), external: true },
+    ],
+  },
 }
 
 const DEFAULT_ROUTES: Record<string, RoleRoute[]> = {
@@ -64,12 +76,13 @@ const DEFAULT_ROUTES: Record<string, RoleRoute[]> = {
 }
 
 const COMMAND_LABELS: Record<string, string> = {
-  '発注'    : '発注入力',
-  '注文'    : '商品注文',
-  'カレンダー': 'カレンダー',
-  '売上'    : '売上入力',
-  'hq'      : '本部画面',
-  'boss'    : 'ボス画面',
+  '発注'      : '発注入力',
+  '注文'      : '商品注文',
+  'カレンダー'  : 'カレンダー',
+  '売上'      : '売上入力',
+  'タイムカード': '勤怠打刻',
+  'hq'        : '本部画面',
+  'boss'      : 'ボス画面',
 }
 
 const SESSION_COMMANDS = new Set(['ログイン', 'メニュー'])
@@ -90,10 +103,14 @@ function buildUrlListMessage(
   baseUrl   : string,
 ): string {
   const lines = routes.map((r) => {
+    // 外部システムは自前のログインを持つので、URL をそのまま案内する
+    if (r.external) return `【${r.label}】\n${r.path}`
     const sep = r.path.includes('?') ? '&' : '?'
     return `【${r.label}】\n${baseUrl}${r.path}${sep}lineUserId=${lineUserId}`
   })
-  return `${name}さん\n以下のURLからアクセスしてください。\n\n${lines.join('\n\n')}\n\n※有効時間: 12時間`
+  // 有効時間の注記は lineUserId 付きの自システム URL にだけ意味がある
+  const note = routes.some((r) => !r.external) ? '\n\n※有効時間: 12時間' : ''
+  return `${name}さん\n以下のURLからアクセスしてください。\n\n${lines.join('\n\n')}${note}`
 }
 
 function buildCommandHelp(name: string, role: string): string {
