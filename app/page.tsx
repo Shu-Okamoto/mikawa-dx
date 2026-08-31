@@ -49,6 +49,15 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     ]],
   },
   {
+    title: '⏰ 勤怠打刻',
+    rows: [[
+      { role: 'nishi',  label: '西店',
+        path: 'https://nippo-system-blue.vercel.app/store/nishi/clock',  external: true },
+      { role: 'minami', label: '南店',
+        path: 'https://nippo-system-blue.vercel.app/store/minami/clock', external: true },
+    ]],
+  },
+  {
     title: '📝 日報',
     rows: [
       [
