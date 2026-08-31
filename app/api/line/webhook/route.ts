@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import prisma from '@/lib/prisma'
 import { replyMessage, fetchLineProfile } from '@/lib/line'
-import { nippoClockUrl } from '@/lib/external-links'
+import { nippoClockUrl, nippoDailyReportUrl } from '@/lib/external-links'
 
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
 
@@ -64,6 +64,14 @@ const ROUTES_BY_COMMAND: Record<string, Record<string, RoleRoute[]>> = {
       { label: '南のタイムカード', path: nippoClockUrl('minami'), external: true },
     ],
   },
+  '日報': {
+    nishi : [{ label: '日報', path: nippoDailyReportUrl('nishi'),  external: true }],
+    minami: [{ label: '日報', path: nippoDailyReportUrl('minami'), external: true }],
+    all   : [
+      { label: '西の日報', path: nippoDailyReportUrl('nishi'),  external: true },
+      { label: '南の日報', path: nippoDailyReportUrl('minami'), external: true },
+    ],
+  },
 }
 
 const DEFAULT_ROUTES: Record<string, RoleRoute[]> = {
@@ -81,6 +89,7 @@ const COMMAND_LABELS: Record<string, string> = {
   'カレンダー'  : 'カレンダー',
   '売上'      : '売上入力',
   'タイムカード': '勤怠打刻',
+  '日報'      : '日報入力',
   'hq'        : '本部画面',
   'boss'      : 'ボス画面',
 }
