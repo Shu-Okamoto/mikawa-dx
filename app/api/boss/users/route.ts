@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
       lineUserId : u.lineUserId,
       displayName: u.displayName,
       pictureUrl : u.pictureUrl,
+      freeeId    : u.freeeId,
       isActive   : u.isActive,
       storeCode  : u.store?.storeCode ?? null,
       storeName  : u.store?.storeName ?? null,
@@ -53,12 +54,15 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const { id, role, isActive } = await req.json()
+    const { id, role, isActive, freeeId } = await req.json()
     if (typeof id !== 'number') {
       return NextResponse.json({ error: 'id が不正です' }, { status: 400 })
     }
     if (role !== undefined && !VALID_ROLES.has(role)) {
       return NextResponse.json({ error: 'role が不正です' }, { status: 400 })
+    }
+    if (freeeId !== undefined && freeeId !== null && typeof freeeId !== 'string') {
+      return NextResponse.json({ error: 'freeeId が不正です' }, { status: 400 })
     }
 
     const before = await prisma.user.findUnique({ where: { id } })
@@ -71,6 +75,10 @@ export async function PATCH(req: NextRequest) {
       data : {
         ...(role !== undefined ? { role } : {}),
         ...(isActive !== undefined ? { isActive } : {}),
+        // 空文字は「未登録」として null に寄せる
+        ...(freeeId !== undefined
+          ? { freeeId: typeof freeeId === 'string' && freeeId.trim() ? freeeId.trim() : null }
+          : {}),
       },
     })
 

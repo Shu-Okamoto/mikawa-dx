@@ -12,6 +12,7 @@ interface ManagedUser {
   lineUserId : string | null
   displayName: string | null
   pictureUrl : string | null
+  freeeId    : string | null
   isActive   : boolean
   storeCode  : string | null
   storeName  : string | null
@@ -33,7 +34,8 @@ function UsersContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const { toast, showToast } = useToast()
   const [users, setUsers]   = useState<ManagedUser[]>([])
-  const [drafts, setDrafts] = useState<Record<number, { role: string; isActive: boolean }>>({})
+  const [drafts, setDrafts] =
+    useState<Record<number, { role: string; isActive: boolean; freeeId: string }>>({})
   const [savingId, setSavingId] = useState<number | null>(null)
 
   const fetchUsers = useCallback(async () => {
@@ -41,8 +43,10 @@ function UsersContent() {
     const res  = await authFetch('/api/boss/users')
     const data: ManagedUser[] = await res.json()
     setUsers(data)
-    const d: Record<number, { role: string; isActive: boolean }> = {}
-    data.forEach((u) => { d[u.id] = { role: u.role, isActive: u.isActive } })
+    const d: Record<number, { role: string; isActive: boolean; freeeId: string }> = {}
+    data.forEach((u) => {
+      d[u.id] = { role: u.role, isActive: u.isActive, freeeId: u.freeeId ?? '' }
+    })
     setDrafts(d)
   }, [user])
 
@@ -60,6 +64,7 @@ function UsersContent() {
         id      : target.id,
         role    : d.role,
         isActive: d.isActive,
+        freeeId : d.freeeId,
       }),
     })
     const data = await res.json()
@@ -130,13 +135,17 @@ function UserCard({
   user, draft, onChange, onSave, saving,
 }: {
   user   : ManagedUser
-  draft  : { role: string; isActive: boolean } | undefined
-  onChange: (d: { role: string; isActive: boolean }) => void
+  draft  : { role: string; isActive: boolean; freeeId: string } | undefined
+  onChange: (d: { role: string; isActive: boolean; freeeId: string }) => void
   onSave : () => void
   saving : boolean
 }) {
-  const current = draft ?? { role: user.role, isActive: user.isActive }
-  const changed = current.role !== user.role || current.isActive !== user.isActive
+  const current = draft ?? {
+    role: user.role, isActive: user.isActive, freeeId: user.freeeId ?? '',
+  }
+  const changed = current.role !== user.role
+    || current.isActive !== user.isActive
+    || current.freeeId.trim() !== (user.freeeId ?? '')
 
   return (
     <div style={{ background:'white', borderRadius:'16px',
@@ -182,6 +191,20 @@ function UserCard({
             onChange={(e) => onChange({ ...current, isActive: e.target.checked })} />
           有効
         </label>
+      </div>
+
+      {/* freee 連携 ID: 日報システムの打刻情報と突き合わせるキー。
+          未入力の場合、LINE「タイムカード」では店舗共通 URL を返す。 */}
+      <div style={{ marginBottom:'8px' }}>
+        <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>
+          freee連携ID（勤怠打刻の個別URL用・空欄可）
+        </div>
+        <input type="text" value={current.freeeId}
+          onChange={(e) => onChange({ ...current, freeeId: e.target.value })}
+          placeholder="未登録"
+          style={{ width:'100%', padding:'8px', border:'1.5px solid #E5E1D8',
+            borderRadius:'8px', fontSize:'14px', fontFamily:'inherit',
+            boxSizing:'border-box' }} />
       </div>
 
       <button onClick={onSave} disabled={!changed || saving}

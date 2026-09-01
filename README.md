@@ -67,7 +67,7 @@
 | 「注文」 | `/order/<branch>` URL。`all` は両方。 |
 | 「カレンダー」 | `/calendar` URL（全 role 共通）。 |
 | 「売上」 | `/store/<branch>` URL（売上入力は発注ページ内に統合）。 |
-| 「タイムカード」 | 日報システムの勤怠打刻 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
+| 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff_private` を引き、`clock_token` があれば個別 URL（`/store/<branch>/clock/<token>`）、無ければ店舗共通 URL。`all` は共通 URL を両店舗ぶん返信。外部システムのため `lineUserId` は付けない。 |
 | 「日報」 | 日報システムの日報入力 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
 | 「hq」 | `/hq?category=hqN` URL。`all` は `/hq`（全カテゴリ）。 |
 | 「boss」 | `/boss` URL（`all` のみ）。 |
@@ -120,7 +120,7 @@
 - `Vendor` — 仕入先
 - `Product` — 商品（`category`: 野菜 / 果物 / 餅・乾物菓子類）
 - `OrderProduct` — 店内予約注文用商品マスタ（弁当等）
-- `User` — LINE 連携ユーザー（`role`, `lineUserId`, `displayName`, `pictureUrl`）
+- `User` — LINE 連携ユーザー（`role`, `lineUserId`, `displayName`, `pictureUrl`, `freeeId`）
 - `DailyOrder` — 店舗からの日次発注リクエスト
 - `ConfirmedOrder` — 本部が確定した発注（仕入先送信用、各店数量 + 調整値）
 - `InstoreOrder` — 店内予約注文（顧客情報、配達日時、領収書）
