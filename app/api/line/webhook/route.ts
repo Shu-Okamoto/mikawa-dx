@@ -12,9 +12,9 @@ const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
 const CLOCK_COMMAND = 'タイムカード'
 
 // nippo.staff_private 側で freee 連携 ID を保持している列名。
-// ★ 実際の列名に合わせてここだけ直せばよい。列名が違っても実害は出ず、
-//   個別 URL を諦めて店舗共通 URL にフォールバックする(下の catch)。
-const NIPPO_FREEE_ID_COLUMN = 'freee_id'
+// 日報システム側の変更で列名が変わってもここだけ直せばよい。列名が違っても
+// 実害は出ず、個別 URL を諦めて店舗共通 URL にフォールバックする(下の catch)。
+const NIPPO_FREEE_ID_COLUMN = 'freee_employee_id'
 
 interface RoleRoute {
   label: string
