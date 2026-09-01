@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { replyMessage, fetchLineProfile } from '@/lib/line'
-import { nippoClockUrl, nippoDailyReportUrl } from '@/lib/external-links'
+import {
+  nippoClockUrl, nippoClockUrlForToken, nippoDailyReportUrl,
+} from '@/lib/external-links'
 
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
+
+const CLOCK_COMMAND = 'タイムカード'
+
+// nippo.staff_private 側で freee 連携 ID を保持している列名。
+// ★ 実際の列名に合わせてここだけ直せばよい。列名が違っても実害は出ず、
+//   個別 URL を諦めて店舗共通 URL にフォールバックする(下の catch)。
+const NIPPO_FREEE_ID_COLUMN = 'freee_id'
 
 interface RoleRoute {
   label: string
@@ -122,6 +132,43 @@ function buildUrlListMessage(
   return `${name}さん\n以下のURLからアクセスしてください。\n\n${lines.join('\n\n')}${note}`
 }
 
+// freee 連携 ID から nippo.staff_private の clock_token を引く。
+// 見つからない/テーブルや列が未整備などの場合は null を返し、呼び出し元は
+// 店舗共通 URL にフォールバックする(勤怠打刻の案内自体は必ず返せるようにする)。
+async function fetchClockToken(freeeId: string): Promise<string | null> {
+  try {
+    const rows = await prisma.$queryRaw<{ clock_token: string | null }[]>(Prisma.sql`
+      SELECT clock_token
+        FROM nippo.staff_private
+       WHERE ${Prisma.raw(`"${NIPPO_FREEE_ID_COLUMN}"`)}::text = ${freeeId}
+       LIMIT 1
+    `)
+    const token = rows[0]?.clock_token
+    const trimmed = typeof token === 'string' ? token.trim() : ''
+    return trimmed || null
+  } catch (e) {
+    console.error('[timecard] nippo.staff_private の参照に失敗しました', e)
+    return null
+  }
+}
+
+// 勤怠打刻の案内を個人別 URL に差し替える。
+// 差し替える条件は「店舗ロール(= all 以外)」かつ「freee 連携 ID 登録済み」かつ
+// 「clock_token あり」。1 つでも欠ければ渡された店舗共通 URL のまま返す。
+// role がそのまま店舗コード(nishi / minami / 今後増える店舗)になる。
+async function personalizeClockRoutes(
+  routes: RoleRoute[], role: string, freeeId: string | null,
+): Promise<RoleRoute[]> {
+  if (role === 'all' || !freeeId) return routes
+  const token = await fetchClockToken(freeeId)
+  if (!token) return routes
+  return [{
+    label   : 'タイムカード',
+    path    : nippoClockUrlForToken(role, token),
+    external: true,
+  }]
+}
+
 function buildCommandHelp(name: string, role: string): string {
   const lines: string[] = []
   for (const cmd of Object.keys(COMMAND_LABELS)) {
@@ -219,8 +266,12 @@ export async function POST(req: NextRequest) {
           'この機能へのアクセス権限がありません。')
         continue
       }
+      // 勤怠打刻だけは、本人の clock_token があれば個人別 URL に差し替える
+      const finalRoutes = messageText === CLOCK_COMMAND
+        ? await personalizeClockRoutes(routes, user.role, user.freeeId)
+        : routes
       await replyMessage(replyToken,
-        buildUrlListMessage(user.name, routes, lineUserId, baseUrl))
+        buildUrlListMessage(user.name, finalRoutes, lineUserId, baseUrl))
       continue
     }
 
