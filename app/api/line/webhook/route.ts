@@ -23,6 +23,10 @@ const PAYSLIP_UNAVAILABLE =
 // 実害は出ず、個別 URL を諦めて店舗共通 URL にフォールバックする(下の catch)。
 const NIPPO_FREEE_ID_COLUMN = 'freee_employee_id'
 
+// 店舗コードとして role をそのまま使えない役割。これらは所属店舗(User.storeId)が
+// 設定されていればそれを使い、未設定なら個別 URL を作らない。
+const NON_STORE_ROLES = new Set(['all', 'honbu', 'hq1', 'hq2', 'hq3', 'pending'])
+
 interface RoleRoute {
   label: string
   path : string
@@ -160,35 +164,50 @@ async function fetchClockToken(freeeId: string): Promise<string | null> {
   }
 }
 
-// 本人専用の打刻 URL。作れる条件は「店舗ロール(= all 以外)」かつ
-// 「freee 連携 ID 登録済み」かつ「clock_token あり」で、1 つでも欠ければ null。
-// role がそのまま店舗コード(nishi / minami / 今後増える店舗)になる。
-async function personalClockUrl(
-  role: string, freeeId: string | null,
-): Promise<string | null> {
-  if (role === 'all' || !freeeId) return null
-  const token = await fetchClockToken(freeeId)
-  if (!token) return null
-  return nippoClockUrlForToken(role, token)
+// 個別 URL に使う店舗コード。店舗ロールは role がそのまま店舗コードになる
+// (nishi / minami / 今後増える店舗)。管理者・本部など店舗を持たない役割は
+// 所属店舗(User.storeId)が設定されていればそれを使う。
+function clockBranch(role: string, storeCode: string | null): string | null {
+  if (!NON_STORE_ROLES.has(role)) return role
+  return storeCode || null
 }
 
-// 勤怠打刻の案内を個人別 URL に差し替える。
+// 本人専用の打刻 URL。作れる条件は「店舗コードが決まる」かつ
+// 「freee 連携 ID 登録済み」かつ「clock_token あり」で、1 つでも欠ければ null。
+async function personalClockUrl(
+  role: string, storeCode: string | null, freeeId: string | null,
+): Promise<string | null> {
+  const branch = clockBranch(role, storeCode)
+  if (!branch || !freeeId) return null
+  const token = await fetchClockToken(freeeId)
+  if (!token) return null
+  return nippoClockUrlForToken(branch, token)
+}
+
+// 勤怠打刻の案内に個人別 URL を反映する。
+// - 店舗スタッフ: 個別 URL 1 本に差し替える(自分の店舗しか打刻しないため)
+// - 管理者(all) : 個別 URL を先頭に足し、各店舗の共通 URL も残す
 // 個別 URL を作れない場合は渡された店舗共通 URL のまま返す
 // (打刻自体は共通 URL からでもできるため)。
 async function personalizeClockRoutes(
-  routes: RoleRoute[], role: string, freeeId: string | null,
+  routes: RoleRoute[], role: string, storeCode: string | null, freeeId: string | null,
 ): Promise<RoleRoute[]> {
-  const url = await personalClockUrl(role, freeeId)
+  const url = await personalClockUrl(role, storeCode, freeeId)
   if (!url) return routes
+  if (role === 'all') {
+    return [{ label: '自分のタイムカード', path: url, external: true }, ...routes]
+  }
   return [{ label: 'タイムカード', path: url, external: true }]
 }
 
-function buildCommandHelp(name: string, role: string): string {
+function buildCommandHelp(
+  name: string, role: string, storeCode: string | null,
+): string {
   const lines: string[] = []
   for (const cmd of Object.keys(COMMAND_LABELS)) {
     // 給与明細は ROUTES_BY_COMMAND を持たない(本人専用 URL のみ)ので個別に判定する
     const usable = cmd === PAYSLIP_COMMAND
-      ? role !== 'all'
+      ? clockBranch(role, storeCode) !== null
       : Boolean(ROUTES_BY_COMMAND[cmd]?.[role])
     if (usable) lines.push(`「${cmd}」→ ${COMMAND_LABELS[cmd]}`)
   }
@@ -277,7 +296,8 @@ export async function POST(req: NextRequest) {
           '未登録です。「登録」と送信してください。')
         continue
       }
-      const url = await personalClockUrl(user.role, user.freeeId)
+      const url = await personalClockUrl(
+        user.role, user.store?.storeCode ?? null, user.freeeId)
       if (!url) {
         await replyMessage(replyToken, PAYSLIP_UNAVAILABLE)
         continue
@@ -303,7 +323,8 @@ export async function POST(req: NextRequest) {
       }
       // 勤怠打刻だけは、本人の clock_token があれば個人別 URL に差し替える
       const finalRoutes = messageText === CLOCK_COMMAND
-        ? await personalizeClockRoutes(routes, user.role, user.freeeId)
+        ? await personalizeClockRoutes(
+            routes, user.role, user.store?.storeCode ?? null, user.freeeId)
         : routes
       await replyMessage(replyToken,
         buildUrlListMessage(user.name, finalRoutes, lineUserId, baseUrl))
@@ -311,7 +332,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (user && user.role !== 'pending') {
-      await replyMessage(replyToken, buildCommandHelp(user.name, user.role))
+      await replyMessage(replyToken,
+        buildCommandHelp(user.name, user.role, user.store?.storeCode ?? null))
     } else {
       await replyMessage(replyToken, '「登録」と送信してください。')
     }
