@@ -19,6 +19,22 @@ interface ManagedUser {
   createdAt  : string
 }
 
+interface StoreOption {
+  storeCode: string
+  storeName: string
+}
+
+// 保存対象。所属店舗は勤怠打刻の個別URLを組み立てるためだけに使う。
+interface Draft {
+  role     : string
+  isActive : boolean
+  freeeId  : string
+  storeCode: string
+}
+
+// role がそのまま店舗コードにならない役割。この場合だけ所属店舗の指定が要る。
+const NON_STORE_ROLES = new Set(['all', 'honbu', 'hq1', 'hq2', 'hq3', 'pending'])
+
 const ROLE_OPTIONS = [
   { value: 'pending', label: '保留中' },
   { value: 'nishi',   label: '西店' },
@@ -34,18 +50,24 @@ function UsersContent() {
   const { user, loading, error, authFetch, logout } = useAuth('all')
   const { toast, showToast } = useToast()
   const [users, setUsers]   = useState<ManagedUser[]>([])
-  const [drafts, setDrafts] =
-    useState<Record<number, { role: string; isActive: boolean; freeeId: string }>>({})
+  const [stores, setStores] = useState<StoreOption[]>([])
+  const [drafts, setDrafts] = useState<Record<number, Draft>>({})
   const [savingId, setSavingId] = useState<number | null>(null)
 
   const fetchUsers = useCallback(async () => {
     if (!user) return
     const res  = await authFetch('/api/boss/users')
-    const data: ManagedUser[] = await res.json()
-    setUsers(data)
-    const d: Record<number, { role: string; isActive: boolean; freeeId: string }> = {}
-    data.forEach((u) => {
-      d[u.id] = { role: u.role, isActive: u.isActive, freeeId: u.freeeId ?? '' }
+    const data: { users: ManagedUser[]; stores: StoreOption[] } = await res.json()
+    setUsers(data.users)
+    setStores(data.stores)
+    const d: Record<number, Draft> = {}
+    data.users.forEach((u) => {
+      d[u.id] = {
+        role     : u.role,
+        isActive : u.isActive,
+        freeeId  : u.freeeId ?? '',
+        storeCode: u.storeCode ?? '',
+      }
     })
     setDrafts(d)
   }, [user])
@@ -61,10 +83,11 @@ function UsersContent() {
     const res  = await authFetch('/api/boss/users', {
       method: 'PATCH',
       body  : JSON.stringify({
-        id      : target.id,
-        role    : d.role,
-        isActive: d.isActive,
-        freeeId : d.freeeId,
+        id       : target.id,
+        role     : d.role,
+        isActive : d.isActive,
+        freeeId  : d.freeeId,
+        storeCode: d.storeCode,
       }),
     })
     const data = await res.json()
@@ -97,7 +120,7 @@ function UsersContent() {
           <>
             <SectionTitle text={`⏳ 承認待ち (${pending.length})`} color="#E67E22" />
             {pending.map((u) => (
-              <UserCard key={u.id} user={u} draft={drafts[u.id]}
+              <UserCard key={u.id} user={u} draft={drafts[u.id]} stores={stores}
                 onChange={(d) => setDrafts((prev) => ({ ...prev, [u.id]: d }))}
                 onSave={() => save(u)} saving={savingId === u.id} />
             ))}
@@ -111,7 +134,7 @@ function UsersContent() {
             登録済みユーザーがいません
           </div>
         ) : active.map((u) => (
-          <UserCard key={u.id} user={u} draft={drafts[u.id]}
+          <UserCard key={u.id} user={u} draft={drafts[u.id]} stores={stores}
             onChange={(d) => setDrafts((prev) => ({ ...prev, [u.id]: d }))}
             onSave={() => save(u)} saving={savingId === u.id} />
         ))}
@@ -132,20 +155,29 @@ function SectionTitle({ text, color }: { text: string; color: string }) {
 }
 
 function UserCard({
-  user, draft, onChange, onSave, saving,
+  user, draft, stores, onChange, onSave, saving,
 }: {
   user   : ManagedUser
-  draft  : { role: string; isActive: boolean; freeeId: string } | undefined
-  onChange: (d: { role: string; isActive: boolean; freeeId: string }) => void
+  draft  : Draft | undefined
+  stores : StoreOption[]
+  onChange: (d: Draft) => void
   onSave : () => void
   saving : boolean
 }) {
-  const current = draft ?? {
-    role: user.role, isActive: user.isActive, freeeId: user.freeeId ?? '',
+  const current: Draft = draft ?? {
+    role     : user.role,
+    isActive : user.isActive,
+    freeeId  : user.freeeId ?? '',
+    storeCode: user.storeCode ?? '',
   }
   const changed = current.role !== user.role
     || current.isActive !== user.isActive
     || current.freeeId.trim() !== (user.freeeId ?? '')
+    || current.storeCode !== (user.storeCode ?? '')
+
+  // 店舗ロールは role が店舗コードそのものなので指定不要。
+  // 管理者・本部だけ、勤怠打刻の個別URL用に所属店舗を選ばせる。
+  const needsStore = NON_STORE_ROLES.has(current.role) && current.role !== 'pending'
 
   return (
     <div style={{ background:'white', borderRadius:'16px',
@@ -192,6 +224,23 @@ function UserCard({
           有効
         </label>
       </div>
+
+      {needsStore && (
+        <div style={{ marginBottom:'8px' }}>
+          <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>
+            勤怠打刻の所属店舗（個別URL用・未設定可）
+          </div>
+          <select value={current.storeCode}
+            onChange={(e) => onChange({ ...current, storeCode: e.target.value })}
+            style={{ width:'100%', padding:'8px', border:'1.5px solid #E5E1D8',
+              borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}>
+            <option value="">未設定</option>
+            {stores.map((s) => (
+              <option key={s.storeCode} value={s.storeCode}>{s.storeName}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* freee 連携 ID: 日報システムの打刻情報と突き合わせるキー。
           未入力の場合、LINE「タイムカード」では店舗共通 URL を返す。 */}

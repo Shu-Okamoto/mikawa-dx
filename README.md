@@ -67,12 +67,14 @@
 | 「注文」 | `/order/<branch>` URL。`all` は両方。 |
 | 「カレンダー」 | `/calendar` URL（全 role 共通）。 |
 | 「売上」 | `/store/<branch>` URL（売上入力は発注ページ内に統合）。 |
-| 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff_private` を引き、`clock_token` があれば個別 URL（`/store/<branch>/clock/<token>`）、無ければ店舗共通 URL。`all` は共通 URL を両店舗ぶん返信。外部システムのため `lineUserId` は付けない。 |
-| 「給与明細」 | 「タイムカード」と同じ本人専用 URL（給与明細はその画面から遷移する）。個別 URL を作れない場合（`all` / `freeeId` 未登録 / `clock_token` 無し）は共通 URL へフォールバックせず、管理者に問い合わせる旨を返信。 |
+| 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff_private` を引き、`clock_token` があれば個別 URL（`/store/<branch>/clock/<token>`）を返す。店舗スタッフは個別 URL 1 本に差し替え、`all` は個別 URL＋各店舗の共通 URL。個別 URL を作れなければ店舗共通 URL。外部システムのため `lineUserId` は付けない。 |
+| 「給与明細」 | 「タイムカード」と同じ本人専用 URL（給与明細はその画面から遷移する）。個別 URL を作れない場合（店舗コード不明 / `freeeId` 未登録 / `clock_token` 無し）は共通 URL へフォールバックせず、管理者に問い合わせる旨を返信。 |
 | 「日報」 | 日報システムの日報入力 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
 | 「hq」 | `/hq?category=hqN` URL。`all` は `/hq`（全カテゴリ）。 |
 | 「boss」 | `/boss` URL（`all` のみ）。 |
 | 上記以外 | role に応じたコマンド一覧を返信。 |
+
+個別 URL の `<branch>`（店舗コード）は、店舗ロール（`nishi` / `minami` …）なら role をそのまま使う。`all` / `honbu` / `hq1`〜`hq3` は role が店舗ではないため、`User.storeId`（ユーザー管理の「勤怠打刻の所属店舗」）が設定されていればそれを使い、未設定なら個別 URL は作らない。
 
 ## ページ構成
 
@@ -83,7 +85,7 @@
 | `/hq?category=hqN` | `hq1` / `hq2` / `hq3` / `all` | 各店発注の集計・確定・LINE コピー |
 | `/calendar` | 全 role | 30 日分の店内予約注文を日別表示 |
 | `/boss` | `all` | KPI ダッシュボード（円グラフ・売上集計） |
-| `/boss/users` | `all` | ユーザー承認・role 付与・承認時 LINE 通知 |
+| `/boss/users` | `all` | ユーザー承認・role 付与・freee連携ID / 勤怠打刻の所属店舗設定・承認時 LINE 通知 |
 | `/boss/products` | `all` | 商品マスタ管理（追加・編集・無効化） |
 | `/boss/order-products` | `all` | 店内商品マスタ管理（曜日別販売対応） |
 | `/boss/vendors` | `all` | 仕入先マスタ管理 |
@@ -108,7 +110,7 @@
 | `/api/orders/[id]` | PATCH / DELETE | 注文の店舗とユーザー role の整合チェック |
 | `/api/calendar` | GET | 認証・`?category=` 任意 |
 | `/api/dashboard` | GET | `role='all'` のみ |
-| `/api/boss/users` | GET / PATCH | `role='all'`・pending→活性化時に LINE push |
+| `/api/boss/users` | GET / PATCH | `role='all'`・GET は `{ users, stores }` を返す・pending→活性化時に LINE push |
 | `/api/boss/products` | GET / POST / PATCH / DELETE | `role='all'`・DELETE は `isActive=false` |
 | `/api/boss/order-products` | GET / POST / PATCH / DELETE | `role='all'`・DELETE は `isActive=false` |
 | `/api/boss/vendors` | GET / POST / PATCH / DELETE | `role='all'`・DELETE は物理削除（FK 参照時は 409） |

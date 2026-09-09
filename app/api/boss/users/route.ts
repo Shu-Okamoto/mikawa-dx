@@ -23,12 +23,16 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const users = await prisma.user.findMany({
-      include: { store: true },
-      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
-    })
+    const [users, stores] = await Promise.all([
+      prisma.user.findMany({
+        include: { store: true },
+        orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+      }),
+      // 勤怠打刻の所属店舗を選ばせるための一覧(店舗は増える想定なので DB から引く)
+      prisma.store.findMany({ orderBy: { id: 'asc' } }),
+    ])
 
-    return NextResponse.json(users.map((u) => ({
+    return NextResponse.json({ users: users.map((u) => ({
       id         : u.id,
       name       : u.name,
       email      : u.email,
@@ -41,7 +45,12 @@ export async function GET(req: NextRequest) {
       storeCode  : u.store?.storeCode ?? null,
       storeName  : u.store?.storeName ?? null,
       createdAt  : u.createdAt,
-    })))
+    })),
+      stores: stores.map((s) => ({
+        storeCode: s.storeCode,
+        storeName: s.storeName,
+      })),
+    })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'サーバーエラー' }, { status: 500 })
@@ -54,7 +63,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const { id, role, isActive, freeeId } = await req.json()
+    const { id, role, isActive, freeeId, storeCode } = await req.json()
     if (typeof id !== 'number') {
       return NextResponse.json({ error: 'id が不正です' }, { status: 400 })
     }
@@ -64,10 +73,28 @@ export async function PATCH(req: NextRequest) {
     if (freeeId !== undefined && freeeId !== null && typeof freeeId !== 'string') {
       return NextResponse.json({ error: 'freeeId が不正です' }, { status: 400 })
     }
+    if (storeCode !== undefined && storeCode !== null && typeof storeCode !== 'string') {
+      return NextResponse.json({ error: 'storeCode が不正です' }, { status: 400 })
+    }
 
     const before = await prisma.user.findUnique({ where: { id } })
     if (!before) {
       return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
+    }
+
+    // 所属店舗: 空文字は「未設定」として storeId を外す
+    let storeId: number | null | undefined
+    if (storeCode !== undefined) {
+      const code = typeof storeCode === 'string' ? storeCode.trim() : ''
+      if (!code) {
+        storeId = null
+      } else {
+        const store = await prisma.store.findUnique({ where: { storeCode: code } })
+        if (!store) {
+          return NextResponse.json({ error: '店舗が見つかりません' }, { status: 400 })
+        }
+        storeId = store.id
+      }
     }
 
     const updated = await prisma.user.update({
@@ -79,6 +106,7 @@ export async function PATCH(req: NextRequest) {
         ...(freeeId !== undefined
           ? { freeeId: typeof freeeId === 'string' && freeeId.trim() ? freeeId.trim() : null }
           : {}),
+        ...(storeId !== undefined ? { storeId } : {}),
       },
     })
 
