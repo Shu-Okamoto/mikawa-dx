@@ -11,6 +11,13 @@ const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
 
 const CLOCK_COMMAND = 'タイムカード'
 
+// 給与明細は本人専用のタイムカード画面から辿る導線しかないため、
+// 店舗共通 URL では代替できない(共通 URL を返しても本人の明細に行けない)。
+const PAYSLIP_COMMAND = '給与明細'
+const PAYSLIP_UNAVAILABLE =
+  '給与明細は本人専用のタイムカードURLからご確認いただけます。\n' +
+  'まだ発行されていないようですので、管理者に問い合わせてください。'
+
 // nippo.staff_private 側で freee 連携 ID を保持している列名。
 // 日報システム側の変更で列名が変わってもここだけ直せばよい。列名が違っても
 // 実害は出ず、個別 URL を諦めて店舗共通 URL にフォールバックする(下の catch)。
@@ -99,6 +106,7 @@ const COMMAND_LABELS: Record<string, string> = {
   'カレンダー'  : 'カレンダー',
   '売上'      : '売上入力',
   'タイムカード': '勤怠打刻',
+  '給与明細'    : '給与明細(本人専用)',
   '日報'      : '日報入力',
   'hq'        : '本部画面',
   'boss'      : 'ボス画面',
@@ -152,29 +160,37 @@ async function fetchClockToken(freeeId: string): Promise<string | null> {
   }
 }
 
-// 勤怠打刻の案内を個人別 URL に差し替える。
-// 差し替える条件は「店舗ロール(= all 以外)」かつ「freee 連携 ID 登録済み」かつ
-// 「clock_token あり」。1 つでも欠ければ渡された店舗共通 URL のまま返す。
+// 本人専用の打刻 URL。作れる条件は「店舗ロール(= all 以外)」かつ
+// 「freee 連携 ID 登録済み」かつ「clock_token あり」で、1 つでも欠ければ null。
 // role がそのまま店舗コード(nishi / minami / 今後増える店舗)になる。
+async function personalClockUrl(
+  role: string, freeeId: string | null,
+): Promise<string | null> {
+  if (role === 'all' || !freeeId) return null
+  const token = await fetchClockToken(freeeId)
+  if (!token) return null
+  return nippoClockUrlForToken(role, token)
+}
+
+// 勤怠打刻の案内を個人別 URL に差し替える。
+// 個別 URL を作れない場合は渡された店舗共通 URL のまま返す
+// (打刻自体は共通 URL からでもできるため)。
 async function personalizeClockRoutes(
   routes: RoleRoute[], role: string, freeeId: string | null,
 ): Promise<RoleRoute[]> {
-  if (role === 'all' || !freeeId) return routes
-  const token = await fetchClockToken(freeeId)
-  if (!token) return routes
-  return [{
-    label   : 'タイムカード',
-    path    : nippoClockUrlForToken(role, token),
-    external: true,
-  }]
+  const url = await personalClockUrl(role, freeeId)
+  if (!url) return routes
+  return [{ label: 'タイムカード', path: url, external: true }]
 }
 
 function buildCommandHelp(name: string, role: string): string {
   const lines: string[] = []
   for (const cmd of Object.keys(COMMAND_LABELS)) {
-    if (ROUTES_BY_COMMAND[cmd][role]) {
-      lines.push(`「${cmd}」→ ${COMMAND_LABELS[cmd]}`)
-    }
+    // 給与明細は ROUTES_BY_COMMAND を持たない(本人専用 URL のみ)ので個別に判定する
+    const usable = cmd === PAYSLIP_COMMAND
+      ? role !== 'all'
+      : Boolean(ROUTES_BY_COMMAND[cmd]?.[role])
+    if (usable) lines.push(`「${cmd}」→ ${COMMAND_LABELS[cmd]}`)
   }
   lines.push('「メニュー」→ メイン画面')
   return `${name}さん\n以下のコマンドが使えます。\n\n${lines.join('\n')}`
@@ -251,6 +267,25 @@ export async function POST(req: NextRequest) {
       }
       await replyMessage(replyToken,
         buildUrlListMessage(user.name, routes, lineUserId, baseUrl))
+      continue
+    }
+
+    // 給与明細は本人専用 URL 前提なので、共通 URL へのフォールバックをしない
+    if (messageText === PAYSLIP_COMMAND) {
+      if (!user || user.role === 'pending') {
+        await replyMessage(replyToken,
+          '未登録です。「登録」と送信してください。')
+        continue
+      }
+      const url = await personalClockUrl(user.role, user.freeeId)
+      if (!url) {
+        await replyMessage(replyToken, PAYSLIP_UNAVAILABLE)
+        continue
+      }
+      await replyMessage(replyToken,
+        `${user.name}さん\n以下のURLからアクセスしてください。\n\n`
+        + `【給与明細】\n${url}\n\n`
+        + '※タイムカード画面から給与明細に進めます。')
       continue
     }
 
