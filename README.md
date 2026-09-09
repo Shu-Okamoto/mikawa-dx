@@ -68,6 +68,7 @@
 | 「カレンダー」 | `/calendar` URL（全 role 共通）。 |
 | 「売上」 | `/store/<branch>` URL（売上入力は発注ページ内に統合）。 |
 | 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff_private` を引き、`clock_token` があれば個別 URL（`/store/<branch>/clock/<token>`）、無ければ店舗共通 URL。`all` は共通 URL を両店舗ぶん返信。外部システムのため `lineUserId` は付けない。 |
+| 「給与明細」 | 「タイムカード」と同じ本人専用 URL（給与明細はその画面から遷移する）。個別 URL を作れない場合（`all` / `freeeId` 未登録 / `clock_token` 無し）は共通 URL へフォールバックせず、管理者に問い合わせる旨を返信。 |
 | 「日報」 | 日報システムの日報入力 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
 | 「hq」 | `/hq?category=hqN` URL。`all` は `/hq`（全カテゴリ）。 |
 | 「boss」 | `/boss` URL（`all` のみ）。 |
