@@ -41,7 +41,18 @@ export async function PATCH(
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
+    // 商品名はマスタ外注文の入力ミス修正にも使うので空は受け付けない
+    if (body.productName !== undefined
+      && (typeof body.productName !== 'string' || !body.productName.trim())) {
+      return NextResponse.json({ error: '商品名が不正です' }, { status: 400 })
+    }
+    if (body.price !== undefined
+      && (typeof body.price !== 'number' || !Number.isFinite(body.price) || body.price < 0)) {
+      return NextResponse.json({ error: '単価が不正です' }, { status: 400 })
+    }
+
     const data: Record<string, unknown> = {}
+    if (body.productName     !== undefined) data.productName     = body.productName.trim()
     if (body.quantity        !== undefined) data.quantity        = body.quantity
     if (body.price           !== undefined) data.price           = body.price
     if (body.customerName    !== undefined) data.customerName    = body.customerName
