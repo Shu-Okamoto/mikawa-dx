@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav, Toast, useToast, inputStyle } from '../_shared'
+import { parseNumberInput } from '@/lib/numberInput'
 
 interface OrderProduct {
   id           : number
@@ -96,7 +97,7 @@ function OrderProductsContent() {
       productCode  : draft.productCode.trim(),
       productName  : draft.productName.trim(),
       category     : draft.category.trim(),
-      price        : Number(draft.price) || 0,
+      price        : parseNumberInput(draft.price),
       availableDays: draft.availableDays.join(','),
       memo         : draft.memo.trim() || null,
       isActive     : draft.isActive,
@@ -434,7 +435,8 @@ function ProductForm({
         </datalist>
       </Field>
       <Field label="価格">
-        <input type="number" value={draft.price}
+        {/* type="number" は全角数字を空文字にしてしまい 0 円で保存されるため text で受ける */}
+        <input type="text" inputMode="numeric" value={draft.price}
           onChange={(e) => onChange({ ...draft, price: e.target.value })}
           style={inputStyle()} placeholder="0" />
       </Field>

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useModalBackButton } from '@/lib/hooks/useModalBackButton'
 import { themeForBranch } from '@/lib/storeColors'
 import { canOrderFor } from '@/lib/orderDeadline'
+import { parseNumberInput } from '@/lib/numberInput'
 
 interface OrderProduct {
   id           : number
@@ -38,6 +39,8 @@ interface InstoreOrder {
 }
 
 type EditDraft = {
+  productName    : string
+  price          : string
   quantity       : number
   customerName   : string
   phone          : string
@@ -188,7 +191,8 @@ function OrderPageContent({ branch }: { branch: string }) {
     if (!customModal) return
     const name  = customModal.name.trim()
     if (!name) { showToast('商品名を入力してください'); return }
-    const price = parseInt(customModal.price, 10) || 0
+    // 全角数字・「,」「円」混じりでも取りこぼさない(0 円で登録される事故を防ぐ)
+    const price = parseNumberInput(customModal.price)
     const qty   = customModal.qty > 0 ? customModal.qty : 1
     const id    = -Date.now()
     setCustomProducts((prev) => [...prev, {
@@ -278,6 +282,8 @@ function OrderPageContent({ branch }: { branch: string }) {
     const [s, e] = (order.deliveryTime || '').split('〜')
     setEditing(order)
     setEditDraft({
+      productName    : order.productName || '',
+      price          : String(Number(order.price) || 0),
       quantity       : Number(order.quantity) || 1,
       customerName   : order.customerName || '',
       phone          : order.phone || '',
@@ -303,6 +309,7 @@ function OrderPageContent({ branch }: { branch: string }) {
 
   const submitEdit = async () => {
     if (!editing || !editDraft) return
+    if (!editDraft.productName.trim()) { showToast('商品名を入力してください'); return }
     if (!editDraft.customerName) { showToast('お名前を入力してください'); return }
     if (!editDraft.phone)        { showToast('電話番号を入力してください'); return }
     if (!/^[0-9]{10,11}$/.test(editDraft.phone)) {
@@ -330,6 +337,8 @@ function OrderPageContent({ branch }: { branch: string }) {
     const res = await authFetch(`/api/orders/${editing.id}`, {
       method: 'PATCH',
       body  : JSON.stringify({
+        productName    : editDraft.productName.trim(),
+        price          : parseNumberInput(editDraft.price),
         quantity       : editDraft.quantity,
         customerName   : editDraft.customerName,
         phone          : editDraft.phone,
@@ -1080,8 +1089,38 @@ function OrderPageContent({ branch }: { branch: string }) {
               color:'#2C2C2A' }}>
               ✏️ 注文を編集
             </div>
-            <div style={{ fontSize:'16px', color:'#888780', marginBottom:'16px' }}>
-              {editing.productName}
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>
+                商品名 *
+                {editing.productId === null && (
+                  <span style={{ fontSize:'11px', fontWeight:500, marginLeft:'8px',
+                    padding:'2px 8px', borderRadius:'8px',
+                    background:'#FBF8F2', color:'#888780',
+                    border:'1px solid #E5E1D8' }}>マスタ外</span>
+                )}
+              </label>
+              <input type="text" value={editDraft.productName}
+                onChange={(e) => setEditDraft({ ...editDraft, productName: e.target.value })}
+                style={{ width:'100%', padding:'12px 14px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'20px', fontFamily:'inherit', boxSizing:'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
+                display:'block', marginBottom:'6px' }}>単価（円）</label>
+              {/* type="number" は全角数字を空文字にしてしまうため text で受ける */}
+              <input type="text" inputMode="numeric" value={editDraft.price}
+                onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
+                style={{ width:'100%', padding:'12px 14px',
+                  border:'1.5px solid #E5E1D8', borderRadius:'10px',
+                  fontSize:'20px', fontFamily:'inherit', textAlign:'right',
+                  boxSizing:'border-box' }} />
+              <div style={{ fontSize:'12px', color:'#888780', marginTop:'4px' }}>
+                合計 {(parseNumberInput(editDraft.price) * editDraft.quantity)
+                  .toLocaleString()}円
+              </div>
             </div>
 
             <div style={{ marginBottom:'14px' }}>
@@ -1353,7 +1392,9 @@ function OrderPageContent({ branch }: { branch: string }) {
               <div style={{ fontSize:'13px', color:'#888780', marginBottom:'4px' }}>
                 単価（円）
               </div>
-              <input type="number" inputMode="numeric"
+              {/* type="number" だと全角数字が value='' に落ちて 0 円で登録されるため
+                  text + inputMode="numeric" にし、保存時に正規化する */}
+              <input type="text" inputMode="numeric"
                 value={customModal.price}
                 onChange={(e) => setCustomModal({ ...customModal, price: e.target.value })}
                 placeholder="0"

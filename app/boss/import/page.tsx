@@ -139,6 +139,10 @@ function parseOrderProductRows(text: string): OrderProductRow[] {
     active : col('active'),
     memo   : col('memo'),
   }
+  // Price 列が無いと全商品が 0 円で上書きされてしまうので、黙って続けない
+  if (idx.price < 0) {
+    throw new Error('Price 列が見つかりません（この CSV を取り込むと価格が 0 円になります）')
+  }
   const out: OrderProductRow[] = []
   for (let i = headerIdx + 1; i < grid.length; i++) {
     const r = grid[i]
