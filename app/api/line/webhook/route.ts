@@ -369,7 +369,8 @@ export async function POST(req: NextRequest) {
         : ''
       await replyMessage(replyToken,
         `${user.name}さんの給与明細はこちらから確認できます。`
-        + `（${Number(y)}年${Number(m)}月分）\n\n${url}${credentials}`)
+        + `（${Number(y)}年${Number(m)}月分）\n\n${url}${credentials}`
+        + '\n\n※初めてご利用の場合は、ログインIDとパスワードの設定をお願いします。')
       continue
     }
 
