@@ -4,7 +4,26 @@ function token() {
   return process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
 }
 
-export async function replyMessage(replyToken: string, text: string) {
+// メッセージ下部に出るタップ用ボタン。clipboard アクションは押すと
+// clipboardText を端末のクリップボードへコピーする(ログインID の貼り付け用)。
+export interface ClipboardAction {
+  type         : 'clipboard'
+  label        : string   // 20 文字まで
+  clipboardText: string   // 1000 文字まで
+}
+
+export async function replyMessage(
+  replyToken: string,
+  text      : string,
+  actions  ?: ClipboardAction[],
+) {
+  const message: Record<string, unknown> = { type: 'text', text }
+  if (actions?.length) {
+    message.quickReply = {
+      items: actions.map((action) => ({ type: 'action', action })),
+    }
+  }
+
   const res = await fetch(`${LINE_API}/message/reply`, {
     method : 'POST',
     headers: {
@@ -13,7 +32,7 @@ export async function replyMessage(replyToken: string, text: string) {
     },
     body: JSON.stringify({
       replyToken,
-      messages: [{ type: 'text', text }],
+      messages: [message],
     }),
   })
   if (!res.ok) {
