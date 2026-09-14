@@ -256,7 +256,7 @@ function UserCard({
           未入力の場合、LINE「タイムカード」では店舗共通 URL を返す。 */}
       <div style={{ marginBottom:'8px' }}>
         <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>
-          freee連携ID（勤怠打刻の個別URL用・空欄可）
+          freee従業員ID（例: 4142521・空欄可）
         </div>
         <input type="text" value={current.freeeId}
           onChange={(e) => onChange({ ...current, freeeId: e.target.value })}
@@ -264,13 +264,17 @@ function UserCard({
           style={{ width:'100%', padding:'8px', border:'1.5px solid #E5E1D8',
             borderRadius:'8px', fontSize:'14px', fontFamily:'inherit',
             boxSizing:'border-box' }} />
+        <div style={{ fontSize:'11px', color:'#B4B2A9', marginTop:'4px' }}>
+          nippo.staff.freee_employee_id と同じ値。打刻トークンの照合と
+          給与明細URLに使います
+        </div>
       </div>
 
-      {/* freee ログイン番号: LINE「給料」の案内文に載せるログインID の連番部分。
-          8 桁ゼロ埋めして satonoajimikawa-00000010 の形で表示する。 */}
+      {/* freee ログイン番号: 案内文のログインIDは通常 nippo から取得するので、
+          ここは日報側に登録が無い場合の予備。8 桁ゼロ埋めして表示する。 */}
       <div style={{ marginBottom:'8px' }}>
         <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>
-          freeeログイン番号（給与明細の案内用・空欄可）
+          freeeログイン番号（予備・通常は空欄でOK）
         </div>
         <input type="text" inputMode="numeric" value={current.freeeLoginNo}
           onChange={(e) => onChange({ ...current, freeeLoginNo: e.target.value })}

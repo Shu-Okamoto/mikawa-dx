@@ -27,10 +27,11 @@ const SALARY_UNAVAILABLE =
   'freee連携IDが未登録のため、給与明細のURLを発行できません。\n' +
   '管理者に問い合わせてください。'
 
-// nippo.staff_private 側で freee 連携 ID を保持している列名。
-// 日報システム側の変更で列名が変わってもここだけ直せばよい。列名が違っても
-// 実害は出ず、個別 URL を諦めて店舗共通 URL にフォールバックする(下の catch)。
-const NIPPO_FREEE_ID_COLUMN = 'freee_employee_id'
+// 日報(nippo)側のスキーマ。列名が変わってもここだけ直せばよい。
+// 照合キー: dx.User.freeeId ↔ nippo.staff.freee_employee_id
+const NIPPO_STAFF_KEY_COLUMN = 'freee_employee_id'
+// nippo.staff_private から nippo.staff への外部キー
+const NIPPO_STAFF_PRIVATE_FK = 'staff_id'
 
 // 店舗コードとして role をそのまま使えない役割。これらは所属店舗(User.storeId)が
 // 設定されていればそれを使い、未設定なら個別 URL を作らない。
@@ -163,23 +164,51 @@ function buildUrlListMessage(
   return `${name}さん\n以下のURLからアクセスしてください。\n\n${lines.join('\n\n')}${note}`
 }
 
-// freee 連携 ID から nippo.staff_private の clock_token を引く。
-// 見つからない/テーブルや列が未整備などの場合は null を返し、呼び出し元は
-// 店舗共通 URL にフォールバックする(勤怠打刻の案内自体は必ず返せるようにする)。
-async function fetchClockToken(freeeId: string): Promise<string | null> {
+// 日報(nippo)側から本人ぶんの連携情報をまとめて引く。
+// 従業員IDは nippo.staff、打刻トークンとログインIDは nippo.staff_private と
+// テーブルが分かれているので 1 本のクエリで結合して取得する。
+// 参照に失敗しても例外は投げず空を返し、呼び出し元がフォールバックする。
+interface NippoStaffLinks {
+  employeeId: string | null  // 給与明細URLの末尾に入る freee 従業員ID
+  clockToken: string | null  // 勤怠打刻の個別URL用トークン
+  loginId   : string | null  // 案内文に載せる freee ログインID
+}
+
+const NO_STAFF_LINKS: NippoStaffLinks = {
+  employeeId: null, clockToken: null, loginId: null,
+}
+
+const str = (v: unknown): string | null => {
+  const s = typeof v === 'string' ? v.trim() : (v == null ? '' : String(v).trim())
+  return s || null
+}
+
+async function fetchNippoStaffLinks(freeeId: string): Promise<NippoStaffLinks> {
   try {
-    const rows = await prisma.$queryRaw<{ clock_token: string | null }[]>(Prisma.sql`
-      SELECT clock_token
-        FROM nippo.staff_private
-       WHERE ${Prisma.raw(`"${NIPPO_FREEE_ID_COLUMN}"`)}::text = ${freeeId}
+    const rows = await prisma.$queryRaw<{
+      employee_id: string | null
+      clock_token: string | null
+      freee_login_id: string | null
+    }[]>(Prisma.sql`
+      SELECT s.${Prisma.raw(`"${NIPPO_STAFF_KEY_COLUMN}"`)}::text AS employee_id,
+             sp.clock_token,
+             sp.freee_login_id
+        FROM nippo.staff s
+        LEFT JOIN nippo.staff_private sp
+          ON sp.${Prisma.raw(`"${NIPPO_STAFF_PRIVATE_FK}"`)}::text = s.id::text
+       WHERE s.${Prisma.raw(`"${NIPPO_STAFF_KEY_COLUMN}"`)}::text = ${freeeId}
        LIMIT 1
     `)
-    const token = rows[0]?.clock_token
-    const trimmed = typeof token === 'string' ? token.trim() : ''
-    return trimmed || null
+    const row = rows[0]
+    if (!row) return NO_STAFF_LINKS
+    return {
+      employeeId: str(row.employee_id),
+      clockToken: str(row.clock_token),
+      loginId   : str(row.freee_login_id),
+    }
   } catch (e) {
-    console.error('[timecard] nippo.staff_private の参照に失敗しました', e)
-    return null
+    console.error('[nippo] staff / staff_private の参照に失敗しました', e)
+    return NO_STAFF_LINKS
   }
 }
 
@@ -196,9 +225,9 @@ function clockBranch(role: string, storeCode: string | null): string | null {
 // 役割や所属店舗は問わないため、本部・管理者でも個別 URL を受け取れる。
 async function personalClockUrl(freeeId: string | null): Promise<string | null> {
   if (!freeeId) return null
-  const token = await fetchClockToken(freeeId)
-  if (!token) return null
-  return nippoClockUrlForToken(token)
+  const { clockToken } = await fetchNippoStaffLinks(freeeId)
+  if (!clockToken) return null
+  return nippoClockUrlForToken(clockToken)
 }
 
 // 勤怠打刻の案内を組み立てる。
@@ -325,13 +354,18 @@ export async function POST(req: NextRequest) {
         await replyMessage(replyToken, SALARY_UNAVAILABLE)
         continue
       }
+      // URL 末尾は freee の従業員ID。日報側が持つ値を正とし、引けなければ
+      // 照合キー(= 同じ値を入れている運用)をそのまま使う。
+      const links = await fetchNippoStaffLinks(freeeId)
+      const employeeId = links.employeeId ?? freeeId
       // 対象月は日本時間の当月
       const [y, m] = todayJstYmd().split('-')
-      const url = freeePayrollUrl(freeeId, Number(y), Number(m))
-      // ログイン番号が未登録の人には ID の行を出さない
-      const credentials = user.freeeLoginNo != null
-        ? `\n\nログインID: ${freeeLoginId(user.freeeLoginNo)}`
-          + '\nパスワード: ご自身で設定したもの'
+      const url = freeePayrollUrl(employeeId, Number(y), Number(m))
+      // ログインIDも日報側が正。未整備なら dx のログイン番号から組み立てる。
+      const loginId = links.loginId
+        ?? (user.freeeLoginNo != null ? freeeLoginId(user.freeeLoginNo) : null)
+      const credentials = loginId
+        ? `\n\nログインID: ${loginId}\nパスワード: ご自身で設定したもの`
         : ''
       await replyMessage(replyToken,
         `${user.name}さんの給与明細はこちらから確認できます。`

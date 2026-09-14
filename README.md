@@ -67,13 +67,15 @@
 | 「注文」 | `/order/<branch>` URL。`all` は両方。 |
 | 「カレンダー」 | `/calendar` URL（全 role 共通）。 |
 | 「売上」 | `/store/<branch>` URL（売上入力は発注ページ内に統合）。 |
-| 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff_private` を引き、`clock_token` があれば個別 URL（`/clock/<token>`。トークンだけで本人が特定できるため店舗コードは入らない）を返す。店舗スタッフ・本部は個別 URL 1 本に差し替え、`all` は個別 URL＋各店舗の共通 URL。個別 URL が作れない場合、店舗が特定できれば（店舗ロール／所属店舗設定済み）その店舗の共通 URL（`/store/<branch>/clock`）、特定できなければ西・南の共通 URL を両方返す。外部システムのため `lineUserId` は付けない。 |
+| 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff` を引き、`nippo.staff_private` の `clock_token` があれば個別 URL（`/clock/<token>`。トークンだけで本人が特定できるため店舗コードは入らない）を返す。店舗スタッフ・本部は個別 URL 1 本に差し替え、`all` は個別 URL＋各店舗の共通 URL。個別 URL が作れない場合、店舗が特定できれば（店舗ロール／所属店舗設定済み）その店舗の共通 URL（`/store/<branch>/clock`）、特定できなければ西・南の共通 URL を両方返す。外部システムのため `lineUserId` は付けない。 |
 | 「給与明細」 | 「タイムカード」と同じ本人専用 URL（給与明細はその画面から遷移する）。個別 URL を作れない場合（`freeeId` 未登録 / `clock_token` 無し）は共通 URL へフォールバックせず、管理者に問い合わせる旨を返信。 |
-| 「給料」 | freee の給与明細（Web明細）を直接開く URL。`https://p.secure.freee.co.jp/payroll_statements#/<事業所ID>/<年>/<月>/employees/<User.freeeId>` を組み立てて返す。対象月は JST の当月。`User.freeeLoginNo` があれば `satonoajimikawa-<8桁ゼロ埋め>` のログインIDも併記する。`freeeId` 未登録なら管理者に問い合わせる旨を返信。閲覧には freee へのログインが必要。 |
+| 「給料」 | freee の給与明細（Web明細）を直接開く URL。`https://p.secure.freee.co.jp/payroll_statements#/<事業所ID>/<年>/<月>/employees/<従業員ID>` を組み立てて返す。対象月は JST の当月。従業員IDとログインIDは `nippo.staff.freee_employee_id` / `nippo.staff_private.freee_login_id` から取得し、引けなければ `User.freeeId` と `User.freeeLoginNo`（予備）を使う。`freeeId` 未登録なら管理者に問い合わせる旨を返信。閲覧には freee へのログインが必要。 |
 | 「日報」 | 日報システムの日報入力 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
 | 「hq」 | `/hq?category=hqN` URL。`all` は `/hq`（全カテゴリ）。 |
 | 「boss」 | `/boss` URL（`all` のみ）。 |
 | 上記以外 | role に応じたコマンド一覧を返信。 |
+
+日報（nippo）側との連携は `dx.User.freeeId` ↔ `nippo.staff.freee_employee_id` で突き合わせる。従業員ID は `nippo.staff`、打刻トークン（`clock_token`）と freee ログインID（`freee_login_id`）は `nippo.staff_private` にあり、`staff_private.staff_id` → `staff.id` で結合して 1 クエリで取得する。参照に失敗しても例外にはせず、ログを残して dx 側の値にフォールバックする。
 
 打刻の**個別** URL は `clock_token` だけで本人が特定できるので、役割や所属店舗を問わず発行できる。**共通** URL の `<branch>`（店舗コード）は、店舗ロール（`nishi` / `minami` …）なら role をそのまま使い、`all` / `honbu` / `hq1`〜`hq3` は `User.storeId`（ユーザー管理の「勤怠打刻の所属店舗」）を使う。未設定なら西・南の共通 URL を両方返す。
 
