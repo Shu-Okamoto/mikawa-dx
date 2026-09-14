@@ -35,6 +35,12 @@ interface RoleRoute {
   external?: boolean
 }
 
+// 店舗が特定できない役割に出す勤怠打刻リンク(店舗共通URL)
+const CLOCK_COMMON_ROUTES: RoleRoute[] = [
+  { label: '西のタイムカード', path: nippoClockUrl('nishi'),  external: true },
+  { label: '南のタイムカード', path: nippoClockUrl('minami'), external: true },
+]
+
 const ROUTES_BY_COMMAND: Record<string, Record<string, RoleRoute[]>> = {
   '発注': {
     nishi : [{ label: '発注', path: '/store/nishi' }],
@@ -80,10 +86,13 @@ const ROUTES_BY_COMMAND: Record<string, Record<string, RoleRoute[]>> = {
   'タイムカード': {
     nishi : [{ label: 'タイムカード', path: nippoClockUrl('nishi'),  external: true }],
     minami: [{ label: 'タイムカード', path: nippoClockUrl('minami'), external: true }],
-    all   : [
-      { label: '西のタイムカード', path: nippoClockUrl('nishi'),  external: true },
-      { label: '南のタイムカード', path: nippoClockUrl('minami'), external: true },
-    ],
+    // 管理者・本部は所属店舗が決まっていないことがあるので、選べるよう両店舗を返す。
+    // 所属店舗が設定してあれば buildClockRoutes がその店舗の案内に絞り込む。
+    all   : CLOCK_COMMON_ROUTES,
+    honbu : CLOCK_COMMON_ROUTES,
+    hq1   : CLOCK_COMMON_ROUTES,
+    hq2   : CLOCK_COMMON_ROUTES,
+    hq3   : CLOCK_COMMON_ROUTES,
   },
   '日報': {
     nishi : [{ label: '日報', path: nippoDailyReportUrl('nishi'),  external: true }],
@@ -184,20 +193,27 @@ async function personalClockUrl(
   return nippoClockUrlForToken(branch, token)
 }
 
-// 勤怠打刻の案内に個人別 URL を反映する。
-// - 店舗スタッフ: 個別 URL 1 本に差し替える(自分の店舗しか打刻しないため)
-// - 管理者(all) : 個別 URL を先頭に足し、各店舗の共通 URL も残す
-// 個別 URL を作れない場合は渡された店舗共通 URL のまま返す
-// (打刻自体は共通 URL からでもできるため)。
-async function personalizeClockRoutes(
+// 勤怠打刻の案内を組み立てる。
+// - 個別 URL あり: 店舗スタッフ・本部は個別 URL 1 本に差し替え、管理者(all)は
+//   他店舗も見るので個別 URL を先頭に足して共通 URL も残す
+// - 個別 URL なし: 店舗が特定できるなら(店舗ロール / 所属店舗設定済み)その店舗の
+//   共通 URL 1 本、特定できないなら渡された共通 URL のまま
+async function buildClockRoutes(
   routes: RoleRoute[], role: string, storeCode: string | null, freeeId: string | null,
 ): Promise<RoleRoute[]> {
   const url = await personalClockUrl(role, storeCode, freeeId)
-  if (!url) return routes
-  if (role === 'all') {
-    return [{ label: '自分のタイムカード', path: url, external: true }, ...routes]
+  if (url) {
+    if (role === 'all') {
+      return [{ label: '自分のタイムカード', path: url, external: true }, ...routes]
+    }
+    return [{ label: 'タイムカード', path: url, external: true }]
   }
-  return [{ label: 'タイムカード', path: url, external: true }]
+
+  const branch = clockBranch(role, storeCode)
+  if (branch && role !== 'all') {
+    return [{ label: 'タイムカード', path: nippoClockUrl(branch), external: true }]
+  }
+  return routes
 }
 
 function buildCommandHelp(
@@ -323,7 +339,7 @@ export async function POST(req: NextRequest) {
       }
       // 勤怠打刻だけは、本人の clock_token があれば個人別 URL に差し替える
       const finalRoutes = messageText === CLOCK_COMMAND
-        ? await personalizeClockRoutes(
+        ? await buildClockRoutes(
             routes, user.role, user.store?.storeCode ?? null, user.freeeId)
         : routes
       await replyMessage(replyToken,
