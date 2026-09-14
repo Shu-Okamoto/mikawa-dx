@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
       displayName: u.displayName,
       pictureUrl : u.pictureUrl,
       freeeId    : u.freeeId,
+      freeeLoginNo: u.freeeLoginNo,
       isActive   : u.isActive,
       storeCode  : u.store?.storeCode ?? null,
       storeName  : u.store?.storeName ?? null,
@@ -63,7 +64,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const { id, role, isActive, freeeId, storeCode } = await req.json()
+    const { id, role, isActive, freeeId, storeCode, freeeLoginNo } = await req.json()
     if (typeof id !== 'number') {
       return NextResponse.json({ error: 'id が不正です' }, { status: 400 })
     }
@@ -75,6 +76,12 @@ export async function PATCH(req: NextRequest) {
     }
     if (storeCode !== undefined && storeCode !== null && typeof storeCode !== 'string') {
       return NextResponse.json({ error: 'storeCode が不正です' }, { status: 400 })
+    }
+    // freee ログイン番号: 空欄は「未登録」として null。0 以下や小数は受け付けない
+    if (freeeLoginNo !== undefined && freeeLoginNo !== null
+      && (!Number.isInteger(freeeLoginNo) || freeeLoginNo <= 0)) {
+      return NextResponse.json(
+        { error: 'freeeログイン番号は正の整数で入力してください' }, { status: 400 })
     }
 
     const before = await prisma.user.findUnique({ where: { id } })
@@ -107,6 +114,7 @@ export async function PATCH(req: NextRequest) {
           ? { freeeId: typeof freeeId === 'string' && freeeId.trim() ? freeeId.trim() : null }
           : {}),
         ...(storeId !== undefined ? { storeId } : {}),
+        ...(freeeLoginNo !== undefined ? { freeeLoginNo } : {}),
       },
     })
 

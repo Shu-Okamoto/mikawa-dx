@@ -91,6 +91,10 @@ model User {
   // 日報システム(nippo)側のスタッフと突き合わせるための freee 連携 ID。
   // 未設定でも運用できる(その場合は勤怠打刻で店舗共通 URL を返す)。
   freeeId     String?
+  // freee のログインID の連番部分。LINE「給料」の案内文で
+  // "satonoajimikawa-00000010" のように 8 桁ゼロ埋めして表示する。
+  // 未設定なら案内文からログインIDの行を省く。
+  freeeLoginNo Int?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt

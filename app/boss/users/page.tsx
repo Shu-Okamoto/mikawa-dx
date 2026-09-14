@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav, Toast, useToast } from '../_shared'
+import { parseNumberInput } from '@/lib/numberInput'
 
 interface ManagedUser {
   id         : number
@@ -13,6 +14,7 @@ interface ManagedUser {
   displayName: string | null
   pictureUrl : string | null
   freeeId    : string | null
+  freeeLoginNo: number | null
   isActive   : boolean
   storeCode  : string | null
   storeName  : string | null
@@ -26,10 +28,12 @@ interface StoreOption {
 
 // 保存対象。所属店舗は勤怠打刻の個別URLを組み立てるためだけに使う。
 interface Draft {
-  role     : string
-  isActive : boolean
-  freeeId  : string
-  storeCode: string
+  role        : string
+  isActive    : boolean
+  freeeId     : string
+  storeCode   : string
+  // 入力途中を保てるよう文字列で持ち、送信時に数値へ変換する
+  freeeLoginNo: string
 }
 
 // role がそのまま店舗コードにならない役割。この場合だけ所属店舗の指定が要る。
@@ -67,6 +71,7 @@ function UsersContent() {
         isActive : u.isActive,
         freeeId  : u.freeeId ?? '',
         storeCode: u.storeCode ?? '',
+        freeeLoginNo: u.freeeLoginNo != null ? String(u.freeeLoginNo) : '',
       }
     })
     setDrafts(d)
@@ -88,6 +93,9 @@ function UsersContent() {
         isActive : d.isActive,
         freeeId  : d.freeeId,
         storeCode: d.storeCode,
+        freeeLoginNo: d.freeeLoginNo.trim()
+          ? parseNumberInput(d.freeeLoginNo)
+          : null,
       }),
     })
     const data = await res.json()
@@ -169,11 +177,13 @@ function UserCard({
     isActive : user.isActive,
     freeeId  : user.freeeId ?? '',
     storeCode: user.storeCode ?? '',
+    freeeLoginNo: user.freeeLoginNo != null ? String(user.freeeLoginNo) : '',
   }
   const changed = current.role !== user.role
     || current.isActive !== user.isActive
     || current.freeeId.trim() !== (user.freeeId ?? '')
     || current.storeCode !== (user.storeCode ?? '')
+    || current.freeeLoginNo.trim() !== (user.freeeLoginNo != null ? String(user.freeeLoginNo) : '')
 
   // 店舗ロールは role が店舗コードそのものなので指定不要。
   // 管理者・本部だけ、勤怠打刻の個別URL用に所属店舗を選ばせる。
@@ -254,6 +264,25 @@ function UserCard({
           style={{ width:'100%', padding:'8px', border:'1.5px solid #E5E1D8',
             borderRadius:'8px', fontSize:'14px', fontFamily:'inherit',
             boxSizing:'border-box' }} />
+      </div>
+
+      {/* freee ログイン番号: LINE「給料」の案内文に載せるログインID の連番部分。
+          8 桁ゼロ埋めして satonoajimikawa-00000010 の形で表示する。 */}
+      <div style={{ marginBottom:'8px' }}>
+        <div style={{ fontSize:'11px', color:'#888780', marginBottom:'4px' }}>
+          freeeログイン番号（給与明細の案内用・空欄可）
+        </div>
+        <input type="text" inputMode="numeric" value={current.freeeLoginNo}
+          onChange={(e) => onChange({ ...current, freeeLoginNo: e.target.value })}
+          placeholder="未登録"
+          style={{ width:'100%', padding:'8px', border:'1.5px solid #E5E1D8',
+            borderRadius:'8px', fontSize:'14px', fontFamily:'inherit',
+            boxSizing:'border-box' }} />
+        <div style={{ fontSize:'11px', color:'#B4B2A9', marginTop:'4px' }}>
+          {current.freeeLoginNo.trim()
+            ? `ログインID: satonoajimikawa-${String(parseNumberInput(current.freeeLoginNo)).padStart(8, '0')}`
+            : '例: 10 → satonoajimikawa-00000010'}
+        </div>
       </div>
 
       <button onClick={onSave} disabled={!changed || saving}
