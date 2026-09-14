@@ -4,8 +4,9 @@ import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { replyMessage, fetchLineProfile } from '@/lib/line'
 import {
-  nippoClockUrl, nippoClockUrlForToken, nippoDailyReportUrl,
+  nippoClockUrl, nippoClockUrlForToken, nippoDailyReportUrl, freeePayrollUrl,
 } from '@/lib/external-links'
+import { todayJstYmd } from '@/lib/serverDate'
 
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
 
@@ -17,6 +18,13 @@ const PAYSLIP_COMMAND = '給与明細'
 const PAYSLIP_UNAVAILABLE =
   '給与明細は本人専用のタイムカードURLからご確認いただけます。\n' +
   'まだ発行されていないようですので、管理者に問い合わせてください。'
+
+// freee の給与明細(Web明細)を直接開く。従業員ID = User.freeeId なので
+// 日報システムへの問い合わせは不要。
+const SALARY_COMMAND = '給料'
+const SALARY_UNAVAILABLE =
+  'freee連携IDが未登録のため、給与明細のURLを発行できません。\n' +
+  '管理者に問い合わせてください。'
 
 // nippo.staff_private 側で freee 連携 ID を保持している列名。
 // 日報システム側の変更で列名が変わってもここだけ直せばよい。列名が違っても
@@ -120,6 +128,7 @@ const COMMAND_LABELS: Record<string, string> = {
   '売上'      : '売上入力',
   'タイムカード': '勤怠打刻',
   '給与明細'    : '給与明細(本人専用)',
+  '給料'       : '給与明細(freee)',
   '日報'      : '日報入力',
   'hq'        : '本部画面',
   'boss'      : 'ボス画面',
@@ -181,16 +190,14 @@ function clockBranch(role: string, storeCode: string | null): string | null {
   return storeCode || null
 }
 
-// 本人専用の打刻 URL。作れる条件は「店舗コードが決まる」かつ
-// 「freee 連携 ID 登録済み」かつ「clock_token あり」で、1 つでも欠ければ null。
-async function personalClockUrl(
-  role: string, storeCode: string | null, freeeId: string | null,
-): Promise<string | null> {
-  const branch = clockBranch(role, storeCode)
-  if (!branch || !freeeId) return null
+// 本人専用の打刻 URL。トークンだけで本人が特定できる(店舗は URL に入らない)ので、
+// 条件は「freee 連携 ID 登録済み」かつ「clock_token あり」の 2 つだけ。
+// 役割や所属店舗は問わないため、本部・管理者でも個別 URL を受け取れる。
+async function personalClockUrl(freeeId: string | null): Promise<string | null> {
+  if (!freeeId) return null
   const token = await fetchClockToken(freeeId)
   if (!token) return null
-  return nippoClockUrlForToken(branch, token)
+  return nippoClockUrlForToken(token)
 }
 
 // 勤怠打刻の案内を組み立てる。
@@ -201,7 +208,7 @@ async function personalClockUrl(
 async function buildClockRoutes(
   routes: RoleRoute[], role: string, storeCode: string | null, freeeId: string | null,
 ): Promise<RoleRoute[]> {
-  const url = await personalClockUrl(role, storeCode, freeeId)
+  const url = await personalClockUrl(freeeId)
   if (url) {
     if (role === 'all') {
       return [{ label: '自分のタイムカード', path: url, external: true }, ...routes]
@@ -216,14 +223,14 @@ async function buildClockRoutes(
   return routes
 }
 
-function buildCommandHelp(
-  name: string, role: string, storeCode: string | null,
-): string {
+function buildCommandHelp(name: string, role: string): string {
   const lines: string[] = []
   for (const cmd of Object.keys(COMMAND_LABELS)) {
-    // 給与明細は ROUTES_BY_COMMAND を持たない(本人専用 URL のみ)ので個別に判定する
-    const usable = cmd === PAYSLIP_COMMAND
-      ? clockBranch(role, storeCode) !== null
+    // 給与明細・給料は ROUTES_BY_COMMAND を持たない(本人専用 URL のみ)ので個別に判定する
+    // 本人専用 URL を返すコマンドは freee 連携 ID / トークンの有無で決まり、
+    // ここでは判定できないので常に出す(未登録なら案内文が返る)
+    const usable = cmd === PAYSLIP_COMMAND || cmd === SALARY_COMMAND
+      ? true
       : Boolean(ROUTES_BY_COMMAND[cmd]?.[role])
     if (usable) lines.push(`「${cmd}」→ ${COMMAND_LABELS[cmd]}`)
   }
@@ -305,6 +312,28 @@ export async function POST(req: NextRequest) {
       continue
     }
 
+    // freee の給与明細。当月ぶんを本人の従業員IDで開く
+    if (messageText === SALARY_COMMAND) {
+      if (!user || user.role === 'pending') {
+        await replyMessage(replyToken,
+          '未登録です。「登録」と送信してください。')
+        continue
+      }
+      const freeeId = user.freeeId?.trim()
+      if (!freeeId) {
+        await replyMessage(replyToken, SALARY_UNAVAILABLE)
+        continue
+      }
+      // 対象月は日本時間の当月
+      const [y, m] = todayJstYmd().split('-')
+      const url = freeePayrollUrl(freeeId, Number(y), Number(m))
+      await replyMessage(replyToken,
+        `${user.name}さん\n${Number(y)}年${Number(m)}月の給与明細です。\n\n`
+        + `【給与明細】\n${url}\n\n`
+        + '※freee にログインしてご確認ください。')
+      continue
+    }
+
     // 給与明細は本人専用 URL 前提なので、共通 URL へのフォールバックをしない
     if (messageText === PAYSLIP_COMMAND) {
       if (!user || user.role === 'pending') {
@@ -312,8 +341,7 @@ export async function POST(req: NextRequest) {
           '未登録です。「登録」と送信してください。')
         continue
       }
-      const url = await personalClockUrl(
-        user.role, user.store?.storeCode ?? null, user.freeeId)
+      const url = await personalClockUrl(user.freeeId)
       if (!url) {
         await replyMessage(replyToken, PAYSLIP_UNAVAILABLE)
         continue
@@ -348,8 +376,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (user && user.role !== 'pending') {
-      await replyMessage(replyToken,
-        buildCommandHelp(user.name, user.role, user.store?.storeCode ?? null))
+      await replyMessage(replyToken, buildCommandHelp(user.name, user.role))
     } else {
       await replyMessage(replyToken, '「登録」と送信してください。')
     }
