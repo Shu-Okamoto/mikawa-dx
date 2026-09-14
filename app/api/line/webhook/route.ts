@@ -370,10 +370,15 @@ export async function POST(req: NextRequest) {
       const credentials = loginId
         ? `\n\nログインID: ${loginId}\nパスワード: ご自身で設定したもの`
         : ''
+      // freee 側にログインIDを事前入力する仕組みが無いため、
+      // 代わりにワンタップでコピーできるボタンを添える。
       await replyMessage(replyToken,
         `${user.name}さんの給与明細はこちらから確認できます。`
         + `（${Number(y)}年${Number(m)}月分）\n\n${url}${credentials}`
-        + '\n\n※初めてご利用の場合は、ログインIDとパスワードの設定をお願いします。')
+        + '\n\n※初めてご利用の場合は、ログインIDとパスワードの設定をお願いします。',
+        loginId
+          ? [{ type: 'clipboard', label: 'ログインIDをコピー', clipboardText: loginId }]
+          : undefined)
       continue
     }
 
