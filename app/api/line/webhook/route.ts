@@ -27,10 +27,11 @@ const SALARY_UNAVAILABLE =
   'freee連携IDが未登録のため、給与明細のURLを発行できません。\n' +
   '管理者に問い合わせてください。'
 
-// 日報(nippo)側のスキーマ。列名が変わってもここだけ直せばよい。
+// 日報(nippo)側のスキーマ。
 // 照合キー: dx.User.freeeId ↔ nippo.staff.freee_employee_id
 const NIPPO_STAFF_KEY_COLUMN = 'freee_employee_id'
-// nippo.staff_private から nippo.staff への外部キー
+
+// nippo.staff_private から nippo.staff への外部キー(1対1)
 const NIPPO_STAFF_PRIVATE_FK = 'staff_id'
 
 // 店舗コードとして role をそのまま使えない役割。これらは所属店舗(User.storeId)が
@@ -184,19 +185,21 @@ const str = (v: unknown): string | null => {
 }
 
 async function fetchNippoStaffLinks(freeeId: string): Promise<NippoStaffLinks> {
+  const key = Prisma.raw(`"${NIPPO_STAFF_KEY_COLUMN}"`)
+  const fk  = Prisma.raw(`"${NIPPO_STAFF_PRIVATE_FK}"`)
   try {
+    // staff_private は 1 対 1 だが、未登録でも従業員IDは返したいので LEFT JOIN
     const rows = await prisma.$queryRaw<{
       employee_id: string | null
       clock_token: string | null
       freee_login_id: string | null
     }[]>(Prisma.sql`
-      SELECT s.${Prisma.raw(`"${NIPPO_STAFF_KEY_COLUMN}"`)}::text AS employee_id,
+      SELECT s.${key}::text AS employee_id,
              sp.clock_token,
              sp.freee_login_id
         FROM nippo.staff s
-        LEFT JOIN nippo.staff_private sp
-          ON sp.${Prisma.raw(`"${NIPPO_STAFF_PRIVATE_FK}"`)}::text = s.id::text
-       WHERE s.${Prisma.raw(`"${NIPPO_STAFF_KEY_COLUMN}"`)}::text = ${freeeId}
+        LEFT JOIN nippo.staff_private sp ON sp.${fk}::text = s.id::text
+       WHERE s.${key}::text = ${freeeId}
        LIMIT 1
     `)
     const row = rows[0]
