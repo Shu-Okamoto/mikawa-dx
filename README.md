@@ -69,7 +69,7 @@
 | 「売上」 | `/store/<branch>` URL（売上入力は発注ページ内に統合）。 |
 | 「タイムカード」 | 日報システムの勤怠打刻 URL。`User.freeeId` で `nippo.staff_private` を引き、`clock_token` があれば個別 URL（`/clock/<token>`。トークンだけで本人が特定できるため店舗コードは入らない）を返す。店舗スタッフ・本部は個別 URL 1 本に差し替え、`all` は個別 URL＋各店舗の共通 URL。個別 URL が作れない場合、店舗が特定できれば（店舗ロール／所属店舗設定済み）その店舗の共通 URL（`/store/<branch>/clock`）、特定できなければ西・南の共通 URL を両方返す。外部システムのため `lineUserId` は付けない。 |
 | 「給与明細」 | 「タイムカード」と同じ本人専用 URL（給与明細はその画面から遷移する）。個別 URL を作れない場合（`freeeId` 未登録 / `clock_token` 無し）は共通 URL へフォールバックせず、管理者に問い合わせる旨を返信。 |
-| 「給料」 | freee の給与明細（Web明細）を直接開く URL。`https://p.secure.freee.co.jp/payroll_statements#/<事業所ID>/<年>/<月>/employees/<User.freeeId>` を組み立てて返す。対象月は JST の当月。`freeeId` 未登録なら管理者に問い合わせる旨を返信。閲覧には freee へのログインが必要。 |
+| 「給料」 | freee の給与明細（Web明細）を直接開く URL。`https://p.secure.freee.co.jp/payroll_statements#/<事業所ID>/<年>/<月>/employees/<User.freeeId>` を組み立てて返す。対象月は JST の当月。`User.freeeLoginNo` があれば `satonoajimikawa-<8桁ゼロ埋め>` のログインIDも併記する。`freeeId` 未登録なら管理者に問い合わせる旨を返信。閲覧には freee へのログインが必要。 |
 | 「日報」 | 日報システムの日報入力 URL。外部システムのため `lineUserId` は付けない。`all` は西・南の両方を返信。 |
 | 「hq」 | `/hq?category=hqN` URL。`all` は `/hq`（全カテゴリ）。 |
 | 「boss」 | `/boss` URL（`all` のみ）。 |
@@ -86,7 +86,7 @@
 | `/hq?category=hqN` | `hq1` / `hq2` / `hq3` / `all` | 各店発注の集計・確定・LINE コピー |
 | `/calendar` | 全 role | 30 日分の店内予約注文を日別表示 |
 | `/boss` | `all` | KPI ダッシュボード（円グラフ・売上集計） |
-| `/boss/users` | `all` | ユーザー承認・role 付与・freee連携ID / 勤怠打刻の所属店舗設定・承認時 LINE 通知 |
+| `/boss/users` | `all` | ユーザー承認・role 付与・freee連携ID / freeeログイン番号 / 勤怠打刻の所属店舗設定・承認時 LINE 通知 |
 | `/boss/products` | `all` | 商品マスタ管理（追加・編集・無効化） |
 | `/boss/order-products` | `all` | 店内商品マスタ管理（曜日別販売対応） |
 | `/boss/vendors` | `all` | 仕入先マスタ管理 |
@@ -124,7 +124,7 @@
 - `Vendor` — 仕入先
 - `Product` — 商品（`category`: 野菜 / 果物 / 餅・乾物菓子類）
 - `OrderProduct` — 店内予約注文用商品マスタ（弁当等）
-- `User` — LINE 連携ユーザー（`role`, `lineUserId`, `displayName`, `pictureUrl`, `freeeId`）
+- `User` — LINE 連携ユーザー（`role`, `lineUserId`, `displayName`, `pictureUrl`, `freeeId`, `freeeLoginNo`）
 - `DailyOrder` — 店舗からの日次発注リクエスト
 - `ConfirmedOrder` — 本部が確定した発注（仕入先送信用、各店数量 + 調整値）
 - `InstoreOrder` — 店内予約注文（顧客情報、配達日時、領収書）

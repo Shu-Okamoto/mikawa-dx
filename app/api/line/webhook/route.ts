@@ -4,7 +4,8 @@ import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { replyMessage, fetchLineProfile } from '@/lib/line'
 import {
-  nippoClockUrl, nippoClockUrlForToken, nippoDailyReportUrl, freeePayrollUrl,
+  nippoClockUrl, nippoClockUrlForToken, nippoDailyReportUrl,
+  freeePayrollUrl, freeeLoginId,
 } from '@/lib/external-links'
 import { todayJstYmd } from '@/lib/serverDate'
 
@@ -327,10 +328,14 @@ export async function POST(req: NextRequest) {
       // 対象月は日本時間の当月
       const [y, m] = todayJstYmd().split('-')
       const url = freeePayrollUrl(freeeId, Number(y), Number(m))
+      // ログイン番号が未登録の人には ID の行を出さない
+      const credentials = user.freeeLoginNo != null
+        ? `\n\nログインID: ${freeeLoginId(user.freeeLoginNo)}`
+          + '\nパスワード: ご自身で設定したもの'
+        : ''
       await replyMessage(replyToken,
-        `${user.name}さん\n${Number(y)}年${Number(m)}月の給与明細です。\n\n`
-        + `【給与明細】\n${url}\n\n`
-        + '※freee にログインしてご確認ください。')
+        `${user.name}さんの給与明細はこちらから確認できます。`
+        + `（${Number(y)}年${Number(m)}月分）\n\n${url}${credentials}`)
       continue
     }
 

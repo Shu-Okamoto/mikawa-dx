@@ -46,3 +46,11 @@ export function freeePayrollUrl(
   return `${FREEE_PAYROLL_BASE}#/${FREEE_COMPANY_ID}/${year}/${month}`
     + `/employees/${encodeURIComponent(employeeId)}`
 }
+
+// freee のログインID。連番を 8 桁ゼロ埋めした形
+// (例: 10 -> satonoajimikawa-00000010)。
+const FREEE_LOGIN_PREFIX = 'satonoajimikawa-'
+
+export function freeeLoginId(loginNo: number): string {
+  return FREEE_LOGIN_PREFIX + String(loginNo).padStart(8, '0')
+}
