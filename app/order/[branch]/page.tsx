@@ -863,7 +863,12 @@ function OrderPageContent({ branch }: { branch: string }) {
 
               <div style={{ marginBottom:'12px' }}>
                 <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
-                  display:'block', marginBottom:'6px' }}>お名前 *</label>
+                  display:'block', marginBottom:'6px' }}>
+                  お名前 *
+                  {/* 「様」付きで入力されることが多いので、敬称不要だと明示する */}
+                  <span style={{ fontSize:'13px', color:'#888780', fontWeight:400,
+                    marginLeft:'6px' }}>（敬称略）</span>
+                </label>
                 <input type="text" value={form.customerName}
                   onChange={(e) => setForm({ ...form, customerName: e.target.value })}
                   style={{ width:'100%', padding:'12px 14px',
@@ -1151,7 +1156,11 @@ function OrderPageContent({ branch }: { branch: string }) {
 
             <div style={{ marginBottom:'14px' }}>
               <label style={{ fontSize:'16px', color:'#2C2C2A', fontWeight:500,
-                display:'block', marginBottom:'6px' }}>お名前 *</label>
+                display:'block', marginBottom:'6px' }}>
+                お名前 *
+                <span style={{ fontSize:'13px', color:'#888780', fontWeight:400,
+                  marginLeft:'6px' }}>（敬称略）</span>
+              </label>
               <input type="text" value={editDraft.customerName}
                 onChange={(e) => setEditDraft({ ...editDraft, customerName: e.target.value })}
                 style={{ width:'100%', padding:'12px 14px',
