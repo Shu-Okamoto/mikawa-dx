@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { todayJst, nowJst } from '@/lib/serverDate'
+import { stripHonorific } from '@/lib/honorific'
 
 const STORE_BRANCHES = new Set(['nishi', 'minami', 'honbu'])
 const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
@@ -126,7 +127,8 @@ export async function POST(req: NextRequest) {
         category       : data.category || null,
         quantity       : data.quantity,
         price          : data.price ?? 0,
-        customerName   : data.customerName,
+        // 「様」付きで入力されることが多いので末尾の敬称は落として保存する
+        customerName   : stripHonorific(String(data.customerName ?? '')),
         phone          : data.phone,
         deliveryAddress: data.deliveryAddress,
         deliveryTime   : data.deliveryTime || null,

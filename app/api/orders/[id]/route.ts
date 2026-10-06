@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { stripHonorific } from '@/lib/honorific'
 
 const HQ_ROLES = new Set(['hq1', 'hq2', 'hq3'])
 
@@ -55,7 +56,10 @@ export async function PATCH(
     if (body.productName     !== undefined) data.productName     = body.productName.trim()
     if (body.quantity        !== undefined) data.quantity        = body.quantity
     if (body.price           !== undefined) data.price           = body.price
-    if (body.customerName    !== undefined) data.customerName    = body.customerName
+    // 「様」付きで入力されることが多いので末尾の敬称は落として保存する
+    if (body.customerName    !== undefined) {
+      data.customerName = stripHonorific(String(body.customerName))
+    }
     if (body.phone           !== undefined) data.phone           = body.phone
     if (body.deliveryAddress !== undefined) data.deliveryAddress = body.deliveryAddress
     if (body.deliveryTime    !== undefined) data.deliveryTime    = body.deliveryTime
