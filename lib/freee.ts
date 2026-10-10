@@ -170,3 +170,87 @@ export async function uploadReceipt(
 
   return id != null ? String(id) : ''
 }
+
+// ---------------------------------------------------------------------------
+// 勘定科目・振替伝票
+// ---------------------------------------------------------------------------
+
+export interface AccountItem {
+  id            : string
+  name          : string
+  // 科目の既定の税区分。売上の仕訳に使う初期値として画面に出す
+  defaultTaxCode: number | null
+}
+
+async function apiGet(cfg: FreeeConfig, path: string): Promise<unknown> {
+  const token = await accessToken(cfg)
+  const sep = path.includes('?') ? '&' : '?'
+  const res = await fetch(`${API}${path}${sep}company_id=${encodeURIComponent(cfg.companyId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`freee API エラー (${res.status}): ${text.slice(0, 300)}`)
+  }
+  return JSON.parse(text)
+}
+
+// 勘定科目の一覧。マッピング画面の選択肢に使う。
+export async function listAccountItems(cfg: FreeeConfig): Promise<AccountItem[]> {
+  const json = await apiGet(cfg, '/api/1/account_items') as {
+    account_items?: { id: number; name: string; default_tax_code?: number }[]
+  }
+  return (json.account_items ?? []).map((a) => ({
+    id            : String(a.id),
+    name          : a.name,
+    defaultTaxCode: a.default_tax_code ?? null,
+  }))
+}
+
+export interface JournalLine {
+  entrySide  : 'debit' | 'credit'
+  accountId  : string
+  amount     : number
+  taxCode    : number | null
+  description: string
+}
+
+// 振替伝票を作る。取引(deals)ではなく振替伝票を使うのは、借方(現金 /
+// ペイペイ未収入金)と貸方(売上高)の両方を明示して登録したいため。
+export async function createManualJournal(
+  cfg: FreeeConfig, issueDate: string, lines: JournalLine[],
+): Promise<string> {
+  const token = await accessToken(cfg)
+  const body = {
+    company_id: Number(cfg.companyId),
+    issue_date: issueDate,
+    details   : lines.map((l) => ({
+      entry_side     : l.entrySide,
+      account_item_id: Number(l.accountId),
+      amount         : l.amount,
+      description    : l.description,
+      ...(l.taxCode != null ? { tax_code: l.taxCode } : {}),
+    })),
+  }
+
+  const res = await fetch(`${API}/api/1/manual_journals`, {
+    method : 'POST',
+    headers: {
+      Authorization : `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`freee への登録に失敗しました (${res.status}): ${text.slice(0, 400)}`)
+  }
+
+  let id: unknown
+  try {
+    const json = JSON.parse(text) as Record<string, unknown>
+    const mj = json.manual_journal as Record<string, unknown> | undefined
+    id = mj?.id ?? json.id
+  } catch { /* ID が取れなくても登録自体は成功している */ }
+  return id != null ? String(id) : ''
+}
