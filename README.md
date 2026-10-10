@@ -163,11 +163,11 @@
 | `BLOB_READ_WRITE_TOKEN` | レシート画像アップロード（Vercel Blob）用。Vercel ダッシュボードの Storage で Blob Store を作成すると自動付与される。 |
 | `FREEE_CLIENT_ID` | freee 会計連携（ファイルボックス送信）用。freee アプリ管理で発行する。 |
 | `FREEE_CLIENT_SECRET` | 同上。**コードやリポジトリには置かず Vercel の環境変数にのみ設定する。** |
-| `FREEE_COMPANY_ID` | freee 会計の事業所ID。人事労務の事業所IDとは別。 |
+| `FREEE_COMPANY_ID` | freee 会計の事業所ID（任意）。未設定でも連携後に `/boss/freee` で一覧から選べる。人事労務の事業所IDとは別物なので、取り違えると `company_not_found` になる。 |
 
 売上の登録は **振替伝票**（`POST /api/1/manual_journals`）で行う。取引（deals）ではなく振替伝票を使うのは、借方（現金 / ペイペイ未収入金 / 商品券）と貸方（売上高）の両方を明示したいため。実績入力の「売上金額」は PayPay・商品券を含む総額として扱い、現金分は `売上金額 − PayPay − 商品券` で求めるので借方合計と貸方合計は必ず一致する。
 
-freee 連携は 3 つが揃って初めて有効になる（未設定なら `/boss/files` に連携バナーが出ない）。コールバックURLは `<NEXT_PUBLIC_API_URL>/api/boss/freee/callback` で、freee アプリ管理の設定と完全一致している必要がある。アクセストークンは 6 時間・リフレッシュトークンは 90 日で失効し、`dx.FreeeToken`（単一行）に保存して自動更新する。
+freee 連携は `FREEE_CLIENT_ID` / `FREEE_CLIENT_SECRET` / `NEXT_PUBLIC_API_URL` が揃って初めて有効になる（未設定なら `/boss/files` に連携バナーが出ない）。事業所は連携後に `GET /api/1/companies` の一覧から選び、`dx.FreeeToken.companyId` に保存する。コールバックURLは `<NEXT_PUBLIC_API_URL>/api/boss/freee/callback` で、freee アプリ管理の設定と完全一致している必要がある。アクセストークンは 6 時間・リフレッシュトークンは 90 日で失効し、`dx.FreeeToken`（単一行）に保存して自動更新する。
 
 `.env` は `.gitignore` 済み。コミットしないこと。
 
