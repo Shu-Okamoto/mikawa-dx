@@ -24,6 +24,8 @@ interface FileEntry {
   date      : string | null
   // この画像を参照している実績があるか
   linked    : boolean
+  // freee のファイルボックスへ送信済みか
+  sentToFreee: boolean
 }
 
 function parsePath(pathname: string): { branch: string; date: string | null } | null {
@@ -56,6 +58,10 @@ export async function GET(req: NextRequest) {
       linkedRows.map((r) => r.receiptImageUrl).filter((v): v is string => !!v),
     )
 
+    // freee へ送信済みのファイル
+    const sentRows = await prisma.freeeReceipt.findMany({ select: { path: true } })
+    const sent = new Set(sentRows.map((r) => r.path))
+
     // 1000 件を超える場合に備えてカーソルを辿る
     const files: FileEntry[] = []
     let cursor: string | undefined
@@ -71,6 +77,7 @@ export async function GET(req: NextRequest) {
           uploadedAt: b.uploadedAt.toISOString(),
           date      : parsed.date,
           linked    : linked.has(b.pathname),
+          sentToFreee: sent.has(b.pathname),
         })
       }
       cursor = page.hasMore ? page.cursor : undefined
