@@ -92,6 +92,7 @@
 | `/boss/products` | `all` | 商品マスタ管理（追加・編集・無効化） |
 | `/boss/order-products` | `all` | 店内商品マスタ管理（曜日別販売対応） |
 | `/boss/vendors` | `all` | 仕入先マスタ管理 |
+| `/boss/files` | `all` | レシート画像のファイルボックス（店舗フォルダ・月別・freee 送信） |
 
 `[branch]` は `nishi` / `minami` のみ受け付ける。role と branch の不一致は `/` にリダイレクト。
 
@@ -117,6 +118,11 @@
 | `/api/boss/products` | GET / POST / PATCH / DELETE | `role='all'`・DELETE は `isActive=false` |
 | `/api/boss/order-products` | GET / POST / PATCH / DELETE | `role='all'`・DELETE は `isActive=false` |
 | `/api/boss/vendors` | GET / POST / PATCH / DELETE | `role='all'`・DELETE は物理削除（FK 参照時は 409） |
+| `/api/boss/files` | GET | `role='all'`・blob の `receipts/` 配下を列挙 |
+| `/api/boss/files/freee` | POST | `role='all'`・レシートを freee ファイルボックスへ送信 |
+| `/api/boss/freee/connect` | POST | `role='all'`・認可URL生成（state を Cookie に保存） |
+| `/api/boss/freee/callback` | GET | freee からのリダイレクト・state 照合のみ（JWT は付かない） |
+| `/api/boss/freee/status` | GET / DELETE | `role='all'`・連携状態の確認と解除 |
 
 ## DB スキーマ（Prisma）
 
@@ -130,7 +136,9 @@
 - `DailyOrder` — 店舗からの日次発注リクエスト
 - `ConfirmedOrder` — 本部が確定した発注（仕入先送信用、各店数量 + 調整値）
 - `InstoreOrder` — 店内予約注文（顧客情報、配達日時、領収書）
-- `Sale` — 日次売上（売上 / 惣菜 / 餅 / 花 / 客数 / 出勤）
+- `Sale` — 日次売上（売上 / 惣菜 / 餅 / 花 / 客数 / 出勤 / レシート画像）
+- `FreeeToken` — freee 会計の OAuth トークン（単一行・RLS 有効）
+- `FreeeReceipt` — freee ファイルボックスへ送信済みのレシート（二重送信防止）
 
 詳細は `prisma/schema.prisma` 参照。
 
@@ -148,6 +156,11 @@
 | `NEXT_PUBLIC_API_URL` | webhook が返す URL の基底。本番では Vercel URL。 |
 | `API_SECRET` | 予約（未使用）。 |
 | `BLOB_READ_WRITE_TOKEN` | レシート画像アップロード（Vercel Blob）用。Vercel ダッシュボードの Storage で Blob Store を作成すると自動付与される。 |
+| `FREEE_CLIENT_ID` | freee 会計連携（ファイルボックス送信）用。freee アプリ管理で発行する。 |
+| `FREEE_CLIENT_SECRET` | 同上。**コードやリポジトリには置かず Vercel の環境変数にのみ設定する。** |
+| `FREEE_COMPANY_ID` | freee 会計の事業所ID。人事労務の事業所IDとは別。 |
+
+freee 連携は 3 つが揃って初めて有効になる（未設定なら `/boss/files` に連携バナーが出ない）。コールバックURLは `<NEXT_PUBLIC_API_URL>/api/boss/freee/callback` で、freee アプリ管理の設定と完全一致している必要がある。アクセストークンは 6 時間・リフレッシュトークンは 90 日で失効し、`dx.FreeeToken`（単一行）に保存して自動更新する。
 
 `.env` は `.gitignore` 済み。コミットしないこと。
 
