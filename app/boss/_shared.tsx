@@ -40,6 +40,8 @@ const ANALYTICS_NAV = [
   { href: '/boss',                 label: '📊 ダッシュボード' },
   { href: '/boss/analytics',       label: '📈 売上分析' },
   { href: '/boss/analytics/labor', label: '⏱ 人時売' },
+  // レシートの確認は分析側からもマスタ側からも使うので両方に出す
+  { href: '/boss/files',           label: '🗂 ファイル' },
 ]
 
 const MASTER_NAV = [

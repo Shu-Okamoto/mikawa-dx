@@ -86,6 +86,7 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     title: '📊 分析・マスタ',
     rows: [[
       { role: 'all', path: '/boss',       label: '売上分析' },
+      { role: 'all', path: '/boss/files', label: 'ファイル' },
       { role: 'all', path: '/boss/users', label: 'マスタ管理', requireMaster: true },
     ]],
   },
