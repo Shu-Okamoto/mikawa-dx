@@ -15,6 +15,9 @@ interface FreeeStatus {
   connected   : boolean
   companyId  ?: string | null
   redirectUri?: string | null
+  companies  ?: { id: string; name: string }[]
+  companiesError?: string | null
+  selectedCompanyId?: string | null
 }
 
 interface Preview {
@@ -91,6 +94,16 @@ function FreeeContent() {
     window.location.href = data.url
   }
 
+  const selectCompany = async (companyId: string) => {
+    const res = await authFetch('/api/boss/freee/status', {
+      method: 'PUT', body: JSON.stringify({ companyId }),
+    })
+    if (!res.ok) { showToast('事業所の保存に失敗しました'); return }
+    showToast('事業所を設定しました')
+    await loadStatus()
+    loadMapping()
+  }
+
   const disconnect = async () => {
     const res = await authFetch('/api/boss/freee/status', { method: 'DELETE' })
     if (!res.ok) { showToast('連携解除に失敗しました'); return }
@@ -164,18 +177,42 @@ function FreeeContent() {
         <Card title="連携">
           {!status?.configured ? (
             <Note>
-              環境変数（FREEE_CLIENT_ID / FREEE_CLIENT_SECRET / FREEE_COMPANY_ID）が
-              未設定です。Vercel に設定してから再読み込みしてください。
+              環境変数（FREEE_CLIENT_ID / FREEE_CLIENT_SECRET）が未設定です。
+              Vercel に設定してから再読み込みしてください。事業所は連携後に
+              この画面で選べるので、FREEE_COMPANY_ID の設定は任意です。
             </Note>
           ) : status.connected ? (
-            <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
-              <div style={{ flex:1, minWidth:0, fontSize:'14px', color:'#3B6D11' }}>
-                連携中{status.companyId ? `（事業所 ${status.companyId}）` : ''}
+            <>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+                <div style={{ flex:1, minWidth:0, fontSize:'14px', color:'#3B6D11' }}>
+                  連携中
+                </div>
+                <button onClick={disconnect} style={btn('#E24B4A', 'white', '#F3C6C4')}>
+                  連携を解除
+                </button>
               </div>
-              <button onClick={disconnect} style={btn('#E24B4A', 'white', '#F3C6C4')}>
-                連携を解除
-              </button>
-            </div>
+
+              {/* 事業所は freee から取得した一覧から選ぶ。
+                  ID を手で設定すると取り違えて company_not_found になるため。 */}
+              <div style={{ marginTop:'12px' }}>
+                <div style={{ fontSize:'13px', color:'#2C2C2A', fontWeight:500 }}>事業所</div>
+                {status.companiesError ? (
+                  <Note warn>事業所一覧を取得できませんでした: {status.companiesError}</Note>
+                ) : (status.companies ?? []).length === 0 ? (
+                  <Note warn>
+                    このアカウントで参照できる事業所がありません。freee 側の権限をご確認ください。
+                  </Note>
+                ) : (
+                  <select value={status.selectedCompanyId ?? ''}
+                    onChange={(e) => selectCompany(e.target.value)} style={inputStyle()}>
+                    <option value="">（未選択）</option>
+                    {(status.companies ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}（ID {c.id}）</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </>
           ) : (
             <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
               <div style={{ flex:1, minWidth:0, fontSize:'14px', color:'#888780' }}>未連携</div>

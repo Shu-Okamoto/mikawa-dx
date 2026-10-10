@@ -29,7 +29,8 @@ export function freeeConfig(): FreeeConfig | null {
   const clientSecret = process.env.FREEE_CLIENT_SECRET ?? ''
   const companyId    = process.env.FREEE_COMPANY_ID    ?? ''
   const baseUrl      = process.env.NEXT_PUBLIC_API_URL ?? ''
-  if (!clientId || !clientSecret || !companyId || !baseUrl) return null
+  // 事業所IDは画面から選べるので必須にしない(環境変数は初期値として使う)
+  if (!clientId || !clientSecret || !baseUrl) return null
   return {
     clientId,
     clientSecret,
@@ -76,12 +77,12 @@ async function requestToken(
 
 async function saveToken(t: TokenResponse, connectedBy?: string) {
   const expiresAt = new Date(Date.now() + t.expires_in * 1000)
-  // companyId / connectedBy は値があるときだけ書く(リフレッシュ時に消さない)
+  // connectedBy は値があるときだけ書く。companyId はトークン応答の値が
+  // どの事業所かはっきりしないので保存せず、画面で選んだ値だけを持つ。
   const common = {
     accessToken : t.access_token,
     refreshToken: t.refresh_token,
     expiresAt,
-    ...(t.company_id != null ? { companyId: String(t.company_id) } : {}),
     ...(connectedBy ? { connectedBy } : {}),
   }
   await prisma.freeeToken.upsert({
@@ -121,6 +122,31 @@ export async function accessToken(cfg: FreeeConfig): Promise<string> {
   return t.access_token
 }
 
+// 実際に使う事業所ID。画面で選んだ値を優先し、無ければ環境変数を使う。
+export async function resolvedCompanyId(cfg: FreeeConfig): Promise<string> {
+  const row = await prisma.freeeToken.findUnique({ where: { id: TOKEN_ROW_ID } })
+  return row?.companyId || cfg.companyId
+}
+
+export async function setCompanyId(companyId: string): Promise<void> {
+  await prisma.freeeToken.update({
+    where: { id: TOKEN_ROW_ID }, data: { companyId },
+  })
+}
+
+export interface Company { id: string; name: string }
+
+// 連携したアカウントが参照できる事業所の一覧。company_id は付けない。
+export async function listCompanies(cfg: FreeeConfig): Promise<Company[]> {
+  const json = await apiGet(cfg, '/api/1/companies', false) as {
+    companies?: { id: number; name?: string; display_name?: string }[]
+  }
+  return (json.companies ?? []).map((c) => ({
+    id  : String(c.id),
+    name: c.display_name || c.name || String(c.id),
+  }))
+}
+
 export async function connectionStatus() {
   const row = await prisma.freeeToken.findUnique({ where: { id: TOKEN_ROW_ID } })
   if (!row) return { connected: false as const }
@@ -145,7 +171,7 @@ export async function uploadReceipt(
   const token = await accessToken(cfg)
 
   const form = new FormData()
-  form.append('company_id', cfg.companyId)
+  form.append('company_id', await resolvedCompanyId(cfg))
   form.append('description', description)
   form.append('receipt', file, filename)
 
@@ -182,10 +208,17 @@ export interface AccountItem {
   defaultTaxCode: number | null
 }
 
-async function apiGet(cfg: FreeeConfig, path: string): Promise<unknown> {
+async function apiGet(
+  cfg: FreeeConfig, path: string, withCompany = true,
+): Promise<unknown> {
   const token = await accessToken(cfg)
-  const sep = path.includes('?') ? '&' : '?'
-  const res = await fetch(`${API}${path}${sep}company_id=${encodeURIComponent(cfg.companyId)}`, {
+  let url = `${API}${path}`
+  if (withCompany) {
+    const id = await resolvedCompanyId(cfg)
+    if (!id) throw new Error('事業所が選択されていません')
+    url += `${path.includes('?') ? '&' : '?'}company_id=${encodeURIComponent(id)}`
+  }
+  const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   })
   const text = await res.text()
@@ -222,7 +255,7 @@ export async function createManualJournal(
 ): Promise<string> {
   const token = await accessToken(cfg)
   const body = {
-    company_id: Number(cfg.companyId),
+    company_id: Number(await resolvedCompanyId(cfg)),
     issue_date: issueDate,
     details   : lines.map((l) => ({
       entry_side     : l.entrySide,
