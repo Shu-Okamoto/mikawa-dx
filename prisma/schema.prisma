@@ -211,3 +211,30 @@ model Sale {
   @@unique([saleDate, storeId])
   @@schema("dx")
 }
+
+// freee(会計)の OAuth トークン。事業所は 1 つなので単一行(id=1)で持つ。
+// アクセストークンは 6 時間、リフレッシュトークンは 90 日で失効し、
+// リフレッシュのたびに新しいリフレッシュトークンが返るため都度上書きする。
+model FreeeToken {
+  id           Int      @id
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  companyId    String?
+  connectedBy  String?
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@schema("dx")
+}
+
+// freee のファイルボックスへ送信済みのレシート。二重送信を防ぎ、
+// 画面に「送信済み」を出すために blob の pathname をキーに記録する。
+model FreeeReceipt {
+  id        Int      @id @default(autoincrement())
+  path      String   @unique
+  receiptId String
+  sentBy    String?
+  sentAt    DateTime @default(now())
+
+  @@schema("dx")
+}

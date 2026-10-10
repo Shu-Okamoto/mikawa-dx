@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BossHeader, BossNav, Toast, useToast } from '../_shared'
 
@@ -11,6 +12,15 @@ interface FileEntry {
   uploadedAt: string
   date      : string | null
   linked    : boolean
+  sentToFreee: boolean
+}
+
+interface FreeeStatus {
+  configured  : boolean
+  connected   : boolean
+  companyId  ?: string | null
+  connectedBy?: string | null
+  redirectUri?: string | null
 }
 
 interface BranchFolder {
@@ -57,6 +67,9 @@ function FilesContent() {
   const [month, setMonth]       = useState<string | null>(null)
   const [fetching, setFetching] = useState(true)
   const [zoom, setZoom]         = useState<FileEntry | null>(null)
+  const [freee, setFreee]       = useState<FreeeStatus | null>(null)
+  const [sending, setSending]   = useState<string | null>(null)
+  const params = useSearchParams()
 
   const load = useCallback(async () => {
     if (!user) return
@@ -70,9 +83,50 @@ function FilesContent() {
     setBranch((prev) => prev ?? (data.branches?.[0]?.storeCode ?? null))
   }, [user])
 
+  const loadFreee = useCallback(async () => {
+    if (!user) return
+    const res  = await authFetch('/api/boss/freee/status')
+    if (!res.ok) { setFreee(null); return }
+    setFreee(await res.json())
+  }, [user])
+
   useEffect(() => {
-    if (!loading && !error) load()
-  }, [loading, error, load])
+    if (!loading && !error) { load(); loadFreee() }
+  }, [loading, error, load, loadFreee])
+
+  // 連携のコールバックから戻ってきたときの結果表示
+  useEffect(() => {
+    const r = params.get('freee')
+    if (r === 'connected') showToast('freee と連携しました')
+    else if (r === 'error') showToast('freee 連携に失敗しました: ' + (params.get('reason') ?? ''))
+  }, [params])
+
+  const connectFreee = async () => {
+    const res  = await authFetch('/api/boss/freee/connect', { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok || !data.url) { showToast(data.error ?? '連携を開始できませんでした'); return }
+    window.location.href = data.url
+  }
+
+  const disconnectFreee = async () => {
+    const res = await authFetch('/api/boss/freee/status', { method: 'DELETE' })
+    if (!res.ok) { showToast('連携解除に失敗しました'); return }
+    showToast('連携を解除しました')
+    loadFreee()
+  }
+
+  const sendToFreee = async (file: FileEntry) => {
+    setSending(file.path)
+    const res  = await authFetch('/api/boss/files/freee', {
+      method: 'POST', body: JSON.stringify({ path: file.path }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setSending(null)
+    if (!res.ok) { showToast(data.error ?? '送信に失敗しました'); return }
+    showToast(data.alreadySent ? '送信済みです' : 'freee に送信しました')
+    setFiles((prev) => prev.map((f) =>
+      f.path === file.path ? { ...f, sentToFreee: true } : f))
+  }
 
   const inBranch = useMemo(
     () => files.filter((f) => f.branch === branch),
@@ -104,6 +158,8 @@ function FilesContent() {
 
       <BossHeader title="🗂 ファイルボックス" subtitle={user?.name} onLogout={logout} />
       <BossNav active="/boss/files" />
+
+      <FreeeBanner status={freee} onConnect={connectFreee} onDisconnect={disconnectFreee} />
 
       {/* 店舗フォルダ */}
       <div style={{ background:'white', padding:'12px 16px',
@@ -161,7 +217,10 @@ function FilesContent() {
               gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))', gap:'10px' }}>
               {shown.map((f) => (
                 <FileCard key={f.path} file={f} authFetch={authFetch}
-                  onOpen={() => setZoom(f)} />
+                  onOpen={() => setZoom(f)}
+                  canSend={!!freee?.connected}
+                  sending={sending === f.path}
+                  onSend={() => sendToFreee(f)} />
               ))}
             </div>
           </>
@@ -205,10 +264,13 @@ function useReceiptObjectUrl(path: string, authFetch: AuthFetch, enabled: boolea
   return { url, failed }
 }
 
-function FileCard({ file, authFetch, onOpen }: {
+function FileCard({ file, authFetch, onOpen, canSend, sending, onSend }: {
   file: FileEntry
   authFetch: AuthFetch
   onOpen: () => void
+  canSend: boolean
+  sending: boolean
+  onSend: () => void
 }) {
   const { url, failed } = useReceiptObjectUrl(file.path, authFetch, true)
 
@@ -240,6 +302,21 @@ function FileCard({ file, authFetch, onOpen }: {
             <span style={{ marginLeft:'6px', color:'#E67E22' }}>未紐づけ</span>
           )}
         </div>
+
+        {file.sentToFreee ? (
+          <div style={{ marginTop:'6px', fontSize:'11px', color:'#3B6D11' }}>
+            ✓ freee 送信済み
+          </div>
+        ) : canSend ? (
+          <button onClick={onSend} disabled={sending}
+            style={{ marginTop:'6px', width:'100%', padding:'6px',
+              background: sending ? '#E5E1D8' : 'white', color:'#2C2C2A',
+              border:'1.5px solid #E5E1D8', borderRadius:'8px',
+              fontSize:'12px', cursor: sending ? 'default' : 'pointer',
+              fontFamily:'inherit' }}>
+            {sending ? '送信中...' : 'freee へ送る'}
+          </button>
+        ) : null}
       </div>
     </div>
   )
@@ -287,6 +364,48 @@ function Lightbox({ file, authFetch, onClose }: {
           閉じる
         </button>
       </div>
+    </div>
+  )
+}
+
+// freee 連携の状態と操作。未設定(環境変数が無い)ときは何も出さない。
+function FreeeBanner({ status, onConnect, onDisconnect }: {
+  status: FreeeStatus | null
+  onConnect: () => void
+  onDisconnect: () => void
+}) {
+  if (!status || !status.configured) return null
+
+  return (
+    <div style={{ margin:'12px 12px 0', padding:'12px 14px', background:'white',
+      borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,.04)',
+      display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:'14px', fontWeight:500, color:'#2C2C2A' }}>
+          freee 会計 ファイルボックス
+        </div>
+        <div style={{ fontSize:'12px', color: status.connected ? '#3B6D11' : '#888780',
+          marginTop:'2px' }}>
+          {status.connected
+            ? `連携中${status.companyId ? `（事業所 ${status.companyId}）` : ''}`
+            : '未連携 — 連携するとレシートを freee に送れます'}
+        </div>
+      </div>
+      {status.connected ? (
+        <button onClick={onDisconnect}
+          style={{ padding:'8px 14px', background:'white', color:'#E24B4A',
+            border:'1.5px solid #F3C6C4', borderRadius:'10px',
+            fontSize:'13px', cursor:'pointer', fontFamily:'inherit' }}>
+          連携を解除
+        </button>
+      ) : (
+        <button onClick={onConnect}
+          style={{ padding:'8px 16px', background:'#3B6D11', color:'white',
+            border:'none', borderRadius:'10px', fontSize:'14px',
+            cursor:'pointer', fontFamily:'inherit', fontWeight:500 }}>
+          freee と連携
+        </button>
+      )}
     </div>
   )
 }
