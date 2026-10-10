@@ -47,6 +47,7 @@ const MASTER_NAV = [
   { href: '/boss/products',        label: '🥬 商品' },
   { href: '/boss/order-products',  label: '🍱 オリジナル商品' },
   { href: '/boss/vendors',         label: '🏢 仕入先' },
+  { href: '/boss/files',           label: '🗂 ファイル' },
   { href: '/boss/import',          label: '📥 インポート' },
 ]
 
