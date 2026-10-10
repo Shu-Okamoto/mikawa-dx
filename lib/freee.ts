@@ -76,17 +76,18 @@ async function requestToken(
 
 async function saveToken(t: TokenResponse, connectedBy?: string) {
   const expiresAt = new Date(Date.now() + t.expires_in * 1000)
-  const data = {
+  // companyId / connectedBy は値があるときだけ書く(リフレッシュ時に消さない)
+  const common = {
     accessToken : t.access_token,
     refreshToken: t.refresh_token,
     expiresAt,
-    companyId   : t.company_id != null ? String(t.company_id) : undefined,
+    ...(t.company_id != null ? { companyId: String(t.company_id) } : {}),
     ...(connectedBy ? { connectedBy } : {}),
   }
   await prisma.freeeToken.upsert({
     where : { id: TOKEN_ROW_ID },
-    update: data,
-    create: { id: TOKEN_ROW_ID, ...data, accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt },
+    update: common,
+    create: { id: TOKEN_ROW_ID, ...common },
   })
 }
 
