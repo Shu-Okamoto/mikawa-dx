@@ -93,6 +93,7 @@
 | `/boss/order-products` | `all` | 店内商品マスタ管理（曜日別販売対応） |
 | `/boss/vendors` | `all` | 仕入先マスタ管理 |
 | `/boss/files` | `all` | レシート画像のファイルボックス（店舗フォルダ・月別・freee 送信） |
+| `/boss/freee` | `all` | freee 連携（接続・勘定科目の割り当て・日次売上の登録） |
 
 `[branch]` は `nishi` / `minami` のみ受け付ける。role と branch の不一致は `/` にリダイレクト。
 
@@ -123,6 +124,8 @@
 | `/api/boss/freee/connect` | POST | `role='all'`・認可URL生成（state を Cookie に保存） |
 | `/api/boss/freee/callback` | GET | freee からのリダイレクト・state 照合のみ（JWT は付かない） |
 | `/api/boss/freee/status` | GET / DELETE | `role='all'`・連携状態の確認と解除 |
+| `/api/boss/freee/mapping` | GET / PUT | `role='all'`・freee 勘定科目と売上項目の対応 |
+| `/api/boss/freee/journal` | GET / POST | `role='all'`・日次売上のプレビューと振替伝票の登録 |
 
 ## DB スキーマ（Prisma）
 
@@ -139,6 +142,8 @@
 - `Sale` — 日次売上（売上 / 惣菜 / 餅 / 花 / 客数 / 出勤 / レシート画像）
 - `FreeeToken` — freee 会計の OAuth トークン（単一行・RLS 有効）
 - `FreeeReceipt` — freee ファイルボックスへ送信済みのレシート（二重送信防止）
+- `FreeeMapping` — freee 勘定科目と売上項目の対応（`sales:<店舗>` / `cash` / `paypay` / `voucher`）
+- `FreeeJournal` — freee へ登録済みの日次売上（日付×店舗で一意・二重計上防止）
 
 詳細は `prisma/schema.prisma` 参照。
 
@@ -159,6 +164,8 @@
 | `FREEE_CLIENT_ID` | freee 会計連携（ファイルボックス送信）用。freee アプリ管理で発行する。 |
 | `FREEE_CLIENT_SECRET` | 同上。**コードやリポジトリには置かず Vercel の環境変数にのみ設定する。** |
 | `FREEE_COMPANY_ID` | freee 会計の事業所ID。人事労務の事業所IDとは別。 |
+
+売上の登録は **振替伝票**（`POST /api/1/manual_journals`）で行う。取引（deals）ではなく振替伝票を使うのは、借方（現金 / ペイペイ未収入金 / 商品券）と貸方（売上高）の両方を明示したいため。実績入力の「売上金額」は PayPay・商品券を含む総額として扱い、現金分は `売上金額 − PayPay − 商品券` で求めるので借方合計と貸方合計は必ず一致する。
 
 freee 連携は 3 つが揃って初めて有効になる（未設定なら `/boss/files` に連携バナーが出ない）。コールバックURLは `<NEXT_PUBLIC_API_URL>/api/boss/freee/callback` で、freee アプリ管理の設定と完全一致している必要がある。アクセストークンは 6 時間・リフレッシュトークンは 90 日で失効し、`dx.FreeeToken`（単一行）に保存して自動更新する。
 

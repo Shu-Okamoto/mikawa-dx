@@ -238,3 +238,33 @@ model FreeeReceipt {
 
   @@schema("dx")
 }
+
+// freee の勘定科目・口座と DX の売上項目の対応。
+// key は 'sales:<店舗コード>'(売上高) / 'cash'(現金) / 'paypay' / 'voucher'。
+// 科目名を直接コードに持つと freee 側の改名で壊れるため、ID で持ち
+// 表示名はキャッシュとして保存する。
+model FreeeMapping {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique
+  accountId  String
+  accountName String
+  // 売上(貸方)に使う税区分。freee の勘定科目の既定値を初期値にする
+  taxCode    Int?
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@schema("dx")
+}
+
+// freee へ送信済みの日次売上。二重計上を防ぎ、画面に送信済みを出す。
+model FreeeJournal {
+  id        Int      @id @default(autoincrement())
+  saleDate  DateTime @db.Date
+  storeCode String
+  journalId String
+  amount    Decimal  @default(0)
+  sentBy    String?
+  sentAt    DateTime @default(now())
+
+  @@unique([saleDate, storeCode])
+  @@schema("dx")
+}
