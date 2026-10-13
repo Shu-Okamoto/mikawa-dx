@@ -231,13 +231,27 @@ async function apiGet(
 // 勘定科目の一覧。マッピング画面の選択肢に使う。
 export async function listAccountItems(cfg: FreeeConfig): Promise<AccountItem[]> {
   const json = await apiGet(cfg, '/api/1/account_items') as {
-    account_items?: { id: number; name: string; default_tax_code?: number }[]
+    account_items?: { id: number; name: string
+                      default_tax_code?: number; tax_code?: number }[]
   }
   return (json.account_items ?? []).map((a) => ({
     id            : String(a.id),
     name          : a.name,
-    defaultTaxCode: a.default_tax_code ?? null,
+    // 項目名は freee 側の版で揺れるため両方見る
+    defaultTaxCode: a.default_tax_code ?? a.tax_code ?? null,
   }))
+}
+
+export interface TaxCode { code: number; name: string }
+
+// 税区分の一覧。振替伝票は全明細に tax_code が必要なので、画面で選べるようにする。
+export async function listTaxCodes(cfg: FreeeConfig): Promise<TaxCode[]> {
+  const json = await apiGet(cfg, '/api/1/taxes/codes') as {
+    taxes?: { code: number; name?: string; name_ja?: string }[]
+  }
+  return (json.taxes ?? [])
+    .filter((t) => t.code != null)
+    .map((t) => ({ code: t.code, name: t.name_ja || t.name || String(t.code) }))
 }
 
 export interface JournalLine {

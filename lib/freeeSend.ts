@@ -55,10 +55,17 @@ export async function buildSalePreviews(date: string): Promise<SalePreview[]> {
     const cash    = total - paypay - voucher
 
     const blockers: string[] = []
-    if (!byKey.get(`sales:${s.store.storeCode}`)) blockers.push('売上高の科目が未設定')
-    if (cash    > 0 && !byKey.get('cash'))    blockers.push('現金の科目が未設定')
-    if (paypay  > 0 && !byKey.get('paypay'))  blockers.push('PayPayの科目が未設定')
-    if (voucher > 0 && !byKey.get('voucher')) blockers.push('商品券の科目が未設定')
+    // 振替伝票は全明細に税区分が要るので、科目と税区分の両方を確認する
+    const need = (key: string, label: string, amount: number) => {
+      if (amount <= 0) return
+      const m = byKey.get(key)
+      if (!m) { blockers.push(`${label}の科目が未設定`); return }
+      if (m.taxCode == null) blockers.push(`${label}の税区分が未設定`)
+    }
+    need(`sales:${s.store.storeCode}`, '売上高', total)
+    need('cash',    '現金',   cash)
+    need('paypay',  'PayPay', paypay)
+    need('voucher', '商品券', voucher)
     if (total <= 0) blockers.push('売上が 0 円')
     if (cash < 0) blockers.push('現金分がマイナス（売上金額より PayPay+商品券 が大きい）')
 
@@ -100,7 +107,8 @@ export async function sendSale(
     const m = byKey.get(key)!
     lines.push({
       entrySide: 'debit', accountId: m.accountId, amount,
-      taxCode: null, description: `${target.storeName} ${date} ${label}`,
+      // freee は全明細に tax_code を要求する(未設定は blockers で止めている)
+      taxCode: m.taxCode, description: `${target.storeName} ${date} ${label}`,
     })
   }
   debit('cash',    target.cash,    '現金売上')
