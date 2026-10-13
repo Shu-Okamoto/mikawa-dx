@@ -28,14 +28,20 @@ export async function GET(req: NextRequest) {
     let accountItems: { id: string; name: string; defaultTaxCode: number | null }[] = []
     let taxCodes: { code: number; name: string }[] = []
     let accountsError: string | null = null
+    let taxCodesError: string | null = null
     if (cfg) {
       try {
         accountItems = await listAccountItems(cfg)
       } catch (e) {
         accountsError = e instanceof Error ? e.message : '科目一覧を取得できませんでした'
       }
-      // 税区分は取れなくても科目の割り当てはできるので、失敗しても止めない
-      try { taxCodes = await listTaxCodes(cfg) } catch { /* 画面で手入力に落とす */ }
+      // 税区分は取れなくても科目の割り当てはできるので失敗しても止めないが、
+      // 理由は画面に出す(握りつぶすと手入力に落ちた理由が分からなくなる)
+      try {
+        taxCodes = await listTaxCodes(cfg)
+      } catch (e) {
+        taxCodesError = e instanceof Error ? e.message : '税区分一覧を取得できませんでした'
+      }
     }
 
     return NextResponse.json({
@@ -43,6 +49,7 @@ export async function GET(req: NextRequest) {
       stores    : stores.map((s) => ({ storeCode: s.storeCode, storeName: s.storeName })),
       accountItems,
       taxCodes,
+      taxCodesError,
       accountsError,
       mapping   : mapping.map((m) => ({
         key: m.key, accountId: m.accountId, accountName: m.accountName, taxCode: m.taxCode,

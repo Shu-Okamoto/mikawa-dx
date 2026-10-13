@@ -59,6 +59,7 @@ function FreeeContent() {
   const [items, setItems]     = useState<AccountItem[]>([])
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([])
   const [itemsError, setItemsError] = useState<string | null>(null)
+  const [taxError, setTaxError] = useState<string | null>(null)
   const [stores, setStores]   = useState<StoreRef[]>([])
   const [draft, setDraft]     = useState<Record<string, MappingRow>>({})
   const [saved, setSaved]     = useState<Record<string, MappingRow>>({})
@@ -84,6 +85,7 @@ function FreeeContent() {
     setItems(data.accountItems ?? [])
     setTaxCodes(data.taxCodes ?? [])
     setItemsError(data.accountsError ?? null)
+    setTaxError(data.taxCodesError ?? null)
     setStores(data.stores ?? [])
     const m: Record<string, MappingRow> = {}
     ;(data.mapping ?? []).forEach((r: MappingRow) => { m[r.key] = r })
@@ -288,6 +290,12 @@ function FreeeContent() {
         {/* 科目マッピング */}
         <Card title="勘定科目の割り当て">
           {itemsError && <Note warn>科目一覧を取得できませんでした: {itemsError}</Note>}
+          {taxError && (
+            <Note warn>
+              税区分一覧を取得できませんでした: {taxError}
+              <br />税区分はコードを直接入力してください。
+            </Note>
+          )}
           {items.length === 0 && !itemsError && (
             <Note>連携すると freee の勘定科目を選べるようになります。</Note>
           )}
