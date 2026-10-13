@@ -7,6 +7,7 @@ import { BossHeader, BossNav, Toast, useToast, inputStyle } from '../_shared'
 import { todayJstYmd } from '@/lib/serverDate'
 
 interface AccountItem { id: string; name: string; defaultTaxCode: number | null }
+interface TaxCode    { code: number; name: string }
 interface StoreRef   { storeCode: string; storeName: string }
 interface MappingRow { key: string; accountId: string; accountName: string; taxCode: number | null }
 
@@ -56,6 +57,7 @@ function FreeeContent() {
 
   const [status, setStatus]   = useState<FreeeStatus | null>(null)
   const [items, setItems]     = useState<AccountItem[]>([])
+  const [taxCodes, setTaxCodes] = useState<TaxCode[]>([])
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [stores, setStores]   = useState<StoreRef[]>([])
   const [draft, setDraft]     = useState<Record<string, MappingRow>>({})
@@ -80,6 +82,7 @@ function FreeeContent() {
     const data = await res.json()
     if (!res.ok) { showToast(data.error ?? '取得に失敗しました'); return }
     setItems(data.accountItems ?? [])
+    setTaxCodes(data.taxCodes ?? [])
     setItemsError(data.accountsError ?? null)
     setStores(data.stores ?? [])
     const m: Record<string, MappingRow> = {}
@@ -166,10 +169,19 @@ function FreeeContent() {
         key,
         accountId,
         accountName: item?.name ?? '',
-        // 売上高(貸方)だけ税区分を持たせる。科目の既定値を初期値にする
-        taxCode    : key.startsWith('sales:') ? (item?.defaultTaxCode ?? null) : null,
+        // 振替伝票は全明細に税区分が要るので、借方・貸方とも持たせる。
+        // 科目の既定値があれば初期値にし、無ければ画面で選んでもらう。
+        taxCode    : item?.defaultTaxCode ?? null,
       },
     }))
+  }
+
+  const setSlotTax = (key: string, taxCode: string) => {
+    setDraft((prev) => {
+      const cur = prev[key]
+      if (!cur) return prev
+      return { ...prev, [key]: { ...cur, taxCode: taxCode === '' ? null : Number(taxCode) } }
+    })
   }
 
   const changed = JSON.stringify(draft) !== JSON.stringify(saved)
@@ -288,7 +300,10 @@ function FreeeContent() {
               hint={`${s.storeName}の売上高`}
               value={draft[`sales:${s.storeCode}`]?.accountId ?? ''}
               fallbackName={draft[`sales:${s.storeCode}`]?.accountName}
-              items={items} onChange={(v) => setSlot(`sales:${s.storeCode}`, v)} />
+              items={items} onChange={(v) => setSlot(`sales:${s.storeCode}`, v)}
+              taxCode={draft[`sales:${s.storeCode}`]?.taxCode ?? null}
+              taxCodes={taxCodes}
+              onTaxChange={(v) => setSlotTax(`sales:${s.storeCode}`, v)} />
           ))}
 
           <div style={{ fontSize:'12px', color:'#888780', margin:'14px 0 8px' }}>
@@ -298,7 +313,10 @@ function FreeeContent() {
             <Slot key={d.key} label={d.label} hint={d.hint}
               value={draft[d.key]?.accountId ?? ''}
               fallbackName={draft[d.key]?.accountName}
-              items={items} onChange={(v) => setSlot(d.key, v)} />
+              items={items} onChange={(v) => setSlot(d.key, v)}
+              taxCode={draft[d.key]?.taxCode ?? null}
+              taxCodes={taxCodes}
+              onTaxChange={(v) => setSlotTax(d.key, v)} />
           ))}
 
           <button onClick={save} disabled={!changed || saving}
@@ -415,7 +433,10 @@ const check: React.CSSProperties = {
   fontSize:'14px', color:'#2C2C2A', margin:'8px 0', cursor:'pointer',
 }
 
-function Slot({ label, hint, value, fallbackName, items, onChange }: {
+function Slot({
+  label, hint, value, fallbackName, items, onChange,
+  taxCode, taxCodes, onTaxChange,
+}: {
   label: string
   hint : string
   value: string
@@ -423,6 +444,9 @@ function Slot({ label, hint, value, fallbackName, items, onChange }: {
   fallbackName?: string
   items: AccountItem[]
   onChange: (v: string) => void
+  taxCode: number | null
+  taxCodes: TaxCode[]
+  onTaxChange: (v: string) => void
 }) {
   const missing = !!value && !items.some((i) => i.id === value)
   return (
@@ -437,6 +461,32 @@ function Slot({ label, hint, value, fallbackName, items, onChange }: {
         )}
         {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
       </select>
+
+      {/* 振替伝票は全明細に税区分が必要。科目の既定値が無いときはここで選ぶ */}
+      {!!value && (
+        <div style={{ marginTop:'6px', display:'flex', alignItems:'center', gap:'8px' }}>
+          <span style={{ fontSize:'11px', color:'#888780', whiteSpace:'nowrap' }}>
+            税区分
+          </span>
+          {taxCodes.length > 0 ? (
+            <select value={taxCode ?? ''} onChange={(e) => onTaxChange(e.target.value)}
+              style={inputStyle({ fontSize:'13px', padding:'6px 8px' })}>
+              <option value="">（未設定）</option>
+              {taxCodes.map((t) => (
+                <option key={t.code} value={t.code}>{t.name}（{t.code}）</option>
+              ))}
+            </select>
+          ) : (
+            <input type="text" inputMode="numeric" value={taxCode ?? ''}
+              onChange={(e) => onTaxChange(e.target.value.replace(/[^0-9]/g, ''))}
+              placeholder="コードを入力"
+              style={inputStyle({ fontSize:'13px', padding:'6px 8px' })} />
+          )}
+          {taxCode == null && (
+            <span style={{ fontSize:'11px', color:'#E67E22', whiteSpace:'nowrap' }}>必須</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

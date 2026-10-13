@@ -169,7 +169,7 @@
 | `FREEE_CLIENT_SECRET` | 同上。**コードやリポジトリには置かず Vercel の環境変数にのみ設定する。** |
 | `FREEE_COMPANY_ID` | freee 会計の事業所ID（任意）。未設定でも連携後に `/boss/freee` で一覧から選べる。人事労務の事業所IDとは別物なので、取り違えると `company_not_found` になる。 |
 
-売上の登録は **振替伝票**（`POST /api/1/manual_journals`）で行う。取引（deals）ではなく振替伝票を使うのは、借方（現金 / ペイペイ未収入金 / 商品券）と貸方（売上高）の両方を明示したいため。実績入力の「売上金額」は PayPay・商品券を含む総額として扱い、現金分は `売上金額 − PayPay − 商品券` で求めるので借方合計と貸方合計は必ず一致する。
+売上の登録は **振替伝票**（`POST /api/1/manual_journals`）で行う。振替伝票は**全明細に `tax_code` が必要**なので、借方（現金・未収入金など）にも税区分を割り当てる。科目の既定税区分が取得できればそれを初期値にし、取れない場合は `/boss/freee` で選ぶ。未設定のまま送ろうとすると送信前に止まる。取引（deals）ではなく振替伝票を使うのは、借方（現金 / ペイペイ未収入金 / 商品券）と貸方（売上高）の両方を明示したいため。実績入力の「売上金額」は PayPay・商品券を含む総額として扱い、現金分は `売上金額 − PayPay − 商品券` で求めるので借方合計と貸方合計は必ず一致する。
 
 freee 連携は `FREEE_CLIENT_ID` / `FREEE_CLIENT_SECRET` / `NEXT_PUBLIC_API_URL` が揃って初めて有効になる（未設定なら `/boss/files` に連携バナーが出ない）。事業所は連携後に `GET /api/1/companies` の一覧から選び、`dx.FreeeToken.companyId` に保存する。コールバックURLは `<NEXT_PUBLIC_API_URL>/api/boss/freee/callback` で、freee アプリ管理の設定と完全一致している必要がある。アクセストークンは 6 時間・リフレッシュトークンは 90 日で失効し、`dx.FreeeToken`（単一行）に保存して自動更新する。
 

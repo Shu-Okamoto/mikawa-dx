@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import prisma from '@/lib/prisma'
-import { freeeConfig, listAccountItems } from '@/lib/freee'
+import { freeeConfig, listAccountItems, listTaxCodes } from '@/lib/freee'
 
 // DX の売上項目と freee の勘定科目の対応。
 // key は 'sales:<店舗コード>'(売上高・貸方) / 'cash' / 'paypay' / 'voucher'(借方)。
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
 
     // 未連携・未設定なら科目一覧は取れないが、画面は出せるようにする
     let accountItems: { id: string; name: string; defaultTaxCode: number | null }[] = []
+    let taxCodes: { code: number; name: string }[] = []
     let accountsError: string | null = null
     if (cfg) {
       try {
@@ -33,12 +34,15 @@ export async function GET(req: NextRequest) {
       } catch (e) {
         accountsError = e instanceof Error ? e.message : '科目一覧を取得できませんでした'
       }
+      // 税区分は取れなくても科目の割り当てはできるので、失敗しても止めない
+      try { taxCodes = await listTaxCodes(cfg) } catch { /* 画面で手入力に落とす */ }
     }
 
     return NextResponse.json({
       configured: !!cfg,
       stores    : stores.map((s) => ({ storeCode: s.storeCode, storeName: s.storeName })),
       accountItems,
+      taxCodes,
       accountsError,
       mapping   : mapping.map((m) => ({
         key: m.key, accountId: m.accountId, accountName: m.accountName, taxCode: m.taxCode,
