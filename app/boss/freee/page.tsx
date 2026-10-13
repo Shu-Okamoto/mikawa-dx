@@ -48,6 +48,11 @@ const DEBIT_SLOTS = [
   { key: 'voucher', label: 'プレミアム商品券', hint: '使っていなければ空欄でも可' },
 ]
 
+// 借方は「受け取り方」を表す資産科目なので税区分は対象外。消費税は貸方の
+// 売上高 1 行で把握しており、借方にも課税区分を付けると二重に計上される。
+const DEBIT_TAX_NOTE = '借方は資産科目なので通常「対象外」です。'
+  + '課税区分を付けると消費税が二重に計上されます。'
+
 const yen = (n: number) => '¥' + n.toLocaleString()
 
 function FreeeContent() {
@@ -300,8 +305,11 @@ function FreeeContent() {
             <Note>連携すると freee の勘定科目を選べるようになります。</Note>
           )}
 
-          <div style={{ fontSize:'12px', color:'#888780', margin:'4px 0 8px' }}>
+          <div style={{ fontSize:'12px', color:'#888780', margin:'4px 0 4px' }}>
             貸方（売上高）
+          </div>
+          <div style={{ fontSize:'11px', color:'#B4B2A9', marginBottom:'8px' }}>
+            税区分は課税売上（食品は軽減8%、花は10%）を選びます。
           </div>
           {stores.map((s) => (
             <Slot key={s.storeCode} label={s.storeName}
@@ -314,8 +322,12 @@ function FreeeContent() {
               onTaxChange={(v) => setSlotTax(`sales:${s.storeCode}`, v)} />
           ))}
 
-          <div style={{ fontSize:'12px', color:'#888780', margin:'14px 0 8px' }}>
+          <div style={{ fontSize:'12px', color:'#888780', margin:'14px 0 4px' }}>
             借方（受け取り方）
+          </div>
+          <div style={{ fontSize:'11px', color:'#E67E22', marginBottom:'8px',
+            lineHeight:1.6 }}>
+            ⚠ {DEBIT_TAX_NOTE}
           </div>
           {DEBIT_SLOTS.map((d) => (
             <Slot key={d.key} label={d.label} hint={d.hint}
