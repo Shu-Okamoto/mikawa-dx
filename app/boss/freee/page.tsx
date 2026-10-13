@@ -20,6 +20,15 @@ interface FreeeStatus {
   selectedCompanyId?: string | null
 }
 
+interface AutoSend {
+  enabled     : boolean
+  sendSales   : boolean
+  sendReceipts: boolean
+  lastRunAt   : string | null
+  lastResult  : string | null
+  cronReady   : boolean
+}
+
 interface Preview {
   storeCode: string
   storeName: string
@@ -53,6 +62,8 @@ function FreeeContent() {
   const [saved, setSaved]     = useState<Record<string, MappingRow>>({})
   const [saving, setSaving]   = useState(false)
 
+  const [auto, setAuto]       = useState<AutoSend | null>(null)
+  const [autoBusy, setAutoBusy] = useState(false)
   const [date, setDate]       = useState('')
   const [preview, setPreview] = useState<Preview[] | null>(null)
   const [sending, setSending] = useState<string | null>(null)
@@ -77,9 +88,45 @@ function FreeeContent() {
     setDraft(m)
   }, [user])
 
+  const loadAuto = useCallback(async () => {
+    if (!user) return
+    const res = await authFetch('/api/boss/freee/autosend')
+    if (res.ok) setAuto(await res.json())
+  }, [user])
+
   useEffect(() => {
-    if (!loading && !error) { loadStatus(); loadMapping(); setDate(todayJstYmd()) }
-  }, [loading, error, loadStatus, loadMapping])
+    if (!loading && !error) {
+      loadStatus(); loadMapping(); loadAuto(); setDate(todayJstYmd())
+    }
+  }, [loading, error, loadStatus, loadMapping, loadAuto])
+
+  const saveAuto = async (next: Partial<AutoSend>) => {
+    if (!auto) return
+    const merged = { ...auto, ...next }
+    setAuto(merged)
+    const res = await authFetch('/api/boss/freee/autosend', {
+      method: 'PUT',
+      body  : JSON.stringify({
+        enabled     : merged.enabled,
+        sendSales   : merged.sendSales,
+        sendReceipts: merged.sendReceipts,
+      }),
+    })
+    if (!res.ok) { showToast('保存に失敗しました'); loadAuto(); return }
+    showToast('保存しました')
+  }
+
+  const runNow = async () => {
+    setAutoBusy(true)
+    const res  = await authFetch('/api/boss/freee/autosend', {
+      method: 'POST', body: JSON.stringify({ date }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setAutoBusy(false)
+    if (!res.ok) { showToast(data.error ?? '実行に失敗しました'); return }
+    showToast(`売上 ${data.sales?.sent ?? 0} 件 / レシート ${data.receipts?.sent ?? 0} 件 を送信`)
+    loadAuto(); loadPreview()
+  }
 
   useEffect(() => {
     const r = params.get('freee')
@@ -261,6 +308,54 @@ function FreeeContent() {
           </button>
         </Card>
 
+        {/* 自動送信 */}
+        <Card title="毎営業日の自動送信">
+          {!auto ? <Note>読み込み中...</Note> : (
+            <>
+              <Note>
+                毎日 20:00（日本時間）に、その日の売上とレシート画像を freee へ
+                送ります。実績が入っていない日は送るものが無いので何もしません
+                （日曜・臨時休業もそのまま飛ばされます）。
+              </Note>
+              {!auto.cronReady && (
+                <Note warn>
+                  CRON_SECRET が未設定です。Vercel に設定するまで自動実行は
+                  動きません（下の「今すぐ実行」は使えます）。
+                </Note>
+              )}
+
+              <label style={check}>
+                <input type="checkbox" checked={auto.enabled}
+                  onChange={(e) => saveAuto({ enabled: e.target.checked })} />
+                自動送信を有効にする
+              </label>
+              <label style={check}>
+                <input type="checkbox" checked={auto.sendSales} disabled={!auto.enabled}
+                  onChange={(e) => saveAuto({ sendSales: e.target.checked })} />
+                売上（振替伝票）を送る
+              </label>
+              <label style={check}>
+                <input type="checkbox" checked={auto.sendReceipts} disabled={!auto.enabled}
+                  onChange={(e) => saveAuto({ sendReceipts: e.target.checked })} />
+                レシート画像を送る
+              </label>
+
+              {auto.lastResult && (
+                <Note>
+                  前回の実行: {auto.lastRunAt
+                    ? new Date(auto.lastRunAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+                    : ''}<br />{auto.lastResult}
+                </Note>
+              )}
+
+              <button onClick={runNow} disabled={autoBusy}
+                style={{ ...btn('white', '#2C2C2A'), width:'100%', marginTop:'10px' }}>
+                {autoBusy ? '実行中...' : '今すぐ実行（下で指定した日付ぶん）'}
+              </button>
+            </>
+          )}
+        </Card>
+
         {/* 売上送信 */}
         <Card title="売上を freee に登録">
           <Note>
@@ -313,6 +408,11 @@ function FreeeContent() {
       <Toast text={toast} />
     </div>
   )
+}
+
+const check: React.CSSProperties = {
+  display:'flex', alignItems:'center', gap:'8px',
+  fontSize:'14px', color:'#2C2C2A', margin:'8px 0', cursor:'pointer',
 }
 
 function Slot({ label, hint, value, fallbackName, items, onChange }: {

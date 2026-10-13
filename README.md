@@ -126,6 +126,8 @@
 | `/api/boss/freee/status` | GET / DELETE | `role='all'`・連携状態の確認と解除 |
 | `/api/boss/freee/mapping` | GET / PUT | `role='all'`・freee 勘定科目と売上項目の対応 |
 | `/api/boss/freee/journal` | GET / POST | `role='all'`・日次売上のプレビューと振替伝票の登録 |
+| `/api/boss/freee/autosend` | GET / PUT / POST | `role='all'`・自動送信の設定と即時実行 |
+| `/api/cron/freee` | GET | Vercel Cron 専用（`CRON_SECRET` のみで認可）・毎日 20 時に当日分を送信 |
 
 ## DB スキーマ（Prisma）
 
@@ -144,6 +146,7 @@
 - `FreeeReceipt` — freee ファイルボックスへ送信済みのレシート（二重送信防止）
 - `FreeeMapping` — freee 勘定科目と売上項目の対応（`sales:<店舗>` / `cash` / `paypay` / `voucher`）
 - `FreeeJournal` — freee へ登録済みの日次売上（日付×店舗で一意・二重計上防止）
+- `FreeeAutoSend` — 自動送信の設定と最終実行結果（単一行）
 
 詳細は `prisma/schema.prisma` 参照。
 
@@ -160,6 +163,7 @@
 | `LINE_CHANNEL_ACCESS_TOKEN` | replyMessage / プロフィール取得用。 |
 | `NEXT_PUBLIC_API_URL` | webhook が返す URL の基底。本番では Vercel URL。 |
 | `API_SECRET` | 予約（未使用）。 |
+| `CRON_SECRET` | 毎営業日 20 時の自動送信（Vercel Cron）の保護用。未設定だと `/api/cron/freee` は 401 を返し自動実行されない。 |
 | `BLOB_READ_WRITE_TOKEN` | レシート画像アップロード（Vercel Blob）用。Vercel ダッシュボードの Storage で Blob Store を作成すると自動付与される。 |
 | `FREEE_CLIENT_ID` | freee 会計連携（ファイルボックス送信）用。freee アプリ管理で発行する。 |
 | `FREEE_CLIENT_SECRET` | 同上。**コードやリポジトリには置かず Vercel の環境変数にのみ設定する。** |
@@ -219,6 +223,14 @@ git add prisma/migrations && git commit   # 生成された SQL をコミット
 # 本番反映
 npm run migrate:deploy
 ```
+
+## 自動送信（毎営業日 20 時）
+
+[vercel.json](vercel.json) の Cron が毎日 11:00 UTC（= 20:00 JST）に `/api/cron/freee` を叩き、その日の売上とレシート画像を freee へ送る。Vercel の Cron は UTC 指定なので、時刻を変える場合は JST から 9 時間引いた値を書く。
+
+「営業日だけ」はカレンダーを持たずに実現している。実績が入っていない日は送る対象が無いので自然に何もしない（日曜・臨時休業も同じ）。有効/無効と送信対象は `/boss/freee` から切り替える。
+
+売上とレシートは互いに独立して処理し、片方が失敗してももう片方と実行記録は残す（記録が無いと失敗に気付けないため）。送信済みは `FreeeJournal` / `FreeeReceipt` で判定するので、再実行しても二重送信にならない。
 
 ## テスト用 URL
 

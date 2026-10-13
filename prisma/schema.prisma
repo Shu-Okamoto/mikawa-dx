@@ -268,3 +268,18 @@ model FreeeJournal {
   @@unique([saleDate, storeCode])
   @@schema("dx")
 }
+
+// freee への自動送信設定。単一行(id=1)。
+// 実行時刻は Vercel Cron(vercel.json)側で決まるので、ここでは有効/無効と
+// 送信対象だけを持つ。最後の実行結果は画面で確認するために残す。
+model FreeeAutoSend {
+  id           Int      @id
+  enabled      Boolean  @default(false)
+  sendSales    Boolean  @default(true)
+  sendReceipts Boolean  @default(true)
+  lastRunAt    DateTime?
+  lastResult   String?
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@schema("dx")
+}
