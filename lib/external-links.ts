@@ -24,6 +24,12 @@ export function nippoDailyReportUrl(branch: string): string {
   return `${NIPPO_BASE}/store/${branch}/today`
 }
 
+// 日報サマリ(全店のダッシュボード)
+export const NIPPO_DASHBOARD_URL = `${NIPPO_BASE}/dashboard`
+
+// 自社HP(Shopify連携)の管理画面。贈答注文の下書きをここで作る。
+export const SHOP_GIFT_ORDER_URL = 'https://www.satonoaji-mikawa.net/admin'
+
 // ---------------------------------------------------------------------------
 // freee の給与明細(Web明細)
 //

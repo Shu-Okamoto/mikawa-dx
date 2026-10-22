@@ -10,7 +10,10 @@ import {
   setPinSession,
   setMasterAccessFlag,
 } from '@/lib/auth-client'
-import { nippoClockUrl, nippoDailyReportUrl } from '@/lib/external-links'
+import {
+  nippoClockUrl, nippoDailyReportUrl, NIPPO_DASHBOARD_URL, SHOP_GIFT_ORDER_URL,
+} from '@/lib/external-links'
+import { todayJstYmd } from '@/lib/serverDate'
 
 type RoleKey = 'nishi' | 'minami' | 'honbu' | 'hq1' | 'hq2' | 'hq3' | 'all' | 'master'
 
@@ -27,6 +30,9 @@ type Entry = {
   external?    : boolean
   // true の場合、専用 PIN (master / 0000) でのみボタンを押せる
   requireMaster?: boolean
+  // 期間限定ボタン。'YYYY-MM-DD'(日本時間)で、この範囲外では表示しない。
+  availableFrom?: string
+  availableTo?  : string
   // true の場合、ログイン不要の公開ページ。どの PIN でも押せる。
   public?      : boolean
 }
@@ -39,6 +45,17 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
       { role: 'nishi',  path: '/store/nishi',  label: '西店' },
       { role: 'minami', path: '/store/minami', label: '南店' },
       { role: 'honbu',  path: '/store/honbu',  label: '本部' },
+    ]],
+  },
+  {
+    // 期間限定。自社HP(Shopify)の管理画面で贈答注文の下書きを作る。
+    title: '🎁 贈答注文入力',
+    rows: [[
+      {
+        role: 'all', label: 'れんこん贈答注文', path: SHOP_GIFT_ORDER_URL,
+        external: true, public: true,
+        availableFrom: '2026-10-22', availableTo: '2026-12-15',
+      },
     ]],
   },
   {
@@ -66,6 +83,9 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
       [
         { role: 'all', path: '/public-dashboard', label: '本日の売上', public: true },
       ],
+      [
+        { role: 'all', label: '日報サマリ', path: NIPPO_DASHBOARD_URL, external: true },
+      ],
     ],
   },
   {
@@ -91,6 +111,24 @@ const entryGroups: { title: string; rows: Entry[][] }[] = [
     ]],
   },
 ]
+
+// 期間限定ボタンの表示判定。日付文字列どうしの比較なので、
+// 端末のタイムゾーンに左右されない(日本時間の今日を基準にする)。
+function inPeriod(entry: Entry, today: string): boolean {
+  if (entry.availableFrom && today < entry.availableFrom) return false
+  if (entry.availableTo   && today > entry.availableTo)   return false
+  return true
+}
+
+// 期間外のボタンを除き、空になったグループは見出しごと消す
+function visibleGroups(today: string) {
+  return entryGroups
+    .map((g) => ({
+      ...g,
+      rows: g.rows.map((r) => r.filter((e) => inPeriod(e, today))).filter((r) => r.length > 0),
+    }))
+    .filter((g) => g.rows.length > 0)
+}
 
 function canAccess(pinRole: RoleKey, entry: Entry): boolean {
   // マスタ管理など専用ボタンは master PIN (0000) のみ
@@ -216,7 +254,7 @@ export default function HomePage() {
             入りたい画面を選んでください
           </p>
 
-          {entryGroups.map((group) => (
+          {visibleGroups(todayJstYmd()).map((group) => (
             <div key={group.title} style={{ marginBottom: '20px' }}>
               <div style={{ fontSize: '18px', color: '#2C2C2A', fontWeight: 600,
                 marginBottom: '10px' }}>{group.title}</div>
