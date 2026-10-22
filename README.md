@@ -224,6 +224,16 @@ git add prisma/migrations && git commit   # 生成された SQL をコミット
 npm run migrate:deploy
 ```
 
+## 入口メニューの期間限定ボタン
+
+[app/page.tsx](app/page.tsx) の `entryGroups` のボタンには `availableFrom` / `availableTo`（`YYYY-MM-DD`、日本時間）を付けられる。期間外のボタンは表示されず、その結果空になったグループは見出しごと消える。判定は日付文字列どうしの比較なので閲覧端末のタイムゾーンに影響されない。
+
+現在の期間限定ボタン:
+
+| ボタン | 期間 | 遷移先 |
+|---|---|---|
+| 🎁 贈答注文入力 → れんこん贈答注文 | 2026-10-22 〜 2026-12-15 | 自社HP（Shopify）の管理画面 |
+
 ## 自動送信（毎営業日 20 時）
 
 [vercel.json](vercel.json) の Cron が毎日 11:00 UTC（= 20:00 JST）に `/api/cron/freee` を叩き、その日の売上とレシート画像を freee へ送る。Vercel の Cron は UTC 指定なので、時刻を変える場合は JST から 9 時間引いた値を書く。
