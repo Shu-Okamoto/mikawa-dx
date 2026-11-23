@@ -195,6 +195,8 @@ model Sale {
   amount               Decimal  @default(0)
   souzaiAmount         Decimal  @default(0)
   mochiAmount          Decimal  @default(0)
+  // 餅の予約注文ぶんの売上。売上金額の内訳で、決済手段ではない(freee連携なし)
+  mochiOrderAmount     Decimal  @default(0)
   hanaAmount           Decimal  @default(0)
   paypayAmount         Decimal  @default(0)
   premiumVoucherAmount Decimal  @default(0)

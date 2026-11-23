@@ -42,10 +42,16 @@ interface SentCategory {
   orders     : SentItem[]
 }
 
+// プレミアム商品券は配布期間が終わったため非表示にしている。
+// 来年また配布されたら true に戻すだけで入力欄が復活する。
+// DB の列・API・保存処理は残してあるので、過去の入力値は保持される。
+const SHOW_PREMIUM_VOUCHER = false
+
 interface SalesData {
   amount         : string
   souzai         : string
   mochi          : string
+  mochiOrder     : string
   hana           : string
   paypay         : string
   premiumVoucher : string
@@ -55,6 +61,19 @@ interface SalesData {
   weather        : string  // '' | '晴' | '曇' | '雨' | '雪'
   receiptImageUrl: string
 }
+
+// 金額欄の並びとラベル。SHOW_PREMIUM_VOUCHER で商品券の出し入れを切り替える。
+const MONEY_FIELDS: readonly (readonly [keyof SalesData, string])[] = [
+  ['amount',     '売上金額'],
+  ['souzai',     '惣菜売上'],
+  ['mochi',      '餅売上'],
+  ['mochiOrder', 'もち注文分売上'],
+  ['hana',       '花売上'],
+  ['paypay',     'PayPay売上'],
+  ...(SHOW_PREMIUM_VOUCHER
+    ? [['premiumVoucher', 'プレミアム商品券'] as const]
+    : []),
+]
 
 const WEATHER_OPTIONS = [
   { key: '晴', emoji: '☀️' },
@@ -93,7 +112,7 @@ const CAT_ICONS: Record<string, string> = {
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
 
 const EMPTY_SALES: SalesData = {
-  amount: '', souzai: '', mochi: '', hana: '', paypay: '', premiumVoucher: '',
+  amount: '', souzai: '', mochi: '', mochiOrder: '', hana: '', paypay: '', premiumVoucher: '',
   customerCount: '', staffMorning: '', staffAfternoon: '', weather: '',
   receiptImageUrl: '',
 }
@@ -227,6 +246,7 @@ function StorePageContent({ branch }: { branch: string }) {
         amount         : s.amount         ? String(s.amount)         : '',
         souzai         : s.souzai         ? String(s.souzai)         : '',
         mochi          : s.mochi          ? String(s.mochi)          : '',
+        mochiOrder     : s.mochiOrder     ? String(s.mochiOrder)     : '',
         hana           : s.hana           ? String(s.hana)           : '',
         paypay         : s.paypay         ? String(s.paypay)         : '',
         premiumVoucher : s.premiumVoucher ? String(s.premiumVoucher) : '',
@@ -251,9 +271,13 @@ function StorePageContent({ branch }: { branch: string }) {
       { productId: 's1', productName: '売上金額',    category: '実績', unit: '', status: yen(s.amount),        qty: '' },
       { productId: 's2', productName: '惣菜売上',    category: '実績', unit: '', status: yen(s.souzai),        qty: '' },
       { productId: 's3', productName: '餅売上',      category: '実績', unit: '', status: yen(s.mochi),         qty: '' },
+      { productId: 's12', productName: 'もち注文分売上', category: '実績', unit: '', status: yen(s.mochiOrder),   qty: '' },
       { productId: 's4', productName: '花売上',      category: '実績', unit: '', status: yen(s.hana),          qty: '' },
       { productId: 's9', productName: 'PayPay売上',  category: '実績', unit: '', status: yen(s.paypay),         qty: '' },
-      { productId: 's10', productName: 'プレミアム商品券', category: '実績', unit: '', status: yen(s.premiumVoucher), qty: '' },
+      // 商品券は非表示期間でも、過去に入力済みの値があれば表示する
+      ...(SHOW_PREMIUM_VOUCHER || Number(s.premiumVoucher) > 0
+        ? [{ productId: 's10', productName: 'プレミアム商品券', category: '実績', unit: '', status: yen(s.premiumVoucher), qty: '' }]
+        : []),
       { productId: 's5', productName: '客数',        category: '実績', unit: '', status: (Number(s.customerCount) || 0) + '人', qty: '' },
       { productId: 's6', productName: '出勤前半',    category: '実績', unit: '', status: (s.staffMorning   || '-') + '人', qty: '' },
       { productId: 's7', productName: '出勤後半',    category: '実績', unit: '', status: (s.staffAfternoon || '-') + '人', qty: '' },
@@ -1271,15 +1295,9 @@ function SalesScreen({
         }}>
           <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>売上</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-            {(['amount', 'souzai', 'mochi', 'hana', 'paypay', 'premiumVoucher'] as const).map((k) => (
+            {MONEY_FIELDS.map(([k, label]) => (
               <div key={k}>
-                <div style={labelStyle}>
-                  {k === 'amount' ? '売上金額' :
-                   k === 'souzai' ? '惣菜売上' :
-                   k === 'mochi'  ? '餅売上'   :
-                   k === 'hana'   ? '花売上'   :
-                   k === 'paypay' ? 'PayPay売上' : 'プレミアム商品券'}
-                </div>
+                <div style={labelStyle}>{label}</div>
                 <div style={{ position: 'relative' }}>
                   <span style={{
                     position: 'absolute', left: '10px', top: '50%',
@@ -1404,6 +1422,7 @@ function PastSalesScreen({
           amount         : s.amount         ? String(s.amount)         : '',
           souzai         : s.souzai         ? String(s.souzai)         : '',
           mochi          : s.mochi          ? String(s.mochi)          : '',
+          mochiOrder     : s.mochiOrder     ? String(s.mochiOrder)     : '',
           hana           : s.hana           ? String(s.hana)           : '',
           paypay         : s.paypay         ? String(s.paypay)         : '',
           premiumVoucher : s.premiumVoucher ? String(s.premiumVoucher) : '',
@@ -1479,15 +1498,9 @@ function PastSalesScreen({
         }}>
           <div style={{ fontSize: '12px', color: '#888780', fontWeight: 500, marginBottom: '8px' }}>売上</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-            {(['amount', 'souzai', 'mochi', 'hana', 'paypay', 'premiumVoucher'] as const).map((k) => (
+            {MONEY_FIELDS.map(([k, label]) => (
               <div key={k}>
-                <div style={labelStyle}>
-                  {k === 'amount' ? '売上金額' :
-                   k === 'souzai' ? '惣菜売上' :
-                   k === 'mochi'  ? '餅売上'   :
-                   k === 'hana'   ? '花売上'   :
-                   k === 'paypay' ? 'PayPay売上' : 'プレミアム商品券'}
-                </div>
+                <div style={labelStyle}>{label}</div>
                 <div style={{ position: 'relative' }}>
                   <span style={{
                     position: 'absolute', left: '10px', top: '50%',

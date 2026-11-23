@@ -141,7 +141,7 @@
 - `DailyOrder` — 店舗からの日次発注リクエスト
 - `ConfirmedOrder` — 本部が確定した発注（仕入先送信用、各店数量 + 調整値）
 - `InstoreOrder` — 店内予約注文（顧客情報、配達日時、領収書）
-- `Sale` — 日次売上（売上 / 惣菜 / 餅 / 花 / 客数 / 出勤 / レシート画像）
+- `Sale` — 日次売上（売上 / 惣菜 / 餅 / もち注文分 / 花 / PayPay / 商品券 / 客数 / 出勤 / レシート画像）
 - `FreeeToken` — freee 会計の OAuth トークン（単一行・RLS 有効）
 - `FreeeReceipt` — freee ファイルボックスへ送信済みのレシート（二重送信防止）
 - `FreeeMapping` — freee 勘定科目と売上項目の対応（`sales:<店舗>` / `cash` / `paypay` / `voucher`）
@@ -223,6 +223,12 @@ git add prisma/migrations && git commit   # 生成された SQL をコミット
 # 本番反映
 npm run migrate:deploy
 ```
+
+## 実績入力の金額欄
+
+[app/store/[branch]/page.tsx](app/store/[branch]/page.tsx) の `MONEY_FIELDS` が入力欄の並びとラベルを決める。プレミアム商品券は配布期間が終わったため `SHOW_PREMIUM_VOUCHER = false` で非表示にしているが、**DB の列・API・保存処理はそのまま残している**ので、`true` に戻すだけで入力欄が復活し、過去の入力値も保持される（欄が隠れている間に過去日を保存しても既存値は消えない）。
+
+「もち注文分売上」は売上金額の内訳で決済手段ではないため、freee 連携（現金 = 売上金額 − PayPay − 商品券）には影響しない。
 
 ## 入口メニューの期間限定ボタン
 
