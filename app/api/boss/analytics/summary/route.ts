@@ -8,6 +8,7 @@ interface SaleRow {
   amount              : { toNumber: () => number } | number
   souzaiAmount        : { toNumber: () => number } | number
   mochiAmount         : { toNumber: () => number } | number
+  mochiOrderAmount    : { toNumber: () => number } | number
   hanaAmount          : { toNumber: () => number } | number
   paypayAmount        : { toNumber: () => number } | number
   premiumVoucherAmount: { toNumber: () => number } | number
@@ -34,6 +35,7 @@ interface Bucket {
   shipmentSouzai: number
   mochi         : number
   shipmentMochi : number
+  mochiOrder    : number   // 餅の予約注文ぶん
   hana          : number
   paypay        : number
   voucher       : number   // プレミアム商品券
@@ -50,7 +52,7 @@ function toNum(v: { toNumber: () => number } | number): number {
 
 function newBucket(): Bucket {
   return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, shipmentMochi: 0,
-    hana: 0, paypay: 0, voucher: 0, customerCount: 0, days: 0 }
+    mochiOrder: 0, hana: 0, paypay: 0, voucher: 0, customerCount: 0, days: 0 }
 }
 
 function addRow(b: Bucket, s: SaleRow, shipSouzai: number, shipMochi: number) {
@@ -59,6 +61,7 @@ function addRow(b: Bucket, s: SaleRow, shipSouzai: number, shipMochi: number) {
   b.shipmentSouzai += shipSouzai
   b.mochi          += toNum(s.mochiAmount)
   b.shipmentMochi  += shipMochi
+  b.mochiOrder     += toNum(s.mochiOrderAmount)
   b.hana           += toNum(s.hanaAmount)
   b.paypay         += toNum(s.paypayAmount)
   b.voucher        += toNum(s.premiumVoucherAmount)
@@ -304,6 +307,7 @@ function aggregateDow(sales: SaleRow[], ship: ShipmentMap): Record<string, DowEn
     b.shipmentSouzai += shipSouzaiFor(s, ship)
     b.mochi          += toNum(s.mochiAmount)
     b.shipmentMochi  += shipMochiFor(s, ship)
+    b.mochiOrder     += toNum(s.mochiOrderAmount)
     b.hana           += toNum(s.hanaAmount)
     b.paypay         += toNum(s.paypayAmount)
     b.voucher        += toNum(s.premiumVoucherAmount)
@@ -422,6 +426,7 @@ function mergeByStore(into: Record<string, Bucket>, from: Record<string, Bucket>
     t.shipmentSouzai += b.shipmentSouzai
     t.mochi          += b.mochi
     t.shipmentMochi  += b.shipmentMochi
+    t.mochiOrder     += b.mochiOrder
     t.hana           += b.hana
     t.paypay         += b.paypay
     t.voucher        += b.voucher
