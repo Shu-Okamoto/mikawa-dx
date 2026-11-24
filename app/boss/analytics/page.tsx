@@ -13,6 +13,7 @@ interface Bucket {
   shipmentSouzai: number
   mochi         : number
   shipmentMochi : number
+  mochiOrder    : number   // 餅の予約注文ぶん
   hana          : number
   paypay        : number
   voucher       : number   // プレミアム商品券
@@ -134,9 +135,25 @@ function shiftRef(ref: string, g: Granularity, dir: -1 | 1): string {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
 }
 
+// カテゴリ別テーブルの店舗内サブ列。見出しも各行もここから組み立てるので、
+// 列の増減はこの配列だけで済む(列数のずれが起きない)。
+// unitPrice=false は支払手段などで客単価の対象外。
+// プレミアム商品券は配布期間が終わったため外している(実績入力と同じ扱い)。
+// 来年また使うときは voucher の行のコメントを外す。
+const CATEGORY_COLUMNS: readonly {
+  key: keyof Bucket; label: string; unitPrice: boolean
+}[] = [
+  { key: 'souzai',     label: '惣菜',       unitPrice: true  },
+  { key: 'mochi',      label: '餅',         unitPrice: true  },
+  { key: 'mochiOrder', label: 'もち注文分', unitPrice: true  },
+  { key: 'hana',       label: '花',         unitPrice: true  },
+  { key: 'paypay',     label: 'PayPay',     unitPrice: false },
+  // { key: 'voucher',    label: '商品券',     unitPrice: false },
+]
+
 function emptyBucket(): Bucket {
   return { amount: 0, souzai: 0, shipmentSouzai: 0, mochi: 0, shipmentMochi: 0,
-    hana: 0, paypay: 0, voucher: 0, customerCount: 0, days: 0 }
+    mochiOrder: 0, hana: 0, paypay: 0, voucher: 0, customerCount: 0, days: 0 }
 }
 
 function sumStores(byStore: Record<string, Bucket>): Bucket {
@@ -149,6 +166,7 @@ function sumStores(byStore: Record<string, Bucket>): Bucket {
     out.shipmentSouzai += b.shipmentSouzai
     out.mochi          += b.mochi
     out.shipmentMochi  += b.shipmentMochi
+    out.mochiOrder     += b.mochiOrder
     out.hana           += b.hana
     out.paypay         += b.paypay
     out.voucher        += b.voucher
@@ -339,6 +357,7 @@ function avgBucket(rows: RowData[]): Bucket {
     out.shipmentSouzai += t.shipmentSouzai
     out.mochi          += t.mochi
     out.shipmentMochi  += t.shipmentMochi
+    out.mochiOrder     += t.mochiOrder
     out.hana           += t.hana
     out.paypay         += t.paypay
     out.voucher        += t.voucher
@@ -350,6 +369,7 @@ function avgBucket(rows: RowData[]): Bucket {
   out.shipmentSouzai = Math.round(out.shipmentSouzai / days)
   out.mochi          = Math.round(out.mochi          / days)
   out.shipmentMochi  = Math.round(out.shipmentMochi  / days)
+  out.mochiOrder     = Math.round(out.mochiOrder     / days)
   out.hana           = Math.round(out.hana           / days)
   out.paypay         = Math.round(out.paypay         / days)
   out.voucher        = Math.round(out.voucher        / days)
@@ -1050,8 +1070,8 @@ function CategoryTable({ data }: { data: ApiData }) {
               <th rowSpan={2} style={thStyle}>
                 {data.granularity === 'year' ? '月' : '日付'}
               </th>
-              <th colSpan={5} style={thGroupStyle}>西店</th>
-              <th colSpan={5} style={thGroupStyle}>南店</th>
+              <th colSpan={CATEGORY_COLUMNS.length} style={thGroupStyle}>西店</th>
+              <th colSpan={CATEGORY_COLUMNS.length} style={thGroupStyle}>南店</th>
               <th rowSpan={2} style={{ ...thStyle, background:'#FBF8F2', minWidth:'90px' }}>
                 本部合計
                 <div style={{ fontSize:'10px', fontWeight:400 }}>(惣菜+餅)</div>
@@ -1064,16 +1084,13 @@ function CategoryTable({ data }: { data: ApiData }) {
               </th>
             </tr>
             <tr>
-              <th style={thSubStyle}>惣菜</th>
-              <th style={thSubStyle}>餅</th>
-              <th style={thSubStyle}>花</th>
-              <th style={thSubStyle}>PayPay</th>
-              <th style={thSubStyle}>商品券</th>
-              <th style={thSubStyle}>惣菜</th>
-              <th style={thSubStyle}>餅</th>
-              <th style={thSubStyle}>花</th>
-              <th style={thSubStyle}>PayPay</th>
-              <th style={thSubStyle}>商品券</th>
+              {STORES.map((s) => (
+                <Fragment key={s}>
+                  {CATEGORY_COLUMNS.map((c) => (
+                    <th key={c.key} style={thSubStyle}>{c.label}</th>
+                  ))}
+                </Fragment>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -1121,11 +1138,9 @@ function CategoryYoYRow({ byStore, prevByStore }: {
         const pb = prevByStore[s] ?? emptyBucket()
         return (
           <Fragment key={s}>
-            <td style={tdNumStyle}>{yoyCell(b.souzai , pb.souzai )}</td>
-            <td style={tdNumStyle}>{yoyCell(b.mochi  , pb.mochi  )}</td>
-            <td style={tdNumStyle}>{yoyCell(b.hana   , pb.hana   )}</td>
-            <td style={tdNumStyle}>{yoyCell(b.paypay , pb.paypay )}</td>
-            <td style={tdNumStyle}>{yoyCell(b.voucher, pb.voucher)}</td>
+            {CATEGORY_COLUMNS.map((c) => (
+              <td key={c.key} style={tdNumStyle}>{yoyCell(b[c.key], pb[c.key])}</td>
+            ))}
           </Fragment>
         )
       })}
@@ -1264,17 +1279,18 @@ function CategoryUnitPriceRow({ byStore, prevByStore, projByStore }: {
       {STORES.map((s) => {
         const b = byStore[s] ?? emptyBucket()
         const cust = b.customerCount
-        const souzaiUP = cust > 0 ? b.souzai / cust : 0
-        const mochiUP  = cust > 0 ? b.mochi  / cust : 0
-        const hanaUP   = cust > 0 ? b.hana   / cust : 0
         return (
           <Fragment key={s}>
-            <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(souzaiUP)}</td>
-            <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(mochiUP)}</td>
-            <td style={{ ...tdNumStyle, fontWeight: 600 }}>{cell(hanaUP)}</td>
-            {/* PayPay / 商品券 は支払手段のため客単価は対象外 */}
-            <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
-            <td style={{ ...tdNumStyle, color:'#888780' }}>—</td>
+            {CATEGORY_COLUMNS.map((c) => (
+              // 支払手段(PayPay/商品券)は客単価の対象外
+              c.unitPrice ? (
+                <td key={c.key} style={{ ...tdNumStyle, fontWeight: 600 }}>
+                  {cell(cust > 0 ? b[c.key] / cust : 0)}
+                </td>
+              ) : (
+                <td key={c.key} style={{ ...tdNumStyle, color:'#888780' }}>—</td>
+              )
+            ))}
           </Fragment>
         )
       })}
@@ -1334,11 +1350,9 @@ function CategoryRow({ row, isTotal, yoyProjByStore }: {
         const b = row.byStore[s]
         return (
           <Fragment key={s}>
-            <td style={tdNumStyle}>{cell(b?.souzai  ?? 0)}</td>
-            <td style={tdNumStyle}>{cell(b?.mochi   ?? 0)}</td>
-            <td style={tdNumStyle}>{cell(b?.hana    ?? 0)}</td>
-            <td style={tdNumStyle}>{cell(b?.paypay  ?? 0)}</td>
-            <td style={tdNumStyle}>{cell(b?.voucher ?? 0)}</td>
+            {CATEGORY_COLUMNS.map((c) => (
+              <td key={c.key} style={tdNumStyle}>{cell(b?.[c.key] ?? 0)}</td>
+            ))}
           </Fragment>
         )
       })}

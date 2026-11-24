@@ -230,6 +230,8 @@ npm run migrate:deploy
 
 「もち注文分売上」は売上金額の内訳で決済手段ではないため、freee 連携（現金 = 売上金額 − PayPay − 商品券）には影響しない。
 
+売上分析のカテゴリ別テーブルの列は [app/boss/analytics/page.tsx](app/boss/analytics/page.tsx) の `CATEGORY_COLUMNS` が決める。見出し・金額・客単価・前年比のすべてをこの配列から組み立てるので、列の増減で行ごとのセル数がずれない。商品券はここでもコメントアウトしてあり、戻すときは 1 行外すだけ。`unitPrice: false` は支払手段など客単価の対象外。
+
 ## 入口メニューの期間限定ボタン
 
 [app/page.tsx](app/page.tsx) の `entryGroups` のボタンには `availableFrom` / `availableTo`（`YYYY-MM-DD`、日本時間）を付けられる。期間外のボタンは表示されず、その結果空になったグループは見出しごと消える。判定は日付文字列どうしの比較なので閲覧端末のタイムゾーンに影響されない。
